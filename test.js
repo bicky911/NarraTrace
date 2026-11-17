@@ -33,6 +33,7 @@ const diagnosticSampleTextEl = document.getElementById('diagnostic-sample-text')
 const diagnosticStatusEl = document.getElementById('engine-diagnostic-status');
 const diagnosticLogEl = document.getElementById('engine-diagnostic-log');
 const btnRunDiagnostic = document.getElementById('btn-run-engine-diagnostic');
+const btnStopDiagnostic = document.getElementById('btn-stop-engine-diagnostic');
 const btnMarkAudible = document.getElementById('btn-mark-audible');
 const btnExportDiagnostic = document.getElementById('btn-export-engine-diagnostic');
 const btnClearDiagnostic = document.getElementById('btn-clear-engine-diagnostic');
@@ -97,6 +98,7 @@ function finishDiagnosticTimeout(requestId) {
     diagnosticReport.durationMs = null;
   }
   btnRunDiagnostic.disabled = false;
+  btnStopDiagnostic.disabled = true;
   btnMarkAudible.disabled = true;
   btnClearDiagnostic.disabled = false;
   btnExportDiagnostic.disabled = !diagnosticReport;
@@ -155,6 +157,7 @@ async function runEngineDiagnostic() {
   activeDiagnosticRequestId = requestId;
   diagnosticStartPerf = requestPerfStart;
   btnRunDiagnostic.disabled = true;
+  btnStopDiagnostic.disabled = true;
   btnMarkAudible.disabled = true;
   btnClearDiagnostic.disabled = true;
   btnExportDiagnostic.disabled = true;
@@ -176,6 +179,7 @@ async function runEngineDiagnostic() {
     if (!response?.success) {
       activeDiagnosticRequestId = null;
       btnRunDiagnostic.disabled = false;
+      btnStopDiagnostic.disabled = true;
       btnMarkAudible.disabled = true;
       btnClearDiagnostic.disabled = false;
       diagnosticReport.success = false;
@@ -187,6 +191,7 @@ async function runEngineDiagnostic() {
     }
 
     diagnosticReport.test.startedAt = response.startedAt || startedAt;
+    btnStopDiagnostic.disabled = false;
     btnMarkAudible.disabled = false;
     diagnosticReport.provider.voiceName = response.voice?.voiceName || option.value;
     diagnosticReport.provider.extensionId = response.voice?.extensionId || null;
@@ -201,6 +206,7 @@ async function runEngineDiagnostic() {
     if (activeDiagnosticRequestId !== requestId) return;
     activeDiagnosticRequestId = null;
     btnRunDiagnostic.disabled = false;
+    btnStopDiagnostic.disabled = true;
     btnMarkAudible.disabled = true;
     btnClearDiagnostic.disabled = false;
     diagnosticReport.success = false;
@@ -212,6 +218,25 @@ async function runEngineDiagnostic() {
 }
 
 btnRunDiagnostic.addEventListener('click', runEngineDiagnostic);
+
+btnStopDiagnostic.addEventListener('click', async () => {
+  if (!activeDiagnosticRequestId) return;
+  btnStopDiagnostic.disabled = true;
+  setDiagnosticStatus('Stopping the diagnostic utterance…', 'warning');
+  try {
+    const response = await chrome.runtime.sendMessage({
+      action: 'STOP_TTS_DIAGNOSTIC',
+      requestId: activeDiagnosticRequestId
+    });
+    if (!response?.success && activeDiagnosticRequestId) {
+      btnStopDiagnostic.disabled = false;
+      setDiagnosticStatus(response?.error || 'The diagnostic could not be stopped.', 'warning');
+    }
+  } catch (error) {
+    btnStopDiagnostic.disabled = false;
+    setDiagnosticStatus(String(error?.message || error), 'danger');
+  }
+});
 
 btnMarkAudible.addEventListener('click', () => {
   if (!diagnosticReport || !activeDiagnosticRequestId || diagnosticStartPerf === null) return;
@@ -244,6 +269,8 @@ btnClearDiagnostic.addEventListener('click', () => {
   if (activeDiagnosticRequestId) return;
   diagnosticReport = null;
   diagnosticStartPerf = null;
+  btnStopDiagnostic.disabled = true;
+  btnMarkAudible.disabled = true;
   btnExportDiagnostic.disabled = true;
   diagnosticLogEl.textContent = 'No diagnostic events recorded.';
   setDiagnosticStatus('Diagnostic report cleared. Select a voice and run the test when ready.', 'info');
@@ -477,6 +504,7 @@ chrome.runtime.onMessage.addListener((message) => {
           : null);
       diagnosticReport.test.completedAt = new Date().toISOString();
       btnRunDiagnostic.disabled = false;
+      btnStopDiagnostic.disabled = true;
       btnMarkAudible.disabled = true;
       btnClearDiagnostic.disabled = false;
       btnExportDiagnostic.disabled = false;
