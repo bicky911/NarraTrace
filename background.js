@@ -429,7 +429,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           chrome.runtime.sendMessage({
             action: 'TTS_DIAGNOSTIC_COMPLETE',
             requestId,
-            success: result?.type !== 'timeout',
+            success: result?.type === 'end',
             resultType: result?.type || 'unknown',
             durationMs: Date.now() - startedAt
           }).catch(() => {});
