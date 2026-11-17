@@ -329,8 +329,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: false, error: 'TTS diagnostics are restricted to the bundled diagnostics page.' });
         return false;
       }
-      if (!diagnosticSpeechActive) {
-        sendResponse({ success: false, error: 'No diagnostic speech request is currently active.' });
+      if (!diagnosticSpeechActive || message.requestId !== diagnosticRequestId) {
+        sendResponse({ success: false, error: 'No matching diagnostic speech request is currently active.' });
         return false;
       }
       stopSpeech();
@@ -352,19 +352,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         : null;
       const text = typeof message.text === 'string' ? message.text.trim() : '';
       const voiceName = typeof message.voiceName === 'string' ? message.voiceName.trim() : '';
-      const extensionId = typeof message.extensionId === 'string' && message.extensionId.trim()
-        ? message.extensionId.trim()
-        : null;
-      const lang = typeof message.lang === 'string' && message.lang.trim()
-        ? message.lang.trim()
-        : null;
-      const rate = typeof message.rate === 'number' && Number.isFinite(message.rate)
-        ? message.rate
-        : 1;
+      const extensionId = message.extensionId == null
+        ? null
+        : (typeof message.extensionId === 'string' ? (message.extensionId.trim() || null) : false);
+      const lang = message.lang == null
+        ? null
+        : (typeof message.lang === 'string' ? (message.lang.trim() || null) : false);
+      const rate = message.rate;
 
       if (!requestId || !text || text.length > 500 || !voiceName ||
+          extensionId === false || lang === false ||
           (extensionId && extensionId.length > 128) ||
-          (lang && lang.length > 64) || rate < 0.5 || rate > 2.0) {
+          (lang && lang.length > 64) ||
+          typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0.5 || rate > 2.0) {
         sendResponse({
           success: false,
           error: 'Invalid diagnostic request. Text must be 1–500 characters, a voice must be selected, and rate must be between 0.5× and 2.0×.'
