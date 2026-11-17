@@ -5,8 +5,9 @@
 
 import {
   detectAndSelectVoice,
-  stopSpeech,
+  getAllVoices,
   isSpeaking,
+  safeSpeak,
   waitForTtsApi
 } from './speech-engine.js';
 
@@ -285,6 +286,11 @@ function isDiagnosticsPageSender(sender) {
   }
 }
 
+// A diagnostic utterance is an isolated one-shot request; it never joins the
+// normal sentence queue and cannot start while normal playback is active.
+let diagnosticSpeechActive = false;
+let diagnosticRequestId = null;
+
 // Message Router
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message.action !== 'string' || message.action.length === 0) {
@@ -304,6 +310,148 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       })
         .then((report) => sendResponse({ success: true, data: report }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
+      return true;
+    }
+
+    case 'RUN_TTS_DIAGNOSTIC': {
+      // Real-engine diagnostic speech is deliberately restricted to the
+      // bundled diagnostics page. Normal popup/content-script messages cannot
+      // use this route to start arbitrary speech.
+      if (!isDiagnosticsPageSender(sender)) {
+        sendResponse({ success: false, error: 'TTS diagnostics are restricted to the bundled diagnostics page.' });
+        return false;
+      }
+
+      const requestId = typeof message.requestId === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(message.requestId)
+        ? message.requestId
+        : null;
+      const text = typeof message.text === 'string' ? message.text.trim() : '';
+      const voiceName = typeof message.voiceName === 'string' ? message.voiceName.trim() : '';
+      const extensionId = typeof message.extensionId === 'string' && message.extensionId.trim()
+        ? message.extensionId.trim()
+        : null;
+      const lang = typeof message.lang === 'string' && message.lang.trim()
+        ? message.lang.trim()
+        : null;
+      const rate = typeof message.rate === 'number' && Number.isFinite(message.rate)
+        ? message.rate
+        : 1;
+
+      if (!requestId || !text || text.length > 500 || !voiceName ||
+          (extensionId && extensionId.length > 128) ||
+          (lang && lang.length > 64) || rate < 0.5 || rate > 2.0) {
+        sendResponse({
+          success: false,
+          error: 'Invalid diagnostic request. Text must be 1–500 characters, a voice must be selected, and rate must be between 0.5× and 2.0×.'
+        });
+        return false;
+      }
+
+      if (diagnosticSpeechActive) {
+        sendResponse({ success: false, error: 'A diagnostic speech test is already running.' });
+        return false;
+      }
+
+      const playbackState = playbackManager.getState().playbackState;
+      if (playbackState === PlaybackState.PLAYING || playbackState === PlaybackState.PAUSED) {
+        sendResponse({ success: false, error: 'Stop normal NarraTrace playback before running the diagnostic.' });
+        return false;
+      }
+
+      (async () => {
+        const voices = await getAllVoices();
+        const selectedVoice = voices.find((voice) =>
+          voice.voiceName === voiceName &&
+          (extensionId
+            ? voice.extensionId === extensionId
+            : !voice.extensionId)
+        );
+
+        if (!selectedVoice) {
+          sendResponse({
+            success: false,
+            error: 'That voice is no longer available in Chrome. Refresh the voice list and select it again.'
+          });
+          return;
+        }
+
+        if (await isSpeaking()) {
+          sendResponse({
+            success: false,
+            error: 'Chrome reports speech is already active. Stop it before running the diagnostic.'
+          });
+          return;
+        }
+
+        diagnosticSpeechActive = true;
+        diagnosticRequestId = requestId;
+        const startedAt = Date.now();
+        sendResponse({
+          success: true,
+          requestId,
+          startedAt: new Date(startedAt).toISOString(),
+          voice: {
+            voiceName: selectedVoice.voiceName,
+            extensionId: selectedVoice.extensionId || null,
+            lang: selectedVoice.lang || null
+          }
+        });
+
+        try {
+          const result = await safeSpeak(
+            text,
+            {
+              rate,
+              pitch: 1,
+              volume: 1,
+              voiceName: selectedVoice.voiceName,
+              extensionId: selectedVoice.extensionId,
+              lang: selectedVoice.lang
+            },
+            (event) => {
+              // Never forward the sample text. Event telemetry contains only
+              // event type, offsets/lengths, provider error text, and timing.
+              chrome.runtime.sendMessage({
+                action: 'TTS_DIAGNOSTIC_EVENT',
+                requestId,
+                elapsedMs: Date.now() - startedAt,
+                event: {
+                  type: event.type,
+                  charIndex: Number.isFinite(event.charIndex) ? event.charIndex : null,
+                  length: Number.isFinite(event.length) ? event.length : null,
+                  charLength: Number.isFinite(event.charLength) ? event.charLength : null,
+                  errorMessage: typeof event.errorMessage === 'string' ? event.errorMessage.slice(0, 500) : null
+                }
+              }).catch(() => {});
+            }
+          );
+
+          chrome.runtime.sendMessage({
+            action: 'TTS_DIAGNOSTIC_COMPLETE',
+            requestId,
+            success: result?.type !== 'timeout',
+            resultType: result?.type || 'unknown',
+            durationMs: Date.now() - startedAt
+          }).catch(() => {});
+        } catch (error) {
+          chrome.runtime.sendMessage({
+            action: 'TTS_DIAGNOSTIC_COMPLETE',
+            requestId,
+            success: false,
+            resultType: 'error',
+            error: String(error?.message || error).slice(0, 500),
+            durationMs: Date.now() - startedAt
+          }).catch(() => {});
+        } finally {
+          if (diagnosticRequestId === requestId) {
+            diagnosticSpeechActive = false;
+            diagnosticRequestId = null;
+          }
+        }
+      })().catch((error) => {
+        sendResponse({ success: false, error: String(error?.message || error) });
+      });
+
       return true;
     }
 
