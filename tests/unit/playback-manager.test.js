@@ -84,6 +84,48 @@ test("pronunciation replacements are case-insensitive and do not mutate original
   assert.equal(input, "Zea mays is a crop. zea mays is widely grown.");
 });
 
+test("deferred worker recovery state survives session save and restore", async (t) => {
+  const previousChrome = globalThis.chrome;
+  const sessionStore = {};
+  globalThis.chrome = {
+    storage: {
+      session: {
+        async set(values) {
+          Object.assign(sessionStore, values);
+        },
+        async get(key) {
+          return { [key]: sessionStore[key] };
+        }
+      }
+    }
+  };
+
+  t.after(() => {
+    if (previousChrome === undefined) {
+      delete globalThis.chrome;
+    } else {
+      globalThis.chrome = previousChrome;
+    }
+  });
+
+  const source = createManager();
+  source.playbackState = PlaybackState.PLAYING;
+  source.queue = [{ index: 0, text: "Current sentence." }];
+  source.currentIndex = 0;
+  source.recoveryPendingAdvance = true;
+  source._syncKeepAliveTick = () => {};
+
+  await source.saveToSession();
+
+  const restored = createManager();
+  const didRestore = await restored.restoreFromSession();
+
+  assert.equal(didRestore, true);
+  assert.equal(restored.playbackState, PlaybackState.PLAYING);
+  assert.equal(restored.currentIndex, 0);
+  assert.equal(restored.recoveryPendingAdvance, true);
+});
+
 test("changing pitch resumes at the last confirmed word offset", async (t) => {
   installChromeTts(t);
   const manager = createManager();
