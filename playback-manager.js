@@ -510,7 +510,19 @@ class PlaybackManager {
     console.warn('[PlaybackManager] Worker restarted mid-utterance — waiting for it to finish.');
     const wentIdle = await this.waitForSpeechIdle(10000);
     if (this.playbackState !== PlaybackState.PLAYING) return;
-    if (wentIdle) {
+
+    // Never start a second utterance while the orphaned browser-level utterance
+    // may still be speaking. The persistent recovery alarm will retry after
+    // the current utterance becomes idle.
+    if (!wentIdle) {
+      console.warn('[PlaybackManager] Orphaned utterance is still active — deferring recovery until the next alarm.');
+      this.awaitingSpeech = false;
+      this.isSwitchingSentence = false;
+      await this.saveToSession();
+      return;
+    }
+
+    {
       // The orphaned utterance completed; its event was lost, so advance here.
       this.currentIndex++;
       if (this.currentIndex >= this.queue.length) {
@@ -1778,7 +1790,10 @@ class PlaybackManager {
       this.playbackRunId = (this.playbackRunId || 0) + 1;
       this.isSwitchingSentence = true;
       await stopSpeechAndWait();
-      this.speakCurrentSentence(this.playbackRunId, this.resumeOffset || 0);
+      const resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0)
+        ? this.lastWordCharIndex
+        : (this.resumeOffset || 0);
+      this.speakCurrentSentence(this.playbackRunId, resumeFrom);
     } else {
       this.broadcast('OPTIONS_CHANGED', { options: this.options });
     }
