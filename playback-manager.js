@@ -395,10 +395,12 @@ class PlaybackManager {
     };
 
     const pickString = (key, maxLength) => {
-      const candidate = typeof input[key] === 'string' ? input[key] : base[key];
-      if (typeof candidate !== 'string') return null;
-      const trimmed = candidate.trim();
-      return trimmed && trimmed.length <= maxLength ? trimmed : null;
+      const normalize = (candidate) => {
+        if (typeof candidate !== 'string') return null;
+        const trimmed = candidate.trim();
+        return trimmed && trimmed.length <= maxLength ? trimmed : null;
+      };
+      return normalize(input[key]) || normalize(base[key]);
     };
 
     return {
