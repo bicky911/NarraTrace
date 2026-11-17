@@ -697,6 +697,12 @@ check(
     'mutationRequiresRemap = false;' in content_js and
     'mutationObserver.disconnect();' in content_js,
 )
+check(
+    'content.js: DOM repair detects a detached sentence owner even when Range endpoints auto-adjust',
+    'const ownerDetached = Boolean(ownerElement && !document.contains(ownerElement));' in content_js and
+    'endpointsAttached && !ownerDetached && !textChangedInsideRange' in content_js and
+    'mutationRequiresRemap || ownerDetached || textChangedInsideRange' in content_js,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Architecture and security boundaries
