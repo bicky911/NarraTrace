@@ -9,8 +9,7 @@
  *    TTS_ENGINES are only a preference order — Piper first, Kokoro second,
  *    then Supertonic — plus a sensible default voice each. Dynamic Piper
  *    extension IDs are mapped for display while the real ID is preserved for
- *    chrome.tts.speak().
- *    plus a sensible default voice each. With graceful fallback to Windows
+ *    chrome.tts.speak(). There is graceful fallback to Windows
  *    local/system voices and informative status messages.
  * 4. Only passes optional speak() options (voiceName, extensionId, lang) when they contain
  *    non-empty strings to prevent Windows Chrome silent TTS failures.
