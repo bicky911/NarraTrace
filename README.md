@@ -17,8 +17,8 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Manifest: V3](https://img.shields.io/badge/Manifest-V3-orange.svg)
 ![Unit Tests: 45](https://img.shields.io/badge/Unit%20Tests-45-blue.svg)
-![Static Checks: 132](https://img.shields.io/badge/Static%20Checks-132-blue.svg)
-![Browser Tests: 4](https://img.shields.io/badge/Browser%20Tests-4-blue.svg)
+![Static Checks: 138](https://img.shields.io/badge/Static%20Checks-138-blue.svg)
+![Browser Tests: 5](https://img.shields.io/badge/Browser%20Tests-5-blue.svg)
 
 ---
 
@@ -31,6 +31,7 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 * **Context-Aware Prosody Pauses:** Intelligent clause-boundary cadence detection that inserts natural human breathing pauses at em-dashes, semicolons, colons, ellipses, and lists.
 * **Semantic Noise Stripper:** Cleans citations (`[1]`, `[citation needed]`), academic parentheticals (`(Smith et al., 2024)`), raw URLs, DOIs, and markdown symbols before TTS without mutating DOM highlights.
 * **Multi-Engine Speech Support:** Piper (highest priority), Kokoro, Supertonic, other Chrome TTS providers, and Windows/system voices. Explicitly pinned voices are preserved while available.
+* **Real-Engine Diagnostics:** A bundled Chrome page captures the selected provider's TTS event timeline, error details, and user-marked first-audio timing into a shareable JSON report without including the sample text.
 * **Multilingual Script Routing:** Auto-detects Bangla (বাংলা), Hindi (हिन्दी), and Latin scripts, routing each to native neural voices.
 * **100% Shadow DOM Encapsulated:** Complete style isolation guarantees the player never clashes with host website styles.
 
