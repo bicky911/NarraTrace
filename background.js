@@ -476,7 +476,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'SET_BATCH_SIZE': {
       // 0 = automatic; 1..12 = an explicit utterance group size.
       if (typeof message.size !== 'number' || !Number.isFinite(message.size) ||
-          Math.trunc(message.size) < 0 || Math.trunc(message.size) > 12) {
+          !Number.isInteger(message.size) || message.size < 0 || message.size > 12) {
         sendResponse({ success: false, error: 'size must be an integer from 0 to 12.' });
         return false;
       }
