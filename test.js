@@ -33,12 +33,14 @@ const diagnosticSampleTextEl = document.getElementById('diagnostic-sample-text')
 const diagnosticStatusEl = document.getElementById('engine-diagnostic-status');
 const diagnosticLogEl = document.getElementById('engine-diagnostic-log');
 const btnRunDiagnostic = document.getElementById('btn-run-engine-diagnostic');
+const btnMarkAudible = document.getElementById('btn-mark-audible');
 const btnExportDiagnostic = document.getElementById('btn-export-engine-diagnostic');
 const btnClearDiagnostic = document.getElementById('btn-clear-engine-diagnostic');
 
 let activeDiagnosticRequestId = null;
 let diagnosticTimeoutId = null;
 let diagnosticReport = null;
+let diagnosticStartPerf = null;
 
 const manifestInfo = chrome.runtime.getManifest();
 const chromeVersion = navigator.userAgent.match(/Chrome\\/(\\d+(?:\\.\\d+)+)/)?.[1] || 'Unknown';
@@ -95,6 +97,7 @@ function finishDiagnosticTimeout(requestId) {
     diagnosticReport.durationMs = null;
   }
   btnRunDiagnostic.disabled = false;
+  btnMarkAudible.disabled = true;
   btnExportDiagnostic.disabled = !diagnosticReport;
   setDiagnosticStatus('No completion event arrived within 70 seconds. Export the report and check the service-worker console.', 'danger');
 }
@@ -114,6 +117,7 @@ async function runEngineDiagnostic() {
     return;
   }
 
+  const requestPerfStart = performance.now();
   const requestId = globalThis.crypto?.randomUUID
     ? globalThis.crypto.randomUUID()
     : `diag-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -136,7 +140,9 @@ async function runEngineDiagnostic() {
       startedAt,
       rate: Number.parseFloat(rateSliderEl.value),
       sampleCharacterCount: sampleText.length,
-      sampleTextIncluded: false
+      sampleTextIncluded: false,
+      audibleStartMarkedMs: null,
+      audibleStartMarkedAt: null
     },
     events: [],
     success: null,
@@ -146,7 +152,10 @@ async function runEngineDiagnostic() {
   };
 
   activeDiagnosticRequestId = requestId;
+  diagnosticStartPerf = requestPerfStart;
   btnRunDiagnostic.disabled = true;
+  btnMarkAudible.disabled = true;
+  btnClearDiagnostic.disabled = true;
   btnExportDiagnostic.disabled = true;
   setDiagnosticStatus('Starting audible test…', 'warning');
   diagnosticLogEl.textContent = 'Waiting for the Chrome TTS provider…';
@@ -166,6 +175,8 @@ async function runEngineDiagnostic() {
     if (!response?.success) {
       activeDiagnosticRequestId = null;
       btnRunDiagnostic.disabled = false;
+      btnMarkAudible.disabled = true;
+      btnClearDiagnostic.disabled = false;
       diagnosticReport.success = false;
       diagnosticReport.resultType = 'request-rejected';
       diagnosticReport.error = response?.error || 'Background service worker rejected the test request.';
@@ -175,6 +186,7 @@ async function runEngineDiagnostic() {
     }
 
     diagnosticReport.test.startedAt = response.startedAt || startedAt;
+    btnMarkAudible.disabled = false;
     diagnosticReport.provider.voiceName = response.voice?.voiceName || option.value;
     diagnosticReport.provider.extensionId = response.voice?.extensionId || null;
     diagnosticReport.provider.language = response.voice?.lang || selectedLang;
@@ -188,6 +200,8 @@ async function runEngineDiagnostic() {
     if (activeDiagnosticRequestId !== requestId) return;
     activeDiagnosticRequestId = null;
     btnRunDiagnostic.disabled = false;
+    btnMarkAudible.disabled = true;
+    btnClearDiagnostic.disabled = false;
     diagnosticReport.success = false;
     diagnosticReport.resultType = 'message-error';
     diagnosticReport.error = String(error?.message || error);
@@ -197,6 +211,20 @@ async function runEngineDiagnostic() {
 }
 
 btnRunDiagnostic.addEventListener('click', runEngineDiagnostic);
+
+btnMarkAudible.addEventListener('click', () => {
+  if (!diagnosticReport || !activeDiagnosticRequestId || diagnosticStartPerf === null) return;
+  diagnosticReport.test.audibleStartMarkedMs = Math.max(
+    0,
+    Math.round(performance.now() - diagnosticStartPerf)
+  );
+  diagnosticReport.test.audibleStartMarkedAt = new Date().toISOString();
+  btnMarkAudible.disabled = true;
+  setDiagnosticStatus(
+    `First audible output marked at approximately ${diagnosticReport.test.audibleStartMarkedMs} ms after starting the test.`,
+    'warning'
+  );
+});
 
 btnExportDiagnostic.addEventListener('click', () => {
   if (!diagnosticReport) return;
@@ -214,6 +242,7 @@ btnExportDiagnostic.addEventListener('click', () => {
 btnClearDiagnostic.addEventListener('click', () => {
   if (activeDiagnosticRequestId) return;
   diagnosticReport = null;
+  diagnosticStartPerf = null;
   btnExportDiagnostic.disabled = true;
   diagnosticLogEl.textContent = 'No diagnostic events recorded.';
   setDiagnosticStatus('Diagnostic report cleared. Select a voice and run the test when ready.', 'info');
@@ -442,6 +471,8 @@ chrome.runtime.onMessage.addListener((message) => {
       diagnosticReport.error = typeof message.error === 'string' ? message.error : null;
       diagnosticReport.test.completedAt = new Date().toISOString();
       btnRunDiagnostic.disabled = false;
+      btnMarkAudible.disabled = true;
+      btnClearDiagnostic.disabled = false;
       btnExportDiagnostic.disabled = false;
       setDiagnosticStatus(
         diagnosticReport.success
