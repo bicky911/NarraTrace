@@ -54,7 +54,7 @@ The event expectations in this table describe the current NarraTrace integration
 
 Use the bundled `chrome-extension://YOUR_EXTENSION_ID/test.html` page to capture a real provider request. It records provider/voice metadata, Chrome event types, character offsets, event timings, and any error returned by the provider. Enter the provider's extension version manually; it is not exposed by the Chrome TTS voice list.
 
-Click **Run Audible Test**, then click **I Hear Audio** as soon as the first sound is audible. A report passes only when the provider ends cleanly and the manual audible mark exists. Export the JSON and preserve it with the manual observations. The sample text is not included in the report. Full instructions are in docs/DEVICE-DIAGNOSTICS.md.
+Click **Run Audible Test**, then click **I Hear Audio** as soon as the first sound is audible. Use **Stop Test** to cancel a sample if required. Normal queue playback is blocked while the diagnostic runs; diagnostics are also blocked during normal playback. A report passes only when the provider ends cleanly and the manual audible mark exists. Export the JSON and preserve it with the manual observations. The sample text is not included in the report. Full instructions are in docs/DEVICE-DIAGNOSTICS.md.
 
 ## Manual test sequence
 
