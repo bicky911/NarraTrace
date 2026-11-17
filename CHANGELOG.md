@@ -23,6 +23,17 @@
 - Correct stale comments and manual checks that still described Kokoro as the
   automatic first choice.
 
+### Verification
+
+- Latest automated run: **45/45 unit tests**, **132/132 source checks**,
+  **4/4 Chromium browser tests**, and a successful 15-file release-package
+  validation/build.
+- Browser smoke result: 360 queue sentences, 215 ms extraction, 3.9 MiB JS
+  heap, and 0.033 s task duration on the GitHub runner. These are not local
+  hardware benchmarks.
+- Real-engine audible validation on Windows/Chrome remains outstanding; see
+  docs/REAL-ENGINE-VALIDATION.md. The release is not being published.
+
 ### Added — accessibility and release readiness
 
 - The floating playback progress controls are keyboard-operable: Arrow keys move
