@@ -169,10 +169,9 @@ test('real-engine diagnostics run through the selected Chrome TTS voice and enfo
   await diagnostics.locator('#btn-run-engine-diagnostic').click();
 
   await expect(diagnostics.locator('#btn-mark-audible')).toBeEnabled({ timeout: 10000 });
-  await diagnostics.locator('#btn-mark-audible').click();
-
+  // The fixture is deliberately silent; do not mark it as audible evidence.
   await expect(diagnostics.locator('#engine-diagnostic-status')).toContainText(
-    'Completed: end',
+    'audible output was not confirmed',
     { timeout: 15000 }
   );
   const eventLog = await diagnostics.locator('#engine-diagnostic-log').textContent();
@@ -185,7 +184,7 @@ test('real-engine diagnostics run through the selected Chrome TTS voice and enfo
   const downloadPromise = diagnostics.waitForEvent('download');
   await diagnostics.locator('#btn-export-engine-diagnostic').click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^narratrace-tts-diagnostic-\\d+\\.json$/);
+  expect(download.suggestedFilename()).toMatch(/^narratrace-tts-diagnostic-\d+\.json$/);
 });
 
 test('uses Chrome TTS word events and re-anchors highlighting after a live DOM replacement', async ({
