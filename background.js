@@ -5,7 +5,6 @@
 
 import {
   detectAndSelectVoice,
-  safeSpeak,
   stopSpeech,
   isSpeaking,
   waitForTtsApi
@@ -272,9 +271,23 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
+// Full session inspection is intentionally available only to the bundled
+// diagnostics page, never to content scripts or ordinary popup requests.
+function isDiagnosticsPageSender(sender) {
+  if (typeof sender?.url !== 'string') return false;
+  try {
+    const url = new URL(sender.url);
+    return url.protocol === 'chrome-extension:' &&
+      url.host === chrome.runtime.id &&
+      url.pathname === '/test.html';
+  } catch (_) {
+    return false;
+  }
+}
+
 // Message Router
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (!message || !message.action) {
+  if (!message || typeof message.action !== 'string' || message.action.length === 0) {
     return false;
   }
 
@@ -416,7 +429,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'SET_RATE': {
-      const rate = typeof message.rate === 'number' && Number.isFinite(message.rate) ? message.rate : 1.0;
+      if (typeof message.rate !== 'number' || !Number.isFinite(message.rate)) {
+        sendResponse({ success: false, error: 'rate must be a finite number.' });
+        return false;
+      }
+      const rate = message.rate;
       playbackManager.setRate(rate)
         .then(() => sendResponse({ success: true, state: playbackManager.getState() }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
@@ -424,7 +441,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'SET_VOLUME': {
-      const volume = typeof message.volume === 'number' && Number.isFinite(message.volume) ? message.volume : 1.0;
+      if (typeof message.volume !== 'number' || !Number.isFinite(message.volume)) {
+        sendResponse({ success: false, error: 'volume must be a finite number.' });
+        return false;
+      }
+      const volume = message.volume;
       playbackManager.setVolume(volume)
         .then(() => sendResponse({ success: true, state: playbackManager.getState() }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
@@ -432,7 +453,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'SET_PITCH': {
-      const pitch = typeof message.pitch === 'number' && Number.isFinite(message.pitch) ? message.pitch : 1.0;
+      if (typeof message.pitch !== 'number' || !Number.isFinite(message.pitch)) {
+        sendResponse({ success: false, error: 'pitch must be a finite number.' });
+        return false;
+      }
+      const pitch = message.pitch;
       playbackManager.setPitch(pitch)
         .then(() => sendResponse({ success: true, state: playbackManager.getState() }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
@@ -449,9 +474,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'SET_BATCH_SIZE': {
-      // 0 = automatic (group sentences only for network voices), 1..4 = forced.
-      const raw = message.size;
-      const size = typeof raw === 'number' && Number.isFinite(raw) ? Math.trunc(raw) : 0;
+      // 0 = automatic; 1..12 = an explicit utterance group size.
+      if (typeof message.size !== 'number' || !Number.isFinite(message.size) ||
+          !Number.isInteger(message.size) || message.size < 0 || message.size > 12) {
+        sendResponse({ success: false, error: 'size must be an integer from 0 to 12.' });
+        return false;
+      }
+      const size = Math.trunc(message.size);
       playbackManager.setBatchSize(size)
         .then((applied) => sendResponse({ success: true, batchSize: applied }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
@@ -459,11 +488,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'SET_VOICE': {
-      // Only ever forward real strings — a non-string would throw on .trim()
-      // inside setVoice() and leave the worker with a half-applied change.
-      const voiceName = typeof message.voiceName === 'string' ? message.voiceName : null;
-      const extensionId = typeof message.extensionId === 'string' ? message.extensionId : null;
-      const lang = typeof message.lang === 'string' ? message.lang : null;
+      const voiceName = typeof message.voiceName === 'string' ? message.voiceName.trim() : '';
+      const extensionId = message.extensionId == null ? null : message.extensionId;
+      const lang = message.lang == null ? null : message.lang;
+      if (!voiceName || voiceName.length > 256 ||
+          (extensionId !== null && (typeof extensionId !== 'string' || extensionId.length > 128)) ||
+          (lang !== null && (typeof lang !== 'string' || lang.length > 64))) {
+        sendResponse({ success: false, error: 'Invalid voice selection payload.' });
+        return false;
+      }
       playbackManager.setVoice(voiceName, extensionId, lang)
         .then(() => sendResponse({ success: true, state: playbackManager.getState() }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
@@ -471,7 +504,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'SET_PLAYER_VISIBILITY': {
-      const visible = Boolean(message.visible);
+      if (typeof message.visible !== 'boolean') {
+        sendResponse({ success: false, error: 'visible must be a boolean.' });
+        return false;
+      }
+      const visible = message.visible;
       chrome.storage.local.set({ readAloud_pillVisible: visible }).catch(() => {});
       chrome.tabs.query({}, (tabs) => {
         void chrome.runtime.lastError;
@@ -500,18 +537,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'GET_SESSION_STORAGE': {
+      if (!isDiagnosticsPageSender(sender)) {
+        sendResponse({ success: false, error: 'Session inspection is restricted to the diagnostics page.' });
+        return false;
+      }
       chrome.storage.session.get(null)
         .then((data) => sendResponse({ success: true, data }))
-        .catch((err) => sendResponse({ success: false, error: err.message }));
-      return true;
-    }
-
-    // Direct single utterance test handler from Phase 2
-    case 'SPEAK_TEXT': {
-      safeSpeak(message.text, message.options, (event) => {
-        chrome.runtime.sendMessage({ action: 'TTS_EVENT', event }).catch(() => {});
-      })
-        .then((result) => sendResponse({ success: true, result }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
       return true;
     }

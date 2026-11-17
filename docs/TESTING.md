@@ -38,6 +38,16 @@ event-driven rather than continuously polled, unchanged zoom values do not cause
 repeated style writes, and DOM mutation repair is scheduled only when the active
 highlight range is detached or its text is changed.
 
+The architecture/security checks also cover a narrow playback-options allow-list,
+finite numeric ranges, bounded voice metadata, defensive session restoration,
+and a capped pronunciation dictionary (32 KiB / 128 rules). Full session-storage
+inspection is restricted to the extension's bundled `test.html` diagnostics page;
+the unused direct `SPEAK_TEXT` route has been removed from the production router.
+
+The manifest no longer requests the unused `scripting` permission. Static content
+scripts already provide the page integration, while the `<all_urls>` match remains
+necessary for the stated “read any webpage” behavior.
+
 The Python harness remains useful for source-level invariants and markup checks. It is not a substitute for running the extension in Chrome.
 
 ## Browser and real-engine verification

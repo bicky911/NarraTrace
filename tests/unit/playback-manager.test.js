@@ -60,6 +60,119 @@ test("sanitizeQueue enforces the 5000-item safety cap", () => {
   assert.equal(PlaybackManager.sanitizeQueue(source).length, 5000);
 });
 
+test("sanitizeOptions clamps numeric fields and rejects malformed or oversized values", () => {
+  const result = PlaybackManager.sanitizeOptions({
+    rate: Infinity,
+    pitch: 9,
+    volume: -2,
+    voiceName: "  Narrator  ",
+    extensionId: "x".repeat(129),
+    lang: "bn",
+    unexpected: "must not persist"
+  }, {
+    rate: 1.4,
+    pitch: 1.1,
+    volume: 0.7,
+    voiceName: "Previous Voice",
+    extensionId: "known-extension",
+    lang: "en"
+  });
+
+  assert.deepEqual(result, {
+    rate: 1.4,
+    pitch: 2,
+    volume: 0,
+    voiceName: "Narrator",
+    extensionId: "known-extension",
+    lang: "bn"
+  });
+  assert.equal(Object.hasOwn(result, "unexpected"), false);
+});
+
+test("sanitizeOptions ignores arrays and falls back to safe defaults", () => {
+  assert.deepEqual(PlaybackManager.sanitizeOptions([1, 2, 3]), {
+    rate: 1,
+    pitch: 1,
+    volume: 1,
+    voiceName: null,
+    extensionId: null,
+    lang: null
+  });
+});
+
+test("pronunciation parsing limits dictionary size and individual rule lengths", () => {
+  const entries = Array.from({ length: 140 }, (_, index) => `Word${index} = Say${index}`);
+  const rules = PlaybackManager.parsePronunciations(entries.join("\n"));
+  assert.equal(rules.length, 128);
+
+  const oversizedFind = "x".repeat(81) + " = replacement";
+  assert.equal(PlaybackManager.parsePronunciations(oversizedFind).length, 0);
+  assert.equal(PlaybackManager.parsePronunciations("word = " + "y".repeat(161)).length, 0);
+});
+
+test("non-finite playback controls preserve the current setting", async () => {
+  const manager = createManager();
+  manager.options.rate = 1.4;
+  manager.options.volume = 0.6;
+  manager.options.pitch = 1.2;
+  manager.savePreferences = async () => {};
+  manager.saveToSession = async () => {};
+  manager.broadcast = () => {};
+
+  await manager.setRate(NaN);
+  await manager.setVolume(Infinity);
+  await manager.setPitch(NaN);
+
+  assert.equal(manager.options.rate, 1.4);
+  assert.equal(manager.options.volume, 0.6);
+  assert.equal(manager.options.pitch, 1.2);
+});
+
+test("restoreFromSession normalizes corrupted state, offsets, and options", async (t) => {
+  const previousChrome = globalThis.chrome;
+  const stored = {
+    readAloud_sessionState: {
+      queue: ["A short sentence."],
+      currentIndex: 0,
+      playbackState: "CORRUPTED_STATE",
+      tabId: -9,
+      resumeOffset: 999,
+      options: {
+        rate: Infinity,
+        pitch: 9,
+        volume: -1,
+        voiceName: "v".repeat(300),
+        extraOption: "discard"
+      }
+    }
+  };
+  globalThis.chrome = {
+    storage: {
+      session: {
+        async get(key) {
+          return { [key]: stored[key] };
+        }
+      }
+    }
+  };
+
+  t.after(() => {
+    if (previousChrome === undefined) delete globalThis.chrome;
+    else globalThis.chrome = previousChrome;
+  });
+
+  const manager = createManager();
+  assert.equal(await manager.restoreFromSession(), true);
+  assert.equal(manager.playbackState, PlaybackState.IDLE);
+  assert.equal(manager.tabId, null);
+  assert.equal(manager.resumeOffset, "A short sentence.".length);
+  assert.equal(manager.options.rate, 1);
+  assert.equal(manager.options.pitch, 2);
+  assert.equal(manager.options.volume, 0);
+  assert.equal(manager.options.voiceName, null);
+  assert.equal(Object.hasOwn(manager.options, "extraOption"), false);
+});
+
 test("pronunciation rules ignore comments and malformed lines", () => {
   const rules = PlaybackManager.parsePronunciations([
     "# custom dictionary",

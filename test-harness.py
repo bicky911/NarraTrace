@@ -20,6 +20,8 @@ POPUP_HTML  = os.path.join(os.path.dirname(__file__), 'popup.html')
 POPUP_JS    = os.path.join(os.path.dirname(__file__), 'popup.js')
 PLAYBACK_JS = os.path.join(os.path.dirname(__file__), 'playback-manager.js')
 SPEECH_JS   = os.path.join(os.path.dirname(__file__), 'speech-engine.js')
+BACKGROUND_JS = os.path.join(os.path.dirname(__file__), 'background.js')
+MANIFEST_JSON = os.path.join(os.path.dirname(__file__), 'manifest.json')
 
 PASS = '\033[92mPASS\033[0m'
 FAIL = '\033[91mFAIL\033[0m'
@@ -682,6 +684,68 @@ check(
     'content.js: mutation repair state is reset when observer stops',
     'mutationRequiresRemap = false;' in content_js and
     'mutationObserver.disconnect();' in content_js,
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Architecture and security boundaries
+# ─────────────────────────────────────────────────────────────────────────────
+print('\n── Architecture & Security Boundaries ────────────────────────────')
+runtime_bg = read(BACKGROUND_JS)
+runtime_pm = read(PLAYBACK_JS)
+runtime_manifest = read(MANIFEST_JSON)
+
+check(
+    'playback-manager.js: incoming and stored options pass through a bounded allow-list',
+    'static sanitizeOptions(value, fallback = {})' in runtime_pm and
+    'Number.isFinite(input[key])' in runtime_pm and
+    'voiceName: pickString' in runtime_pm and
+    'extensionId: pickString' in runtime_pm,
+)
+check(
+    'playback-manager.js: session restoration validates playback state and options',
+    'validStates.includes(data.playbackState)' in runtime_pm and
+    'PlaybackManager.sanitizeOptions(data.options, this.options)' in runtime_pm,
+)
+check(
+    'playback-manager.js: loaded preferences are normalized without logging user values',
+    'this.options = PlaybackManager.sanitizeOptions(prefs, this.options)' in runtime_pm and
+    "Loaded user preferences:', prefs" not in runtime_pm,
+)
+check(
+    'playback-manager.js: pronunciation dictionaries have text and rule-count caps',
+    'MAX_PRONUNCIATION_TEXT_CHARS = 32768' in runtime_pm and
+    'MAX_PRONUNCIATION_RULES = 128' in runtime_pm,
+)
+check(
+    'background.js: full session inspection is limited to the bundled diagnostics page',
+    'function isDiagnosticsPageSender(sender)' in runtime_bg and
+    "url.pathname === '/test.html'" in runtime_bg and
+    'chrome.runtime.id' in runtime_bg and
+    'if (!isDiagnosticsPageSender(sender))' in runtime_bg,
+)
+check(
+    'background.js: direct SPEAK_TEXT diagnostic TTS bypass has been removed',
+    "case 'SPEAK_TEXT'" not in runtime_bg and 'safeSpeak' not in runtime_bg,
+)
+check(
+    'background.js: player visibility requires an explicit boolean',
+    'typeof message.visible !== \'boolean\'' in runtime_bg,
+)
+check(
+    'background.js: playback control handlers reject non-finite numeric input',
+    'rate must be a finite number' in runtime_bg and
+    'volume must be a finite number' in runtime_bg and
+    'pitch must be a finite number' in runtime_bg,
+)
+check(
+    'background.js: message actions must be non-empty strings',
+    "typeof message.action !== 'string'" in runtime_bg,
+)
+
+check(
+    'manifest.json: unused chrome.scripting permission is not requested',
+    '"scripting"' not in runtime_manifest and 'chrome.scripting' not in runtime_bg and
+    'chrome.scripting' not in content_js and 'chrome.scripting' not in popup_js,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────

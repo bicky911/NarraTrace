@@ -32,6 +32,8 @@ export const PlaybackState = {
 
 const SESSION_STORAGE_KEY = 'readAloud_sessionState';
 const PREFS_STORAGE_KEY = 'readAloud_userPreferences';
+const MAX_PRONUNCIATION_TEXT_CHARS = 32768;
+const MAX_PRONUNCIATION_RULES = 128;
 
 // Give up after this many consecutive TTS failures instead of racing through
 // the whole queue (a broken voice driver would otherwise emit thousands of
@@ -373,6 +375,45 @@ class PlaybackManager {
   }
 
   /**
+   * Normalize persisted or message-supplied playback options.
+   * Unknown keys and malformed values are discarded; numeric fields are finite
+   * and bounded before they can reach chrome.tts.
+   * @param {any} value Untrusted options object
+   * @param {object} fallback Previously valid options
+   */
+  static sanitizeOptions(value, fallback = {}) {
+    const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const base = fallback && typeof fallback === 'object' && !Array.isArray(fallback)
+      ? fallback
+      : {};
+
+    const pickNumber = (key, defaultValue, min, max) => {
+      const candidate = Number.isFinite(input[key]) ? input[key] : base[key];
+      return Number.isFinite(candidate)
+        ? Math.max(min, Math.min(max, candidate))
+        : defaultValue;
+    };
+
+    const pickString = (key, maxLength) => {
+      const normalize = (candidate) => {
+        if (typeof candidate !== 'string') return null;
+        const trimmed = candidate.trim();
+        return trimmed && trimmed.length <= maxLength ? trimmed : null;
+      };
+      return normalize(input[key]) || normalize(base[key]);
+    };
+
+    return {
+      rate: pickNumber('rate', 1.0, 0.5, 3.0),
+      pitch: pickNumber('pitch', 1.0, 0.5, 2.0),
+      volume: pickNumber('volume', 1.0, 0.0, 1.0),
+      voiceName: pickString('voiceName', 256),
+      extensionId: pickString('extensionId', 128),
+      lang: pickString('lang', 64)
+    };
+  }
+
+  /**
    * Normalise an incoming sentence queue.
    *
    * Accepts [{ text }] objects or plain strings and drops anything without
@@ -492,13 +533,17 @@ class PlaybackManager {
           ? Math.trunc(data.currentIndex)
           : 0;
         this.currentIndex = Math.max(0, Math.min(storedIndex, this.queue.length - 1));
-        this.playbackState = data.playbackState || PlaybackState.IDLE;
-        this.tabId = typeof data.tabId === 'number' ? data.tabId : null;
-        this.resumeOffset = typeof data.resumeOffset === 'number' ? Math.max(0, data.resumeOffset) : 0;
+        const validStates = Object.values(PlaybackState);
+        this.playbackState = validStates.includes(data.playbackState)
+          ? data.playbackState
+          : PlaybackState.IDLE;
+        this.tabId = Number.isInteger(data.tabId) && data.tabId >= 0 ? data.tabId : null;
+        const storedOffset = Number.isFinite(data.resumeOffset) ? Math.max(0, data.resumeOffset) : 0;
+        this.resumeOffset = Math.min(storedOffset, this.queue[this.currentIndex].text.length);
         this.recoveryPendingAdvance = data.recoveryPendingAdvance === true;
-        if (data.options) {
+        if (data.options && typeof data.options === 'object' && !Array.isArray(data.options)) {
           this.allVoices = [];
-    this.options = { ...this.options, ...data.options };
+          this.options = PlaybackManager.sanitizeOptions(data.options, this.options);
         }
         console.log(`[PlaybackManager] Restored session: ${this.queue.length} sentences, index ${this.currentIndex}, state: ${this.playbackState}`);
         return true;
@@ -633,13 +678,8 @@ class PlaybackManager {
     try {
       const res = await chrome.storage.local.get(PREFS_STORAGE_KEY);
       const prefs = res[PREFS_STORAGE_KEY];
-      if (prefs) {
-        if (typeof prefs.rate === 'number') this.options.rate = prefs.rate;
-        if (typeof prefs.pitch === 'number') this.options.pitch = prefs.pitch;
-        if (typeof prefs.volume === 'number') this.options.volume = prefs.volume;
-        if (prefs.voiceName) this.options.voiceName = prefs.voiceName;
-        if (prefs.extensionId) this.options.extensionId = prefs.extensionId;
-        if (prefs.lang) this.options.lang = prefs.lang;
+      if (prefs && typeof prefs === 'object' && !Array.isArray(prefs)) {
+        this.options = PlaybackManager.sanitizeOptions(prefs, this.options);
         // voicePinned was added together with multi-engine support. Preferences
         // saved before that have no such flag, so their voice was merely the
         // old automatic default (Supertonic) — not a choice the user made.
@@ -647,8 +687,14 @@ class PlaybackManager {
         if (typeof prefs.pronunciationText === 'string') {
           this.pronunciationRules = PlaybackManager.parsePronunciations(prefs.pronunciationText);
         }
-        if (typeof prefs.batchSize === 'number') this.batchSize = prefs.batchSize;
-        console.log('[PlaybackManager] Loaded user preferences:', prefs);
+        if (Number.isFinite(prefs.batchSize)) {
+          const storedBatchSize = Math.trunc(prefs.batchSize);
+          this.batchSize = storedBatchSize >= 1 && storedBatchSize <= MAX_BATCH_SENTENCES
+            ? storedBatchSize
+            : 0;
+        }
+        // Do not dump user pronunciation rules or other stored values to logs.
+        console.log('[PlaybackManager] Loaded user preferences.');
       }
 
       // Resolve the voice against the engines that are actually installed.
@@ -747,7 +793,10 @@ class PlaybackManager {
     try {
       // Read-modify-write so fields saved elsewhere (pronunciationText) survive.
       const res = await chrome.storage.local.get(PREFS_STORAGE_KEY);
-      const prefs = (res && res[PREFS_STORAGE_KEY]) || {};
+      const stored = res && res[PREFS_STORAGE_KEY];
+      const prefs = stored && typeof stored === 'object' && !Array.isArray(stored)
+        ? { ...stored }
+        : {};
       prefs.rate = this.options.rate;
       prefs.pitch = this.options.pitch;
       prefs.volume = this.options.volume;
@@ -840,14 +889,9 @@ class PlaybackManager {
       });
     }
 
-    // Merge options
-    if (userOptions) {
-      if (typeof userOptions.rate === 'number') this.options.rate = userOptions.rate;
-      if (typeof userOptions.pitch === 'number') this.options.pitch = userOptions.pitch;
-      if (userOptions.voiceName) this.options.voiceName = userOptions.voiceName;
-      if (userOptions.extensionId) this.options.extensionId = userOptions.extensionId;
-      if (userOptions.lang) this.options.lang = userOptions.lang;
-    }
+    // Merge only recognized, bounded option fields. This also applies the
+    // supplied volume, which page controls already include in start messages.
+    this.options = PlaybackManager.sanitizeOptions(userOptions, this.options);
 
     // If no voice set, resolve default voice
     if (!this.options.voiceName) {
@@ -1845,7 +1889,9 @@ class PlaybackManager {
    */
   async setRate(rate) {
     this.recoveryPendingAdvance = false;
-    const validRate = Math.max(0.5, Math.min(rate, 3.0));
+    const validRate = Number.isFinite(rate)
+      ? Math.max(0.5, Math.min(rate, 3.0))
+      : this.options.rate;
     this.options.rate = validRate;
     await this.savePreferences();
     await this.saveToSession();
@@ -1867,7 +1913,9 @@ class PlaybackManager {
    */
   async setVolume(volume) {
     this.recoveryPendingAdvance = false;
-    const validVolume = Math.max(0.0, Math.min(volume, 1.0));
+    const validVolume = Number.isFinite(volume)
+      ? Math.max(0.0, Math.min(volume, 1.0))
+      : this.options.volume;
     this.options.volume = validVolume;
     await this.savePreferences();
     await this.saveToSession();
@@ -1889,7 +1937,9 @@ class PlaybackManager {
    */
   async setPitch(pitch) {
     this.recoveryPendingAdvance = false;
-    const validPitch = Math.max(0.5, Math.min(pitch, 2.0));
+    const validPitch = Number.isFinite(pitch)
+      ? Math.max(0.5, Math.min(pitch, 2.0))
+      : this.options.pitch;
     this.options.pitch = validPitch;
     await this.savePreferences();
     await this.saveToSession();
@@ -1912,13 +1962,14 @@ class PlaybackManager {
   static parsePronunciations(rawText) {
     const rules = [];
     if (typeof rawText !== 'string') return rules;
-    for (const line of rawText.split(/\r?\n/)) {
+    for (const line of rawText.slice(0, MAX_PRONUNCIATION_TEXT_CHARS).split(/\r?\n/)) {
+      if (rules.length >= MAX_PRONUNCIATION_RULES) break;
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
       const eq = trimmed.indexOf('=');
       const find = trimmed.slice(0, eq).trim();
       const say = trimmed.slice(eq + 1).trim();
-      if (!find || !say) continue;
+      if (!find || !say || find.length > 80 || say.length > 160) continue;
       const escaped = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       try {
         rules.push({ re: new RegExp(`\\b${escaped}\\b`, 'gi'), say });
@@ -1928,12 +1979,16 @@ class PlaybackManager {
   }
 
   setPronunciationText(rawText) {
-    const text = typeof rawText === 'string' ? rawText : '';
+    const text = (typeof rawText === 'string' ? rawText : '')
+      .slice(0, MAX_PRONUNCIATION_TEXT_CHARS);
     this.pronunciationRules = PlaybackManager.parsePronunciations(text);
     try {
       chrome.storage.local.get(PREFS_STORAGE_KEY, (res) => {
         void chrome.runtime.lastError;
-        const prefs = (res && res[PREFS_STORAGE_KEY]) || {};
+        const stored = res && res[PREFS_STORAGE_KEY];
+        const prefs = stored && typeof stored === 'object' && !Array.isArray(stored)
+          ? { ...stored }
+          : {};
         prefs.pronunciationText = text;
         chrome.storage.local.set({ [PREFS_STORAGE_KEY]: prefs }).catch(() => {});
       });
