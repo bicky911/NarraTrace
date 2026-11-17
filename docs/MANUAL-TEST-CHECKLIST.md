@@ -99,6 +99,20 @@ Kokoro rebuilds its neural model **for every utterance**:
 
 ---
 
+## 5b · Dynamic-page runtime stability (60 s)
+
+- [ ] Start narration on a page that updates while open (for example, a live
+      news feed or an infinite-scroll page).
+- [ ] Let unrelated parts of the page update while a sentence is being read.
+      The active highlight should remain stable; unrelated updates must not
+      repeatedly interrupt or remove it.
+- [ ] When the active paragraph is re-rendered but the sentence remains in the
+      document, NarraTrace should re-anchor the highlight. If the sentence is
+      removed, the stale highlight should clear instead of pointing at other text.
+- [ ] Change browser zoom with Ctrl + + and Ctrl + 0 while narration is idle and
+      while it is playing. The player should keep its physical size without a
+      recurring polling timer.
+
 ## 6 · Hover to play (30 s)
 
 - [ ] Hover a paragraph in a page → a **play button appears** on it.

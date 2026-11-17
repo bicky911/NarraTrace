@@ -1,6 +1,6 @@
 # NarraTrace testing
 
-NarraTrace has two dependency-free automated test layers.
+NarraTrace has three dependency-free automated test layers.
 
 ## Requirements
 
@@ -11,11 +11,13 @@ No npm packages are installed. package.json only declares the module format, scr
 
 ## Run the tests
 
+JavaScript syntax validation: npm run test:syntax
+
 Focused runtime/unit tests: npm test
 
 Existing source-structure checks: npm run test:static
 
-Both layers: npm run test:all
+All three layers: npm run test:all
 
 ## Coverage
 
@@ -31,11 +33,16 @@ The unit suite currently exercises:
 - Safe sentence-level fallback when semantic cleanup or pronunciation rules change word tokens
 - Per-engine lead-in calibration for Supertonic, Kokoro, and system voices
 
+The Python source harness also guards the content-script runtime: zoom updates are
+event-driven rather than continuously polled, unchanged zoom values do not cause
+repeated style writes, and DOM mutation repair is scheduled only when the active
+highlight range is detached or its text is changed.
+
 The Python harness remains useful for source-level invariants and markup checks. It is not a substitute for running the extension in Chrome.
 
 ## Browser and real-engine verification
 
-The unit tests do not prove that Chrome's TTS providers behave correctly on a particular device. Before a release, also follow docs/MANUAL-TEST-CHECKLIST.md with each supported engine. Record the Chrome version, operating system, engine version, and test result when reporting an engine-specific defect.
+The automated tests do not prove that Chrome's TTS providers behave correctly on a particular device, nor do source checks measure page-level CPU cost. Before a release, also follow docs/MANUAL-TEST-CHECKLIST.md with each supported engine. Include the dynamic-page and browser-zoom checks, and record the Chrome version, operating system, engine version, and result when reporting an engine-specific defect.
 
 
 ## Word-alignment behavior

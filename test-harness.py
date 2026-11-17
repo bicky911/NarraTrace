@@ -8,6 +8,7 @@ Tests:
   3. Content.js a11y: icon buttons all have aria-label, focus-visible CSS present
   4. setRate / setVolume offset logic: resumeFrom uses lastWordCharIndex
   5. setCurrentSentence: resumeOffset conditional logic
+  6. Runtime: event-driven zoom tracking and targeted DOM mutation repair
 """
 
 import re
@@ -626,6 +627,61 @@ check(
 check(
     'playback-manager.js: applyProsodyCadence wired into buildBatch before applyPronunciations',
     'applyProsodyCadence' in pm and 'cadence = applyProsodyCadence(clean)' in pm,
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Runtime performance: event-driven zoom and mutation repair filtering
+# ─────────────────────────────────────────────────────────────────────────────
+print('\n── Runtime Performance & Mutation Filtering ──────────────────────')
+check(
+    'content.js: zoom compensation has no permanent 1.2s polling timer',
+    'setInterval(updateZoomCompensation' not in content_js,
+)
+check(
+    'content.js: zoom compensation responds to window resize',
+    "window.addEventListener('resize', updateZoomCompensation)" in content_js,
+)
+check(
+    'content.js: zoom compensation responds to visual viewport resize',
+    "visualViewport.addEventListener('resize', updateZoomCompensation)" in content_js,
+)
+check(
+    'content.js: device-pixel-ratio changes are watched with a resolution media query',
+    "window.matchMedia" in content_js and "resolution: ${dpr}dppx" in content_js and
+    "addEventListener('change', onChange)" in content_js,
+)
+check(
+    'content.js: display-resolution changes re-query Chrome tab zoom to preserve DPI separation',
+    'watchDevicePixelRatioChanges();\n        initZoomTracking();' in content_js,
+)
+check(
+    'content.js: zoom listeners are released on extension context invalidation',
+    'function stopZoomTracking()' in content_js and
+    "stopZoomTracking === 'function'" in content_js and
+    "removeZoomMediaQueryListener();" in content_js,
+)
+check(
+    'content.js: repeated zoom updates skip unchanged CSS values',
+    'if (zoom === lastAppliedZoom) return;' in content_js,
+)
+check(
+    'content.js: MutationObserver receives mutation records for relevance filtering',
+    'new MutationObserver(scheduleMutationCheck)' in content_js and
+    'function scheduleMutationCheck(records)' in content_js,
+)
+check(
+    'content.js: unrelated mutations are ignored while active range endpoints remain attached',
+    'if (endpointsAttached && !textChangedInsideRange) return;' in content_js,
+)
+check(
+    'content.js: text mutations intersecting the active range trigger a forced remap',
+    'range.intersectsNode(record.target)' in content_js and
+    'handleDomMutation(forceRemap)' in content_js,
+)
+check(
+    'content.js: mutation repair state is reset when observer stops',
+    'mutationRequiresRemap = false;' in content_js and
+    'mutationObserver.disconnect();' in content_js,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
