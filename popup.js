@@ -1,5 +1,5 @@
 /**
- * Read Aloud - Teenage Engineering Studio Popup Controller (RA·1)
+ * NarraTrace - Teenage Engineering Studio Popup Controller (NT·1)
  * 
  * STRICT COMPLIANCE:
  * 1. Strictly uses chrome.tts via background worker messaging. Zero prohibited APIs.

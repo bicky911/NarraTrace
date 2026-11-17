@@ -1,8 +1,43 @@
-# Read Aloud — Changelog
+# NarraTrace — Changelog
 
-Personal-use Chrome MV3 extension that reads web pages aloud with a local
-neural TTS engine (Kokoro, Supertonic) or the Windows system voices, with
-sentence and word highlighting.
+Personal-use Chrome MV3 extension that narrates web pages aloud with a local
+neural TTS engine (Kokoro, Supertonic) or the Windows system voices, tracing
+every word on screen as it speaks.
+
+---
+
+## 1.4.0 — 2026-11-17
+
+**The extension is now NarraTrace.** "Read Aloud" described a category;
+**NarraTrace** names this extension's two signature acts — it **narra**tes
+the page aloud and **trace**s every word as the voice reaches it. Tagline:
+*Narrates the page. Traces every word.*
+
+### Renamed — the full brand pass
+
+- **Store & browser identity**: the extension is listed as
+  **"NarraTrace — Narrates & Traces Every Word"**; the toolbar tooltip reads
+  *"NarraTrace — narrate this page aloud"*; keyboard commands are prefixed
+  `NarraTrace:` in `chrome://extensions/shortcuts`.
+- **Popup**: header lockup is now **NARRATRACE // NT·1** (the device mark
+  succeeds RA·1) over the tagline *"Narrates the page · Traces every word"*.
+- **On-page surfaces**: the Focus Reader brand line, update toast, and
+  right-click menus (*"NarraTrace: narrate selection"*, *"NarraTrace:
+  narrate from here"*) all carry the new name and its verbs.
+- **New icon**: the generic purple speaker is replaced by the NarraTrace
+  mark — a white **N** on near-black, struck through by the signal-orange
+  (`#FF5C00`) trace diagonal ending in the tracking dot (16/48/128 px).
+- **Docs & tooling**: README (with a brand section), manual test checklist,
+  test pages, design preview (now NT·1), and helper scripts rebranded.
+
+### Compatibility — nothing breaks on upgrade
+
+- **Settings carry over**: invisible internal identifiers (`readAloud_*`
+  storage keys, context-menu/alarm IDs, `ra-*` element IDs, `--ra-*` CSS
+  tokens) intentionally keep their legacy names, so every saved voice,
+  speed, theme, and pill preference survives the rename untouched.
+- Entries below this one keep the name "Read Aloud" — they are the
+  historical record of releases that shipped under it.
 
 ---
 

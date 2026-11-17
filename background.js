@@ -1,5 +1,5 @@
 /**
- * Read Aloud - Background Service Worker
+ * NarraTrace - Background Service Worker
  * Manages playback, state persistence, alarms, context menus, and extension messaging.
  */
 
@@ -20,7 +20,7 @@ import './sentence-tokenizer.js';
 
 const { splitIntoChunks } = globalThis.ReadAloudTokenizer;
 
-console.log('[Background] Read Aloud service worker active.');
+console.log('[Background] NarraTrace service worker active.');
 
 // Debug handle — type this in the service-worker console to inspect live state:
 //   __readAloud.playbackManager.getState()
@@ -105,7 +105,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 // initializeWorker() and left the extension with no context menu at all.
 //
 // Why not removeAll()+create() on every start: that tore the menu down on each
-// restart, so "Read with Read Aloud" intermittently vanished from the
+// restart, so "Narrate with NarraTrace" intermittently vanished from the
 // right-click menu.
 //
 // The titles here are static, so update() would be a no-op anyway.
@@ -116,8 +116,8 @@ function setupContextMenu() {
       () => { void chrome.runtime.lastError; }   // swallow duplicate-id on restarts
     );
   };
-  ensure('read-aloud-selection', 'Read selection', ['selection']);
-  ensure('read-aloud-from-here', 'Read from here', ['page', 'frame']);
+  ensure('read-aloud-selection', 'NarraTrace: narrate selection', ['selection']);
+  ensure('read-aloud-from-here', 'NarraTrace: narrate from here', ['page', 'frame']);
 }
 
 // Handle Context Menu click

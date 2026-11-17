@@ -1,5 +1,5 @@
 /**
- * Read Aloud - Sentence Tokenizer Module (dual-loadable)
+ * NarraTrace - Sentence Tokenizer Module (dual-loadable)
  *
  * This file is deliberately valid BOTH as a classic <script> and as an ES
  * module side-effect import, so the content script and the background

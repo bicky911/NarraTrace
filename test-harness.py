@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Read Aloud Extension — Automated Test Harness
+NarraTrace Extension — Automated Test Harness
 ==============================================
 Tests:
   1. TDZ check: tuckTimer + heartbeatTimer hoisted above line 100

@@ -1,4 +1,4 @@
-# Read Aloud 1.3.0 — 5-minute manual test checklist
+# NarraTrace 1.4.0 — 5-minute manual test checklist
 
 Everything below was verified automatically in a real Chrome (19/19 engine checks,
 13/13 UI checks). This list is for the two things a headless browser cannot
@@ -21,7 +21,7 @@ use it**.
 4. **Refresh every open tab** (Ctrl+R). A content script that was injected
    before the reload keeps the old code.
 
-> Chrome shows the extension as **Read Aloud · 1.3.0** with the id
+> Chrome shows the extension as **NarraTrace · 1.4.0** with the id
 > `hbfbblacfbkjafmkjohjpbojhcfofpnp`.
 
 ---
@@ -30,7 +30,7 @@ use it**.
 
 | # | Do this | Expected |
 |---|---------|----------|
-| 1.1 | Click the Read Aloud toolbar icon | The popup badge reads **KOKORO** |
+| 1.1 | Click the NarraTrace toolbar icon | The popup badge reads **KOKORO** |
 | 1.2 | Open the voice dropdown | Three groups: `★ Kokoro (local neural)` with 28 voices, `★ Supertonic (local neural)`, `Windows System Voices` |
 | 1.3 | The selected voice | **Kokoro Heart** |
 | 1.4 | Open a Wikipedia article and press play | It speaks with a Kokoro voice, not the Supertonic one |
@@ -69,7 +69,7 @@ Kokoro rebuilds its neural model **for every utterance**:
       the new speed, not stay at the old rate.
 - [ ] Press **pause** in the middle of a sentence, wait 10 s, press **play**.
       The voice resumes **at the same word** and the highlight continues there.
-      *(Kokoro has no native pause, so Read Aloud stops and resumes from the
+      *(Kokoro has no native pause, so NarraTrace stops and resumes from the
       exact offset — the word must not be skipped or repeated.)*
 - [ ] Press **next** / **previous**. The voice jumps a sentence and the
       highlight jumps with it.
@@ -103,7 +103,7 @@ Kokoro rebuilds its neural model **for every utterance**:
 ## 6 · Hover to play (30 s)
 
 - [ ] Hover a paragraph in a page → a **play button appears** on it.
-- [ ] Click it → Read Aloud starts **from that paragraph**, not from the top of
+- [ ] Click it → NarraTrace starts **from that paragraph**, not from the top of
       the page.
 - [ ] Hover another paragraph while reading → the button follows the mouse.
 
@@ -115,18 +115,18 @@ Kokoro rebuilds its neural model **for every utterance**:
   `SUPERTONIC` and Supertonic speaks. *(This proves the fallback still works
   and that a pinned voice is never overridden.)*
 - [ ] Pick a Kokoro voice again → the badge returns to `KOKORO`.
-- [ ] Disable the Kokoro extension in `chrome://extensions` → Read Aloud falls
+- [ ] Disable the Kokoro extension in `chrome://extensions` → NarraTrace falls
   back to Supertonic, or to a Windows system voice if Supertonic is off too.
 
 ---
 
 ## If something is wrong
 
-Open `chrome://extensions` → **Read Aloud** → **service worker** → the console
+Open `chrome://extensions` → **NarraTrace** → **service worker** → the console
 log. The useful lines are:
 
 ```
-[Background] Read Aloud service worker active.
+[Background] NarraTrace service worker active.
 [SpeechEngine] Speech exceeded Ns without TTS end event; advancing to avoid stall.
 [Background] Voice refresh failed: ...
 ```

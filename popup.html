@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Read Aloud // RA·1</title>
+  <title>NarraTrace // NT·1 — Narrates the Page, Traces Every Word</title>
   <style>
     :root {
       --ra-bg:        #0F0F0F;
@@ -71,6 +71,20 @@
       width: 22px;
       height: 22px;
       border-radius: 6px;
+    }
+
+    .header-device {
+      color: var(--ra-accent);
+    }
+
+    .header-tagline {
+      display: block;
+      margin-top: 2px;
+      font-size: 8px;
+      font-weight: 400;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ra-muted);
     }
 
     .header-title {
@@ -494,8 +508,11 @@
   <!-- Header -->
   <div class="header">
     <div class="header-left">
-      <img src="icons/icon48.png" alt="Read Aloud" class="header-logo">
-      <span class="header-title">READ ALOUD // RA·1</span>
+      <img src="icons/icon48.png" alt="NarraTrace" class="header-logo">
+      <div class="header-brand">
+        <span class="header-title">NARRATRACE <span class="header-device">// NT·1</span></span>
+        <span class="header-tagline">Narrates the page · Traces every word</span>
+      </div>
     </div>
     <div class="header-right">
       <span id="engine-badge" class="engine-badge">
@@ -515,7 +532,7 @@
     </div>
 
     <div class="sentence-box idle" id="sentence-box">
-      Ready to read this webpage. Press play to start.
+      Ready — NarraTrace will narrate this page and trace every word. Press play.
     </div>
 
     <div class="progress-bar-wrap" role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">

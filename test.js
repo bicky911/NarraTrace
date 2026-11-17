@@ -1,5 +1,5 @@
 /**
- * Read Aloud - Phase 3 Test Harness
+ * NarraTrace - Phase 3 Test Harness
  * Demonstrates Sentence Queue, chrome.storage.session persistence,
  * Skip Back/Forward, Jump-to-Sentence, and immediate Rate/Voice switching.
  */
