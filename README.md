@@ -17,7 +17,7 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Manifest: V3](https://img.shields.io/badge/Manifest-V3-orange.svg)
 ![Unit Tests: 45](https://img.shields.io/badge/Unit%20Tests-45-blue.svg)
-![Static Checks: 138](https://img.shields.io/badge/Static%20Checks-138-blue.svg)
+![Static Checks: 140](https://img.shields.io/badge/Static%20Checks-140-blue.svg)
 ![Browser Tests: 5](https://img.shields.io/badge/Browser%20Tests-5-blue.svg)
 
 ---
