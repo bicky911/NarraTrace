@@ -154,19 +154,35 @@ test('uses Chrome TTS word events and re-anchors highlighting after a live DOM r
   });
   await expect(wordBox).toHaveClass(/visible/);
 
-  // Replace the active paragraph's DOM node but preserve its text. A fresh
-  // Range must be found in the replacement node rather than left detached.
-  await articlePage.evaluate(() => {
-    const oldParagraph = document.querySelector('#article-intro');
-    const replacement = oldParagraph.cloneNode(true);
-    oldParagraph.replaceWith(replacement);
+  // Replace the block that currently contains the active word. The first
+  // extracted item can be a heading, so derive the target from the live Range
+  // instead of assuming that the first paragraph is always sentence zero.
+  const replacedBlock = await articlePage.evaluate(() => {
+    const highlights = window.CSS?.highlights?.get('read-aloud-word');
+    const range = highlights ? Array.from(highlights)[0] : null;
+    if (!range) return null;
+
+    const startElement = range.startContainer.nodeType === Node.ELEMENT_NODE
+      ? range.startContainer
+      : range.startContainer.parentElement;
+    const activeBlock = startElement?.closest('p, h1, h2, h3, h4, h5, h6, li, blockquote');
+    if (!activeBlock) return null;
+
+    activeBlock.dataset.e2eActiveBlock = 'true';
+    const replacement = activeBlock.cloneNode(true);
+    activeBlock.replaceWith(replacement);
+    return {
+      tagName: replacement.tagName,
+      text: replacement.textContent
+    };
   });
+  expect(replacedBlock).not.toBeNull();
 
   await expect.poll(() => articlePage.evaluate(() => {
     const highlights = window.CSS?.highlights?.get('read-aloud-word');
     const range = highlights ? Array.from(highlights)[0] : null;
-    const paragraph = document.querySelector('#article-intro');
-    return Boolean(range && paragraph && paragraph.contains(range.startContainer));
+    const replacement = document.querySelector('[data-e2e-active-block="true"]');
+    return Boolean(range && replacement && replacement.contains(range.startContainer));
   }), { timeout: 10000 }).toBe(true);
 
   await popup.locator('#ctrl-stop').click();
