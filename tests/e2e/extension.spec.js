@@ -199,6 +199,104 @@ test('uses Chrome TTS word events and re-anchors highlighting after a live DOM r
   })).toBe('STOPPED');
 });
 
+test('exposes accessible controls and keyboard-operable playback progress', async ({
+  extensionContext,
+  extensionWorkers,
+  articlePage
+}) => {
+  const targetTabId = await getActiveTabId(extensionWorkers.narratrace);
+  expect(targetTabId).not.toBeNull();
+  const popup = await openExtensionPage(
+    extensionContext,
+    extensionWorkers.narratraceId,
+    'popup.html',
+    `?tab=${targetTabId}`
+  );
+
+  await expect(popup.getByRole('main')).toBeVisible();
+  await expect(popup.getByRole('status').first()).toBeAttached();
+  const popupAudit = await popup.evaluate(() => {
+    const unnamedButtons = Array.from(document.querySelectorAll('button'))
+      .filter(button => !(
+        button.getAttribute('aria-label') ||
+        button.textContent.trim() ||
+        button.title
+      ))
+      .map(button => button.id || button.outerHTML.slice(0, 100));
+
+    const unnamedFields = Array.from(document.querySelectorAll('input, select'))
+      .filter(field => !(
+        field.getAttribute('aria-label') ||
+        field.labels?.length
+      ))
+      .map(field => field.id || field.outerHTML.slice(0, 100));
+
+    return { unnamedButtons, unnamedFields };
+  });
+  expect(popupAudit.unnamedButtons).toEqual([]);
+  expect(popupAudit.unnamedFields).toEqual([]);
+
+  const speedChips = await popup.locator('.speed-chip, .chip').evaluateAll(buttons =>
+    buttons.every(button => button.hasAttribute('aria-pressed'))
+  );
+  expect(speedChips).toBe(true);
+
+  const progress = articlePage.locator('#read-aloud-player-host #ra-progress-track');
+  await expect(progress).toHaveAttribute('role', 'slider');
+  await expect(progress).toHaveAttribute('tabindex', '0');
+  await expect(progress).toHaveAttribute('aria-label', 'Playback progress');
+
+  await extensionWorkers.fakeTtsEngine.evaluate(() => {
+    globalThis.__NARRATRACE_TEST_DELAY_MS = 500;
+  });
+  await setTestVoice(popup, 'NarraTrace Browser Test Voice', extensionWorkers.fakeTtsEngineId);
+  await popup.locator('#ctrl-play').click();
+
+  let playback = null;
+  await expect.poll(async () => popup.evaluate(async () => {
+    const response = await chrome.runtime.sendMessage({ action: 'GET_PLAYBACK_STATE' });
+    return response?.state?.playbackState;
+  }), { timeout: 10000 }).toBe('PLAYING');
+
+  playback = await popup.evaluate(async () =>
+    (await chrome.runtime.sendMessage({ action: 'GET_PLAYBACK_STATE' })).state
+  );
+  expect(playback.totalSentences).toBeGreaterThan(1);
+
+  await progress.focus();
+  await progress.press('End');
+  await expect.poll(async () => popup.evaluate(async () => {
+    const response = await chrome.runtime.sendMessage({ action: 'GET_PLAYBACK_STATE' });
+    return response?.state?.currentIndex;
+  }), { timeout: 10000 }).toBe(playback.totalSentences - 1);
+  await expect(progress).toHaveAttribute(
+    'aria-valuetext',
+    `Sentence ${playback.totalSentences} of ${playback.totalSentences}`
+  );
+
+  // Focus Reader acts as a dialog: it receives focus on open and returns it
+  // to the invoking settings control on Escape.
+  const settingsButton = articlePage.locator('#read-aloud-player-host #ra-settings');
+  await settingsButton.click();
+  const readerButton = articlePage.locator('#read-aloud-player-host #ra-settings-reader');
+  await readerButton.click();
+
+  const readerDialog = articlePage.locator('#read-aloud-player-host #ra-reader-overlay');
+  await expect(readerDialog).toHaveAttribute('role', 'dialog');
+  await expect(readerDialog).toHaveAttribute('aria-modal', 'true');
+  await expect.poll(() => articlePage.evaluate(() =>
+    document.querySelector('#read-aloud-player-host')?.shadowRoot?.activeElement?.id || ''
+  )).toBe('ra-reader-close');
+
+  await articlePage.keyboard.press('Escape');
+  await expect(readerDialog).not.toHaveClass(/open/);
+  await expect.poll(() => articlePage.evaluate(() =>
+    document.querySelector('#read-aloud-player-host')?.shadowRoot?.activeElement?.id || ''
+  )).toBe('ra-settings-reader');
+
+  await popup.locator('#ctrl-stop').click();
+});
+
 test('scans a large local article and records browser performance and queue metrics', async ({
   extensionContext,
   extensionWorkers
