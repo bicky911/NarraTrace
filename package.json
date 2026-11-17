@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Development and test tooling for the NarraTrace Chrome extension.",
   "scripts": {
-    "test": "node --test tests/unit",
+    "test": "node --test tests/unit/*.test.js",
     "test:static": "python test-harness.py",
     "test:all": "npm run test && npm run test:static"
   },
