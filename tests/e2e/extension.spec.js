@@ -15,7 +15,7 @@ async function openExtensionPage(context, extensionId, relativePath, query = '')
   return page;
 }
 
-async function setTestVoice(popup, voiceName) {
+async function setTestVoice(popup, voiceName, expectedExtensionId) {
   const voiceSelect = popup.locator('#popup-voice-select');
   await expect.poll(async () => voiceSelect.locator('option').evaluateAll(
     (options, expectedVoiceName) => options.some(option => option.value === expectedVoiceName),
@@ -23,6 +23,13 @@ async function setTestVoice(popup, voiceName) {
   ), { timeout: 15000 }).toBe(true);
 
   await voiceSelect.selectOption(voiceName);
+  const selectedOption = await voiceSelect.locator('option:checked').evaluate(option => ({
+    value: option.value,
+    extensionId: option.dataset.extensionId || null,
+    lang: option.dataset.lang || null
+  }));
+  expect(selectedOption.extensionId).toBe(expectedExtensionId);
+
   await expect.poll(async () => popup.evaluate(async () => {
     const response = await chrome.runtime.sendMessage({ action: 'GET_PLAYBACK_STATE' });
     return response?.state?.options?.voiceName || null;
@@ -106,12 +113,35 @@ test('uses Chrome TTS word events and re-anchors highlighting after a live DOM r
   await extensionWorkers.fakeTtsEngine.evaluate(() => {
     globalThis.__NARRATRACE_TEST_DELAY_MS = 110;
   });
-  await setTestVoice(popup, 'NarraTrace Browser Test Voice');
+  await setTestVoice(popup, 'NarraTrace Browser Test Voice', extensionWorkers.fakeTtsEngineId);
 
   await popup.locator('#ctrl-play').click();
 
+  await expect.poll(async () => popup.evaluate(async () => {
+    const response = await chrome.runtime.sendMessage({ action: 'GET_PLAYBACK_STATE' });
+    return response?.state?.playbackState;
+  }), { timeout: 10000 }).toBe('PLAYING');
+
+  const playback = await popup.evaluate(async () =>
+    (await chrome.runtime.sendMessage({ action: 'GET_PLAYBACK_STATE' })).state
+  );
+  const initialTtsMetrics = await extensionWorkers.fakeTtsEngine.evaluate(() =>
+    globalThis.__NARRATRACE_TEST_METRICS
+  );
+  console.log('[NARRATRACE_TTS_DIAGNOSTICS]', JSON.stringify({
+    playbackState: playback.playbackState,
+    selectedVoice: playback.options?.voiceName,
+    selectedExtensionId: playback.options?.extensionId,
+    fakeTtsEngineId: extensionWorkers.fakeTtsEngineId,
+    initialTtsMetrics
+  }));
+
+  await expect.poll(async () => extensionWorkers.fakeTtsEngine.evaluate(() =>
+    globalThis.__NARRATRACE_TEST_METRICS.wordCount
+  ), { timeout: 10000 }).toBeGreaterThan(0);
+
   const wordBox = articlePage.locator('#read-aloud-player-host #ra-word-box');
-  await expect(wordBox).toHaveClass(/visible/, { timeout: 15000 });
+  await expect(wordBox).toHaveClass(/visible/, { timeout: 10000 });
 
   // Page churn outside the active sentence must not disturb its word capsule.
   await articlePage.evaluate(() => {
@@ -171,7 +201,7 @@ test('scans a large local article and records browser performance and queue metr
   await extensionWorkers.fakeTtsEngine.evaluate(() => {
     globalThis.__NARRATRACE_TEST_DELAY_MS = 500;
   });
-  await setTestVoice(popup, 'NarraTrace Browser Test Voice');
+  await setTestVoice(popup, 'NarraTrace Browser Test Voice', extensionWorkers.fakeTtsEngineId);
 
   const cdp = await extensionContext.newCDPSession(page);
   await cdp.send('Performance.enable');
