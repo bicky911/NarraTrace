@@ -340,26 +340,50 @@ export function safeSpeak(text, options = {}, onEvent = null) {
 
     let watchdogTimer = null;
     let speechStarted = false;
-    const armWatchdog = (ms) => {
-      if (watchdogTimer) {
-        clearTimeout(watchdogTimer);
-      }
-      watchdogTimer = setTimeout(() => {
-        console.warn(`[SpeechEngine] Speech exceeded ${Math.round(ms / 1000)}s without TTS end event; advancing to avoid stall.`);
-        resolve({ type: 'timeout' });
-      }, ms);
-    };
+    // A promise settles exactly once. Every exit path below funnels through
+    // settle(), so a late event can never resolve a promise that the watchdog
+    // already resolved (or reject one that already ended).
+    let settled = false;
+
     const cleanupWatchdog = () => {
       if (watchdogTimer) {
         clearTimeout(watchdogTimer);
         watchdogTimer = null;
       }
     };
+    const settle = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      cleanupWatchdog();
+      fn(value);
+    };
+
+    const armWatchdog = (ms) => {
+      if (settled) return;
+      if (watchdogTimer) {
+        clearTimeout(watchdogTimer);
+      }
+      watchdogTimer = setTimeout(() => {
+        console.warn(`[SpeechEngine] Speech exceeded ${Math.round(ms / 1000)}s without TTS end event; advancing to avoid stall.`);
+        // Stop the engine BEFORE handing control back. The playback manager
+        // responds to a timeout by re-speaking the remainder from the last
+        // confirmed word; if the abandoned utterance were still audible, the
+        // two voices would talk over each other. Silencing it first turns a
+        // stall into a clean continuation instead of a doubled audio stream.
+        stopEngineQuietly();
+        settle(resolve, { type: 'timeout', stopped: true });
+      }, ms);
+    };
 
     // The preparation budget runs until the engine says a word.
     armWatchdog(prepareWatchdogMs);
 
     ttsOptions.onEvent = (event) => {
+      // Ignore anything the engine emits after this utterance is over — a
+      // watchdog timeout resolves the promise while the engine may still
+      // trickle out boundaries for a moment.
+      if (settled || !event || typeof event.type !== 'string') return;
+
       // The first boundary means the engine is actually speaking — from now
       // on the speaking budget applies.
       if (!speechStarted && (event.type === 'sentence' || event.type === 'word')) {
@@ -368,38 +392,63 @@ export function safeSpeak(text, options = {}, onEvent = null) {
       }
 
       if (onEvent) {
-        onEvent(event);
+        try {
+          onEvent(event);
+        } catch (err) {
+          console.warn('[SpeechEngine] onEvent handler failed:', err && err.message);
+        }
       }
       if (event.type === 'end') {
-        cleanupWatchdog();
-        resolve(event);
+        settle(resolve, event);
       } else if (event.type === 'error') {
-        cleanupWatchdog();
         const errorMsg = event.errorMessage || 'Unknown TTS error occurred during speech.';
         console.warn('[SpeechEngine] TTS error event:', errorMsg);
-        reject(new Error(errorMsg));
+        settle(reject, new Error(errorMsg));
       } else if (event.type === 'interrupted' || event.type === 'cancelled') {
-        cleanupWatchdog();
-        resolve(event);
+        settle(resolve, event);
       }
     };
 
-    chrome.tts.speak(text, ttsOptions, () => {
-      if (chrome.runtime.lastError) {
-        cleanupWatchdog();
-        const err = new Error(chrome.runtime.lastError.message);
-        console.warn('[SpeechEngine] chrome.tts.speak API call failed:', err);
-        reject(err);
-      }
-    });
+    try {
+      chrome.tts.speak(text, ttsOptions, () => {
+        if (chrome.runtime?.lastError) {
+          const err = new Error(chrome.runtime.lastError.message);
+          console.warn('[SpeechEngine] chrome.tts.speak API call failed:', err);
+          settle(reject, err);
+        }
+      });
+    } catch (err) {
+      // chrome.tts can disappear with the extension context (worker restart,
+      // extension reload). Without this catch the throw would escape the
+      // executor — and the already-armed watchdog would keep the promise
+      // alive until its (very long) budget expired.
+      console.warn('[SpeechEngine] chrome.tts.speak threw:', err && err.message);
+      settle(reject, err instanceof Error ? err : new Error(String(err)));
+    }
   });
+}
+
+/**
+ * Stop the engine without ever throwing.
+ *
+ * chrome.tts is not guaranteed to exist: it appears a moment after the
+ * service worker starts and disappears when the extension context is torn
+ * down. Every stop/isSpeaking path goes through a guard so playback control
+ * can never fail because the namespace was momentarily missing.
+ */
+function stopEngineQuietly() {
+  try {
+    if (ttsApiAvailable()) chrome.tts.stop();
+  } catch (err) {
+    console.warn('[SpeechEngine] chrome.tts.stop failed:', err && err.message);
+  }
 }
 
 /**
  * Stop any ongoing speech.
  */
 export function stopSpeech() {
-  chrome.tts.stop();
+  stopEngineQuietly();
 }
 
 /**
@@ -408,18 +457,26 @@ export function stopSpeech() {
  * Windows TTS pipeline; this barrier closes that race before a new utterance.
  */
 export function stopSpeechAndWait(timeoutMs = 500) {
-  chrome.tts.stop();
+  stopEngineQuietly();
   return new Promise((resolve) => {
     const deadline = Date.now() + timeoutMs;
     const poll = () => {
-      chrome.tts.isSpeaking((speaking) => {
-        void chrome.runtime.lastError;
-        if (!speaking || Date.now() >= deadline) {
-          resolve();
-        } else {
-          setTimeout(poll, 40);
-        }
-      });
+      if (!ttsApiAvailable()) {
+        resolve();
+        return;
+      }
+      try {
+        chrome.tts.isSpeaking((speaking) => {
+          void chrome.runtime.lastError;
+          if (!speaking || Date.now() >= deadline) {
+            resolve();
+          } else {
+            setTimeout(poll, 40);
+          }
+        });
+      } catch (_) {
+        resolve();
+      }
     };
     poll();
   });
@@ -429,14 +486,18 @@ export function stopSpeechAndWait(timeoutMs = 500) {
  * Pause speech playback.
  */
 export function pauseSpeech() {
-  chrome.tts.pause();
+  try {
+    if (ttsApiAvailable()) chrome.tts.pause();
+  } catch (_) { /* context gone — nothing to pause */ }
 }
 
 /**
  * Resume speech playback.
  */
 export function resumeSpeech() {
-  chrome.tts.resume();
+  try {
+    if (ttsApiAvailable()) chrome.tts.resume();
+  } catch (_) { /* context gone — nothing to resume */ }
 }
 
 /**
@@ -445,10 +506,18 @@ export function resumeSpeech() {
  */
 export function isSpeaking() {
   return new Promise((resolve) => {
-    chrome.tts.isSpeaking((speaking) => {
-      void chrome.runtime.lastError;
-      resolve(Boolean(speaking));
-    });
+    if (!ttsApiAvailable()) {
+      resolve(false);
+      return;
+    }
+    try {
+      chrome.tts.isSpeaking((speaking) => {
+        void chrome.runtime.lastError;
+        resolve(Boolean(speaking));
+      });
+    } catch (_) {
+      resolve(false);
+    }
   });
 }
 
@@ -467,8 +536,19 @@ export function detectScript(text) {
     else if (code >= 0x0900 && code <= 0x097F) hi++;
     else if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)) en++;
   }
-  if (bn > 0 && bn >= hi) return 'bn';
-  if (hi > 0 && hi > bn) return 'hi';
+  const total = bn + hi + en;
+  if (total === 0) return 'en';
+
+  // A script must be a real share of the text, not merely present. The old
+  // test ("one Bengali character wins") routed an English sentence that
+  // quoted a single Bengali word — or a Latin transliteration next to a
+  // native word — to the Bengali voice, which then read the English words
+  // with a Bangla accent. 30 % of the letters (min 2) means a genuinely
+  // bilingual sentence still routes to the native voice, while an incidental
+  // foreign word stays with the page's main language.
+  const dominant = (count) => count >= 2 && count / total >= 0.3;
+  if (dominant(bn) && bn >= hi) return 'bn';
+  if (dominant(hi) && hi > bn) return 'hi';
   return 'en';
 }
 

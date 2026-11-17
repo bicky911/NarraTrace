@@ -141,7 +141,7 @@ async function loadVoices() {
 
     const {
       engines, localSystemVoices, selectedVoice, statusMessage,
-      engineId, engineLabel, engineBadge
+      engineId, engineBadge
     } = res.data;
 
     // The badge names the engine that is actually speaking.
@@ -424,6 +424,24 @@ chrome.runtime.onMessage.addListener((message) => {
     case 'PLAYBACK_STOPPED':
     case 'PLAYBACK_COMPLETED': {
       updatePlayState('STOPPED');
+      break;
+    }
+
+    case 'VOICE_CHANGED': {
+      // The worker re-resolved the engine (e.g. Kokoro finished loading) —
+      // rebuild the picker so the popup never shows a stale voice list.
+      if (voiceSubstatusEl && message.statusMessage) {
+        voiceSubstatusEl.textContent = message.statusMessage;
+      }
+      loadVoices();
+      break;
+    }
+
+    case 'PLAYBACK_ERROR': {
+      if (message.error) {
+        sentenceBoxEl.classList.remove('idle');
+        sentenceBoxEl.textContent = `Speech error: ${message.error}`;
+      }
       break;
     }
 

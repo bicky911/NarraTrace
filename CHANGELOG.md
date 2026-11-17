@@ -6,6 +6,153 @@ every word on screen as it speaks.
 
 ---
 
+## 1.5.0 — 2026-11-17
+
+**A correctness and quality release.** The audible bugs are fixed at their
+source, and the extension now ships with a real behavioural test suite and a
+package-integrity linter instead of a string-matching checklist alone.
+
+### Fixed — the voice fragmented sentences around abbreviations
+
+- **`sentence-tokenizer.js` split titles from their names.** "Dr. Smith",
+  "Prof. Jones", "et al. Reported" and "U.S. Army" each became a fragment
+  ("Dr.", "Prof.", "et al.", "U.S.") plus a new sentence, so every title cost
+  an extra utterance with its own intonation restart — audible as a stutter at
+  the top of a sentence.
+  - Titles, Latin markers (`e.g.`, `i.e.`), citation tokens and dotted
+    acronyms are now always mid-sentence when content follows them.
+  - Genuinely ambiguous abbreviations (`etc.`, `no.`, `St.`) still split when
+    the next token is not a continuation, so "He said no. Then he left."
+    remains two sentences.
+- **An ellipsis is a pause, not a full stop.** "One... two... three." used to
+  become three utterances; it now stays one sentence, while "Wait... What
+  happened?" still splits.
+- **Closing punctuation belongs to its sentence.** Curly apostrophes,
+  guillemets and CJK closers (`’ » 」 』`) are now consumed with the sentence
+  they close instead of leaking into the next one.
+
+### Fixed — abandoned utterances could talk over their replacement
+
+- **The TTS watchdog now stops the engine before it reports a timeout.** The
+  playback manager responds to a timeout by re-speaking the remainder from the
+  last confirmed word; previously the abandoned utterance was still audible,
+  so a stall turned into two voices reading at once.
+- **Events are ignored after an utterance has settled.** A late `word` event
+  from an abandoned request can no longer move the highlight backwards.
+- **`chrome.tts.speak()` throwing synchronously is handled.** It now rejects
+  cleanly and clears the watchdog instead of leaving a 60-second timer alive.
+- **`stop` / `isSpeaking` / `pause` / `resume` survive a missing `chrome.tts`.**
+  The namespace disappears with the extension context; those calls used to
+  throw and could leave the player stuck in PLAYING.
+
+### Fixed — single-page apps no longer silence the reader
+
+- **The background stopped playback on any URL change.** `chrome.tabs.onUpdated`
+  fired on `changeInfo.url`, which a SPA `pushState` (and even a `#hash` link)
+  produces without loading a document. Reading a page that updates its address
+  bar therefore stopped by itself a few seconds in. Playback now stops only on
+  a real document load (`status === 'loading'`); the content script continues
+  to own same-document navigation.
+
+### Fixed — the word capsule survives a re-render
+
+- **A DOM repair re-anchors the traced word, not just the sentence.** When a
+  page replaced its text in place, the sentence highlight was repaired but the
+  word capsule stayed gone until the next word event — which never arrives on
+  an engine that reports sentence boundaries only. The word is now remembered
+  as character offsets and re-applied to the repaired range, so the capsule
+  comes back on the same word.
+
+### Fixed — orphaned audio and lost selections
+
+- **A closed tab could keep talking.** `reset()` — used when the owning tab is
+  gone — cleared the queue without silencing the engine, so the last utterance
+  finished with no UI attached and no way to stop it. `reset()` now stops the
+  engine first, and worker-restart recovery silences an utterance it can no
+  longer track before re-speaking the sentence.
+- **Context-menu "narrate selection" produced no highlight.** The background
+  tokenised the selected string itself, so the page had no DOM ranges to trace.
+  The tab now builds the queue from its own selection (the background keeps the
+  old path as a fallback for tabs without a content script).
+
+### Fixed — long documents no longer rewrite 500 KB per sentence
+
+- **The session queue is stored under its own key.** Every state change
+  (sentence advance, pause, resume) used to re-serialise the whole queue into
+  `chrome.storage.session`; a 5,000-sentence paper wrote roughly 500 KB on
+  every sentence. Only the small state object is rewritten now, and the queue
+  is written once per run. Sessions saved by 1.4.x (queue inline) are still
+  restored on upgrade.
+
+### Fixed — smaller but user-visible
+
+- **Seeking while paused stays paused.** Clicking a sentence or the progress
+  bar during PAUSED used to flip the player back to PLAYING and start audio;
+  it now moves the highlight and waits for an explicit resume.
+- **The hover play button is 28 px, matching its CSS box.** The placement code
+  used 26 px, so the anti-flicker nudge could still land the button under the
+  cursor and start a hover/leave loop.
+- **Mixed-language routing needs real evidence.** One Bengali character in an
+  English sentence used to route the whole sentence to the Bangla voice; a
+  script now has to be at least 30 % of the letters before it takes over.
+- **The word capsule caches its Range→offset index per sentence** instead of
+  rebuilding it ~22 times per second, and the zoom poll no longer writes a
+  custom property (or does any work in a hidden tab) when nothing changed.
+- **`shadow` is declared before first use.** The context-invalidated handler
+  could hit a temporal-dead-zone `ReferenceError` if the extension was
+  reloaded before the player was constructed.
+- **Pronunciation overrides work for symbol-final terms.** `C++ = see plus
+  plus` never matched because a trailing `\b` cannot follow `+`.
+
+### Added — Focus Reader accessibility
+
+- The reader overlay is now a real modal dialog: `role="dialog"`,
+  `aria-modal`, an accessible name, and `aria-hidden` toggling. A closed
+  overlay used `opacity: 0` only, which left its buttons in the Tab order and
+  its text in the accessibility tree; it now uses `visibility: hidden` as well.
+- Focus moves to EXIT when the reader opens, is trapped inside the dialog
+  while it is open, and returns to the control that opened it on close.
+
+### Added — quality infrastructure
+
+- **`npm test`** — 76 behavioural tests on Node's built-in runner (zero
+  dependencies): tokenizer regressions, the speech pipeline, voice resolution,
+  the playback state machine against a controllable fake `chrome.tts`, error
+  budgets, pause/resume offsets, recovery and reset, session persistence and
+  migration, preference persistence, batch grouping and regression pins for
+  the worker/content-script fixes.
+- **`npm run lint`** — a package-integrity check that the static harness
+  cannot do: manifest references resolve, permissions match API use, the
+  content script stays inside its runtime/storage allowlist, no forbidden
+  speech/eval/remote-code APIs, every sent runtime message has a handler, and
+  the version agrees across manifest, package and changelog.
+- **Manifest hygiene**: the unused `scripting` permission is removed,
+  `short_name`, `homepage_url` and `minimum_chrome_version` (116, for the CSS
+  Custom Highlight API) are declared.
+- **`docs/QUALITY-STRATEGY.md`** — the operating standard: the six quality
+  pillars, the defect ledger with root causes, the prioritised backlog, the
+  definition of done and the deliberate limitations.
+- **`docs/MANUAL-TEST-CHECKLIST.md`** gains a 1.5.0 regression pass with an
+  observable expected result for every fix above.
+- **Optional DOM smoke test** (`npm install --no-save jsdom && npm run
+  test:dom`): 18 assertions against the real content script in jsdom, covering
+  injection order, shadow-DOM construction, accessibility wiring, queue
+  building and SPA navigation. It found and fixed a missing `res.data` guard in
+  the settings voice picker.
+- **A dead `ra-reader` binding was removed** (the pill has no reader button by
+  design; Alt+R and the settings panel are the entry points).
+
+### Known product gap (documented, not changed)
+
+The streamlined settings panel intentionally omits pitch, sentence grouping,
+pronunciation overrides, player size and player opacity, yet `content.js` still
+wires all of them and the worker implements their messages. They are therefore
+unreachable in the UI. `docs/QUALITY-STRATEGY.md` records this as decision P0
+with a recommendation (an **Advanced** disclosure) rather than silently
+re-adding controls the harness pins as removed.
+
+---
+
 ## 1.4.0 — 2026-11-17
 
 **The extension is now NarraTrace.** "Read Aloud" described a category;

@@ -1,4 +1,4 @@
-# NarraTrace 1.4.0 — 5-minute manual test checklist
+# NarraTrace 1.5.0 — manual test checklist
 
 Everything below was verified automatically in a real Chrome (19/19 engine checks,
 13/13 UI checks). This list is for the two things a headless browser cannot
@@ -21,7 +21,7 @@ use it**.
 4. **Refresh every open tab** (Ctrl+R). A content script that was injected
    before the reload keeps the old code.
 
-> Chrome shows the extension as **NarraTrace · 1.4.0** with the id
+> Chrome shows the extension as **NarraTrace · 1.5.0** with the id
 > `hbfbblacfbkjafmkjohjpbojhcfofpnp`.
 
 ---
@@ -117,6 +117,104 @@ Kokoro rebuilds its neural model **for every utterance**:
 - [ ] Pick a Kokoro voice again → the badge returns to `KOKORO`.
 - [ ] Disable the Kokoro extension in `chrome://extensions` → NarraTrace falls
   back to Supertonic, or to a Windows system voice if Supertonic is off too.
+
+---
+
+## 8 · 1.5.0 regression pass (4 minutes)
+
+These are the defects 1.5.0 fixes. Each one is also covered by an automated
+test, but only a human can confirm the *sound*.
+
+### 8.1 Abbreviations no longer fragment (30 s)
+
+Open any article and read a sentence that begins with a title.
+
+- [ ] A paragraph starting **"Dr. Smith…"**, **"Prof. Jones…"** or containing
+      **"et al."** reads as one continuous sentence. You must **not** hear a
+      separate "Doctor." fragment followed by a new intonation start.
+- [ ] **"U.S. Army"** is spoken as two words, not "U. S." then a new sentence.
+- [ ] **"One... two... three."** is one sentence; **"Wait... What happened?"**
+      pauses and then restarts (two sentences).
+
+### 8.2 No doubled audio after a stall (60 s)
+
+Requires a slow engine (Kokoro on CPU is ideal).
+
+- [ ] Let Kokoro take its ~10 s to start. If it ever exceeds the watchdog
+      (45 s of speech), playback continues once — never two voices at the same
+      time.
+- [ ] After the watchdog fires, the reading resumes near where it stopped
+      instead of restarting the whole page.
+
+### 8.3 Single-page apps keep reading (60 s)
+
+- [ ] On a SPA (YouTube, GitHub file browser, a docs site with client-side
+      routing), start reading and let the address bar change on its own.
+      Narration must **continue**; it must not stop when the URL changes.
+- [ ] Click an in-page `#anchor` link while reading → reading continues.
+- [ ] A real navigation (click a link to another document) → narration stops.
+
+### 8.4 Pause means paused (30 s)
+
+- [ ] Start reading, press pause, then click the progress bar or a sentence in
+      Focus Reader. The highlight moves, but **no audio starts**.
+- [ ] Press play → it reads from the new position.
+
+### 8.5 Closed tabs cannot keep talking (30 s)
+
+- [ ] Start reading, then close the tab from the tab strip.
+      Audio stops immediately. *(Before 1.5.0 the last utterance could finish
+      with no UI attached.)*
+
+### 8.6 Context-menu selection is traced (30 s)
+
+- [ ] Select two sentences on a page, right-click → **NarraTrace: narrate
+      selection**.
+- [ ] It starts reading the selection **and** the word capsule traces it on the
+      page (previously it spoke without any highlight).
+
+### 8.7 Script routing (30 s)
+
+- [ ] On an English page that quotes a single Bangla word, the sentence reads
+      in the English voice (not a Bangla accent over the whole sentence).
+- [ ] A genuinely Bengali sentence still switches to the Bangla voice.
+
+### 8.8 Pronunciation overrides (30 s) — currently storage-only
+
+> The rules engine is implemented and tested, but the panel control was removed
+> in the settings streamline, so this feature has **no UI** (decision P0 in
+> `docs/QUALITY-STRATEGY.md`). This pass verifies the engine only.
+
+In the service-worker console, write a rule set directly:
+
+```js
+chrome.storage.local.get('readAloud_userPreferences').then(({ readAloud_userPreferences: p }) => {
+  chrome.storage.local.set({ readAloud_userPreferences: {
+    ...(p || {}), pronunciationText: 'C++ = see plus plus\n.NET = dot net'
+  }});
+});
+```
+
+- [ ] After a worker restart, a sentence containing **C++** is spoken as
+      "see plus plus".
+- [ ] **.NET** is spoken as "dot net", and the string "XNET" is untouched.
+
+### 8.9 Word capsule survives a re-render (30 s)
+
+- [ ] Start reading a page whose text is replaced in place (a Twitter/X or
+      Docs-style feed, or a page whose paragraph is swapped by a framework).
+- [ ] The sentence highlight re-anchors onto the new nodes instead of
+      disappearing, and **the word capsule reappears on the same word**
+      rather than waiting for the next word event.
+- [ ] If the sentence is genuinely gone, both highlights disappear — the
+      capsule never sits over unrelated text.
+
+### 8.10 Long-article responsiveness (60 s)
+
+- [ ] Open a very long document (a Wikipedia article or a 5,000-sentence paper).
+- [ ] Scrolling and typing in the page stay smooth while reading; the progress
+      counter advances without stutter.
+      *(The queue is now persisted once per run instead of on every sentence.)*
 
 ---
 

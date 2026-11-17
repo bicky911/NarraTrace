@@ -16,7 +16,8 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Manifest: V3](https://img.shields.io/badge/Manifest-V3-orange.svg)
-![Tests: 86/86 Passing](https://img.shields.io/badge/Tests-86%2F86%20Passing-brightgreen.svg)
+![Static checks: 86](https://img.shields.io/badge/static%20checks-86-brightgreen.svg)
+![Behavioural tests: 76](https://img.shields.io/badge/behavioural%20tests-76-brightgreen.svg)
 
 ---
 
@@ -47,17 +48,43 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 
 ---
 
-## 🧪 Automated Verification Suite
+## 🧪 Quality Gates
 
-Run the comprehensive test harness:
+Three independent gates, all runnable offline with no dependencies:
+
 ```bash
-python test-harness.py
+npm test          # 76 behavioural tests on Node's built-in runner
+npm run lint      # package integrity: manifest, permissions, API allowlist, message wiring
+python3 test-harness.py   # 86 static structural checks (calibration invariants)
+npm run check     # all three gates in one command
+
+# Optional: boot the real content script in a DOM (needs jsdom, not shipped)
+npm install --no-save jsdom && npm run test:dom
 ```
-Output:
-```
-Result: 86/86 checks passed (100%)
-✓ All checks passed — extension is ready.
-```
+
+* **Behavioural tests (`tests/`)** drive the real modules against a controllable
+  fake `chrome.tts`: the tokenizer, the speech pipeline, voice resolution, the
+  playback state machine, pause/resume offsets, error budgets, preference
+  persistence and batch grouping. They catch regressions that string matching
+  cannot see.
+* **The linter (`tools/lint.js`)** proves the package is coherent: every file
+  the manifest references exists, every declared permission is actually used,
+  the content script stays inside its `runtime`/`storage` allowlist, no
+  forbidden web-speech, `eval` or remote-code API appears, every runtime
+  message has a handler, and the version agrees across manifest, package and
+  changelog.
+* **The optional DOM smoke test (`tools/dom-smoke.mjs`)** injects the exact
+  manifest order into jsdom and asserts that the player, settings panel, voice
+  picker, Focus Reader dialog and SPA handling all wire up without throwing.
+* **The static harness (`test-harness.py`)** pins the measured calibrations
+  (spring constants, gaze anchor, watchdog split, prosody rules) and the
+  accessibility contract (labels, focus rings, progressbar state).
+
+The engineering standard behind these gates — defect ledger, prioritised
+backlog, definition of done and known limitations — is documented in
+[`docs/QUALITY-STRATEGY.md`](docs/QUALITY-STRATEGY.md).
+
+New contributors should run `npm run check` before opening a pull request.
 
 ---
 

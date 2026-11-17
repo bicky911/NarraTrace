@@ -1,0 +1,25 @@
+{
+  "name": "narratrace",
+  "version": "1.5.0",
+  "private": true,
+  "description": "NarraTrace — narrates any page aloud and traces every word as it speaks. Manifest V3 Chrome extension with zero runtime dependencies.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.js\"",
+    "test:static": "python3 test-harness.py",
+    "check": "npm run test && npm run test:static && npm run lint",
+    "lint": "node tools/lint.js",
+    "test:dom": "node tools/dom-smoke.mjs"
+  },
+  "keywords": [
+    "chrome-extension",
+    "manifest-v3",
+    "text-to-speech",
+    "accessibility",
+    "tts"
+  ],
+  "license": "MIT"
+}

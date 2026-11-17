@@ -21,26 +21,49 @@
 (function (global) {
   'use strict';
 
-  // Words whose trailing dot never ends a sentence while the next token
-  // continues it (lowercase word, digit, comma, or opening bracket).
-  // Looked up with dots stripped, so "e.g." is checked as "eg".
-  const ABBREVIATIONS = new Set([
+  // Abbreviations whose trailing dot does not end a sentence. Looked up with
+  // dots stripped, so "e.g." is checked as "eg".
+  //
+  // The set is deliberately split in two, because the two halves need
+  // different evidence before the tokenizer may treat the dot as terminal:
+  //
+  //   ALWAYS_CONTINUE_ABBREVIATIONS — titles, Latin markers and citation
+  //     tokens. "Dr. Smith", "et al. Reported", "e.g. The control group" and
+  //     "Fig. 4" are always mid-sentence, even when the next word starts with
+  //     a capital. Splitting there produced fragments like "Dr." and
+  //     "et al." that were spoken as their own utterances with their own
+  //     intonation restart — audible as a stutter between every sentence.
+  //
+  //   ABBREVIATIONS — genuinely ambiguous tokens ("etc.", "no.", "vs.",
+  //     "St."). These only continue the sentence when the next token is
+  //     clearly a continuation (lowercase word, digit, comma or bracket), so
+  //     "He said no. Then he left." still splits correctly.
+  const ALWAYS_CONTINUE_ABBREVIATIONS = new Set([
     // titles & general
-    'mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'vs', 'etc', 'eg', 'ie',
-    'gen', 'col', 'maj', 'capt', 'lt', 'sgt', 'corp', 'rev', 'st',
+    'mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr',
+    'gen', 'col', 'maj', 'capt', 'lt', 'sgt', 'rev',
     // academic & agronomy citation tokens
     'al',                          // et al.
     'fig', 'figs',                 // Fig. 2, Figs. 3-4
     'eq', 'eqs',                   // Eq. (5)
-    'approx', 'ca',                // approximately
-    'no', 'nos',                   // No. 3
-    'sp', 'spp', 'subsp', 'var', 'cv',  // taxonomy
-    'ed', 'eds', 'vol', 'pp', 'p', 'doi',
+    'approx',                      // approximately
+    'eg', 'ie',                    // e.g. / i.e.
+    'doi',
+    // organisations & addresses ("St. Louis", "Acme Inc. Reported")
+    'dept', 'univ', 'usa', 'st', 'co', 'corp', 'inc', 'ltd',
+    // versus / against
+    'vs'
+  ]);
+
+  const ABBREVIATIONS = new Set([
+    ...ALWAYS_CONTINUE_ABBREVIATIONS,
+    'etc',
+    // academic & agronomy citation tokens
+    'ca', 'no', 'nos', 'sp', 'spp', 'subsp', 'var', 'cv',
+    'ed', 'eds', 'vol', 'pp', 'p',
     // months & weekdays
     'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
-    'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun',
-    // organisations
-    'dept', 'univ', 'co', 'corp', 'inc', 'ltd', 'usa'
+    'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'
   ]);
 
   // A single utterance longer than this is split at clause boundaries before
@@ -133,6 +156,18 @@
         }
       }
 
+      // An ellipsis ("…" or "...") is a pause, not a full stop. It only ends a
+      // sentence when the next token starts a new one ("Wait... What?"), so a
+      // trail-off inside a sentence no longer produces fragments like "One...".
+      if (char === '.' && termEnd > i) {
+        const nextIdx = nextNonSpace(text, termEnd + 1);
+        const nextChar = nextIdx < len ? text[nextIdx] : '';
+        if (nextChar !== '' && /[a-z0-9,;([]/.test(nextChar)) {
+          i = termEnd;
+          continue;
+        }
+      }
+
       if (char === '.') {
         // Internal dot of a dotted abbreviation ("e.g.", "i.e.", "U.S.A."):
         // a dot sitting directly between two letters never ends a sentence.
@@ -166,6 +201,19 @@
         const continuesSentence = nextChar !== '' &&
           (/[a-z0-9,]/.test(nextChar) || nextChar === '(' || nextChar === '[');
 
+        // Dotted acronyms ("U.S.", "U.K.", "U.S.A.") are one unit of text and
+        // never a sentence end while a word follows them — "U.S. Army troops
+        // moved" used to be queued as the fragment "U.S." plus a new sentence,
+        // so the voice restarted its intonation after two letters.
+        const acronymLetters = frag.replace(/\./g, '');
+        const isDottedAcronym = frag.includes('.') &&
+          acronymLetters.length > 1 &&
+          /^[A-Z]+$/.test(acronymLetters);
+        if (isDottedAcronym && nextChar !== '' && /[A-Za-z0-9]/.test(nextChar)) {
+          i = termEnd;
+          continue;
+        }
+
         if (frag.length === 1 && /[A-Z]/.test(frag)) {
           // Single capital initial ("T. aestivum", "J. Smith", "B., and") —
           // never a sentence end while a word/list continues after it.
@@ -175,15 +223,28 @@
           }
         }
 
-        if (ABBREVIATIONS.has(stripped) && continuesSentence) {
+        // Titles and Latin markers are mid-sentence even before a capital
+        // ("Dr. Smith", "e.g. The control group"); the ambiguous ones ("etc.",
+        // "no.", "St.") need a clearly continuing next token.
+        if (ALWAYS_CONTINUE_ABBREVIATIONS.has(stripped)) {
+          if (nextChar !== '') {
+            i = termEnd;
+            continue;
+          }
+        } else if (ABBREVIATIONS.has(stripped) && continuesSentence) {
           i = termEnd;
           continue;
         }
       }
 
-      // Skip past closing quotes or brackets: ." or ) or '
+      // Skip past closing quotes or brackets: ." or ) or ’ » 」 』
       let endIdx = termEnd + 1;
-      while (endIdx < len && (text[endIdx] === '"' || text[endIdx] === '\'' || text[endIdx] === ')' || text[endIdx] === ']' || text[endIdx] === '”')) {
+      while (endIdx < len && (
+        text[endIdx] === '"' || text[endIdx] === '\'' ||
+        text[endIdx] === ')' || text[endIdx] === ']' ||
+        text[endIdx] === '”' || text[endIdx] === '’' ||
+        text[endIdx] === '»' || text[endIdx] === '」' || text[endIdx] === '』'
+      )) {
         endIdx++;
       }
 

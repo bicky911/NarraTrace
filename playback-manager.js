@@ -12,10 +12,7 @@
 
 import {
   safeSpeak,
-  stopSpeech,
   stopSpeechAndWait,
-  pauseSpeech,
-  resumeSpeech,
   isSpeaking,
   detectAndSelectVoice,
   detectScript,
@@ -30,6 +27,12 @@ export const PlaybackState = {
 };
 
 const SESSION_STORAGE_KEY = 'readAloud_sessionState';
+// The queue lives in its OWN session key. State changes (current sentence,
+// pause, resume) happen once per sentence; writing the queue alongside them
+// meant re-serialising up to 5000 sentences (~500 KB) on every single
+// sentence. Splitting the keys makes the per-sentence write a few hundred
+// bytes and keeps the queue written once per run.
+const SESSION_QUEUE_KEY = 'readAloud_sessionQueue';
 const PREFS_STORAGE_KEY = 'readAloud_userPreferences';
 
 // Give up after this many consecutive TTS failures instead of racing through
@@ -59,8 +62,6 @@ const PREPARE_BUDGET_RATIO = 0.15;
 const DEFAULT_CHARS_PER_SECOND = 13.5;
 // How often the position estimator runs when the engine gives no word events (~22 fps).
 const ESTIMATOR_INTERVAL_MS = 45;
-// How long to wait for the engine's own word boundaries before estimating.
-const ESTIMATOR_GRACE_MS = 700;
 // How long to wait for the engine's first SENTENCE boundary before assuming
 // this engine reports no boundaries at all. Measured against the real engines:
 // Supertonic reaches 7.2 s and Kokoro needs ~10 s on a CPU-only machine (and
@@ -94,7 +95,7 @@ const BOUNDARY_ANNOUNCED_EARLY_MS = 500;
 //  • Social media handles:     @username  (stripped only when standalone)
 //  • Markdown artifacts:       **bold**  *italic*  __underline__  `code`
 
-const _NOISE_RULES = [
+export const _NOISE_RULES = [
   // ── Raw URLs (most disruptive — do first) ─────────────────────────────────
   // https:// or http://  or ftp://
   { re: /https?:\/\/[^\s<>"')\]]+/gi,                  rep: '' },
@@ -146,7 +147,7 @@ const _NOISE_RULES = [
  * @param {string} text
  * @returns {string}
  */
-function stripSemanticNoise(text) {
+export function stripSemanticNoise(text) {
   if (typeof text !== 'string' || text.length === 0) return text;
   let out = text;
   for (const rule of _NOISE_RULES) {
@@ -165,7 +166,7 @@ function stripSemanticNoise(text) {
 // semicolons, parentheticals, and enumerations) so speech has human-like rhythm
 // and cadence rather than robotic run-on delivery.
 // Original item.text is never mutated — only the spoken utterance is enhanced.
-const _PROSODY_RULES = [
+export const _PROSODY_RULES = [
   // 1. Em-dash (—) and En-dash (–) and double-dash (--) → comma breathing pause
   // Prevents speech engines from pronouncing "dash" or running through breathlessly
   { re: /\s*[—–]\s*|\s+--\s+/g, rep: ', ' },
@@ -192,7 +193,7 @@ const _PROSODY_RULES = [
  * @param {string} text
  * @returns {string}
  */
-function applyProsodyCadence(text) {
+export function applyProsodyCadence(text) {
   if (typeof text !== 'string' || text.length === 0) return text;
   let out = text;
   for (const rule of _PROSODY_RULES) {
@@ -203,7 +204,7 @@ function applyProsodyCadence(text) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-class PlaybackManager {
+export class PlaybackManager {
   constructor() {
     this.queue = [];
     this.currentIndex = 0;
@@ -265,6 +266,9 @@ class PlaybackManager {
     // Active utterance descriptor + estimator timer.
     this.activeBatch = null;
     this.estimatorTimer = null;
+    // True when the persisted queue no longer matches this.queue, so the next
+    // saveToSession() has to write it. Cleared only after a successful write.
+    this._queueDirty = true;
   }
 
   /**
@@ -383,6 +387,21 @@ class PlaybackManager {
     // keeps the SW-side keep-alive tick in sync with the state.
     this._syncKeepAliveTick();
     try {
+      const data = {
+        currentIndex: this.currentIndex,
+        playbackState: this.playbackState,
+        tabId: this.tabId,
+        options: this.options,
+        resumeOffset: this.resumeOffset || 0,
+        queueLength: this.queue.length,
+        timestamp: Date.now()
+      };
+
+      if (!this._queueDirty) {
+        await chrome.storage.session.set({ [SESSION_STORAGE_KEY]: data });
+        return;
+      }
+
       // Cap persisted queue: 5000 sentences (matches sanitizeQueue) × ~100
       // chars ≈ 500 KB — well within the 10 MB session storage quota. The
       // old 2000 cap silently truncated long papers on worker restart.
@@ -390,16 +409,13 @@ class PlaybackManager {
       const persistedQueue = this.queue.length > MAX_PERSISTED
         ? this.queue.slice(0, MAX_PERSISTED)
         : this.queue;
-      const data = {
-        queue: persistedQueue,
-        currentIndex: this.currentIndex,
-        playbackState: this.playbackState,
-        tabId: this.tabId,
-        options: this.options,
-        resumeOffset: this.resumeOffset || 0,
-        timestamp: Date.now()
-      };
-      await chrome.storage.session.set({ [SESSION_STORAGE_KEY]: data });
+      await chrome.storage.session.set({
+        [SESSION_QUEUE_KEY]: persistedQueue,
+        [SESSION_STORAGE_KEY]: data
+      });
+      // Only clear the flag once the write really succeeded — a failed write
+      // must be retried by the next save, not silently dropped.
+      this._queueDirty = false;
     } catch (err) {
       console.warn('[PlaybackManager] Failed to write to chrome.storage.session:', err);
     }
@@ -410,10 +426,16 @@ class PlaybackManager {
    */
   async restoreFromSession() {
     try {
-      const res = await chrome.storage.session.get(SESSION_STORAGE_KEY);
+      const res = await chrome.storage.session.get([SESSION_STORAGE_KEY, SESSION_QUEUE_KEY]);
       const data = res[SESSION_STORAGE_KEY];
-      if (data && Array.isArray(data.queue) && data.queue.length > 0) {
-        const queue = PlaybackManager.sanitizeQueue(data.queue);
+      // Sessions written by 1.4.x stored the queue inside the state object;
+      // 1.5.0 stores it under its own key. Read both so upgrading users keep
+      // the session they were in the middle of.
+      const storedQueue = Array.isArray(res[SESSION_QUEUE_KEY])
+        ? res[SESSION_QUEUE_KEY]
+        : (Array.isArray(data && data.queue) ? data.queue : null);
+      if (data && storedQueue && storedQueue.length > 0) {
+        const queue = PlaybackManager.sanitizeQueue(storedQueue);
         if (queue.length === 0) {
           console.warn('[PlaybackManager] Stored session had no usable sentences — discarding.');
           return false;
@@ -431,8 +453,10 @@ class PlaybackManager {
         this.resumeOffset = typeof data.resumeOffset === 'number' ? Math.max(0, data.resumeOffset) : 0;
         if (data.options) {
           this.allVoices = [];
-    this.options = { ...this.options, ...data.options };
+          this.options = { ...this.options, ...data.options };
         }
+        // The queue came from storage, so it is already persisted.
+        this._queueDirty = false;
         console.log(`[PlaybackManager] Restored session: ${this.queue.length} sentences, index ${this.currentIndex}, state: ${this.playbackState}`);
         return true;
       }
@@ -447,6 +471,13 @@ class PlaybackManager {
    */
   async reset() {
     this.playbackRunId = (this.playbackRunId || 0) + 1;
+    // Silence the engine too. reset() runs when the owning tab is gone or the
+    // restored session belongs to a closed tab; clearing the queue without
+    // stopping TTS left the last utterance speaking with no UI attached and
+    // no way for the user to stop it.
+    this.isSwitchingSentence = true;
+    this.awaitingSpeech = false;
+    await stopSpeechAndWait();
     this.queue = [];
     this.currentIndex = 0;
     this.playbackState = PlaybackState.IDLE;
@@ -456,6 +487,10 @@ class PlaybackManager {
     this.consecutiveErrors = 0;
     this.stopEstimator();
     this.activeBatch = null;
+    this.resumeOffset = 0;
+    this.lastWordCharIndex = 0;
+    this.sawWordEvents = false;
+    this._queueDirty = true;   // overwrite the stored queue with the empty one
     await this.saveToSession();
   }
 
@@ -521,6 +556,14 @@ class PlaybackManager {
         this.broadcast('PLAYBACK_COMPLETED');
         return;
       }
+    } else {
+      // The orphaned utterance is STILL talking after the wait and we have no
+      // idea where it is. Silencing it before restarting the sentence is the
+      // only safe move — speaking now would play the same sentence twice at
+      // the same time.
+      console.warn('[PlaybackManager] Orphaned utterance never went idle — stopping it before recovery.');
+      await stopSpeechAndWait(1000);
+      if (this.playbackState !== PlaybackState.PLAYING) return;
     }
     await this.saveToSession();
     this.isSwitchingSentence = false;
@@ -716,6 +759,7 @@ class PlaybackManager {
     await stopSpeechAndWait();
 
     this.queue = queue;
+    this._queueDirty = true;
     const safeStartIndex = typeof startIndex === 'number' && Number.isFinite(startIndex)
       ? Math.trunc(startIndex)
       : 0;
@@ -1514,6 +1558,14 @@ class PlaybackManager {
     };
     this.activeBatch = batchRef;
 
+    // Arm the position estimator from the REQUEST, not from the engine's
+    // 'start' event. An extension engine that never emits 'start' (or emits
+    // it only after a long preparation) otherwise produced no word highlight
+    // at all for the whole session. With no boundary yet the estimator parks
+    // at the first word until the engine's measured preparation window has
+    // passed, so arming early cannot run the highlight ahead of the voice.
+    this.startEstimator(batchRef);
+
     // Mixed-language automatic voice routing:
     // If the utterance is in Bengali or Hindi, route to the best matching native voice.
     const script = detectScript(batch.text);
@@ -1530,7 +1582,13 @@ class PlaybackManager {
 
     try {
       const result = await safeSpeak(batch.text, batchOptions, (event) => {
+        // Two guards, not one. The run id rejects events from a superseded
+        // playback run; the batch identity rejects events from an utterance
+        // that has already been abandoned (watchdog timeout, stop, error)
+        // whose engine kept trickling boundaries for a moment. Without the
+        // second guard those late events dragged the highlight backwards.
         if (runId !== this.playbackRunId) return;
+        if (this.activeBatch !== batchRef) return;
         this.handleTtsEvent(event, batchRef);
       });
 
@@ -1715,8 +1773,31 @@ class PlaybackManager {
     this.isSwitchingSentence = true;
     await stopSpeechAndWait();
 
-    const targetIndex = Math.max(0, Math.min(index, this.queue.length - 1));
+    const requested = typeof index === 'number' && Number.isFinite(index) ? Math.trunc(index) : 0;
+    const targetIndex = Math.max(0, Math.min(requested, this.queue.length - 1));
+    const wasPaused = this.playbackState === PlaybackState.PAUSED;
     this.currentIndex = targetIndex;
+    this.resumeOffset = 0;
+    this.lastWordCharIndex = 0;
+    this.sawWordEvents = false;
+
+    if (wasPaused) {
+      // Seeking while paused moves the reading position but does not start
+      // speaking again: the user pressed pause deliberately. It used to flip
+      // straight back to PLAYING, so a click on the progress bar silently
+      // resumed audio.
+      await this.saveToSession();
+      this.isSwitchingSentence = false;
+      this.broadcast('SENTENCE_CHANGED', {
+        index: targetIndex,
+        sentence: this.queue[targetIndex],
+        totalSentences: this.queue.length,
+        resumeOffset: 0,
+        wordAligned: true
+      });
+      return;
+    }
+
     this.playbackState = PlaybackState.PLAYING;
     await this.saveToSession();
 
@@ -1727,7 +1808,10 @@ class PlaybackManager {
    * Change playback speed rate.
    */
   async setRate(rate) {
-    const validRate = Math.max(0.5, Math.min(rate, 3.0));
+    // A malformed message (NaN/undefined) must not poison every later
+    // utterance with an invalid `rate`, which Chrome silently rejects.
+    const requested = typeof rate === 'number' && Number.isFinite(rate) ? rate : this.options.rate;
+    const validRate = Math.max(0.5, Math.min(requested, 3.0));
     this.options.rate = validRate;
     await this.savePreferences();
     await this.saveToSession();
@@ -1748,7 +1832,8 @@ class PlaybackManager {
    * Change playback volume (0.0 to 1.0).
    */
   async setVolume(volume) {
-    const validVolume = Math.max(0.0, Math.min(volume, 1.0));
+    const requested = typeof volume === 'number' && Number.isFinite(volume) ? volume : this.options.volume;
+    const validVolume = Math.max(0.0, Math.min(requested, 1.0));
     this.options.volume = validVolume;
     await this.savePreferences();
     await this.saveToSession();
@@ -1769,7 +1854,8 @@ class PlaybackManager {
    * Change playback pitch (0.5 to 2.0).
    */
   async setPitch(pitch) {
-    const validPitch = Math.max(0.5, Math.min(pitch, 2.0));
+    const requested = typeof pitch === 'number' && Number.isFinite(pitch) ? pitch : this.options.pitch;
+    const validPitch = Math.max(0.5, Math.min(requested, 2.0));
     this.options.pitch = validPitch;
     await this.savePreferences();
     await this.saveToSession();
@@ -1778,7 +1864,10 @@ class PlaybackManager {
       this.playbackRunId = (this.playbackRunId || 0) + 1;
       this.isSwitchingSentence = true;
       await stopSpeechAndWait();
-      this.speakCurrentSentence(this.playbackRunId, this.resumeOffset || 0);
+      const resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0)
+        ? this.lastWordCharIndex
+        : (this.resumeOffset || 0);
+      this.speakCurrentSentence(this.playbackRunId, resumeFrom);
     } else {
       this.broadcast('OPTIONS_CHANGED', { options: this.options });
     }
@@ -1797,8 +1886,14 @@ class PlaybackManager {
       const say = trimmed.slice(eq + 1).trim();
       if (!find || !say) continue;
       const escaped = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Word boundaries only work next to a word character. A term that ends
+      // in a symbol ("C++", "C#", "node.js" as written) got a trailing `\b`
+      // that can never match, so the rule silently did nothing. Anchor each
+      // side only when that side really is alphanumeric.
+      const prefix = /^[\w]/.test(find) ? '\\b' : '';
+      const suffix = /[\w]$/.test(find) ? '\\b' : '';
       try {
-        rules.push({ re: new RegExp(`\\b${escaped}\\b`, 'gi'), say });
+        rules.push({ re: new RegExp(`${prefix}${escaped}${suffix}`, 'gi'), say });
       } catch (_) { /* invalid pattern — skip line */ }
     }
     return rules;

@@ -6,8 +6,6 @@
 import {
   detectAndSelectVoice,
   safeSpeak,
-  stopSpeech,
-  isSpeaking,
   waitForTtsApi
 } from './speech-engine.js';
 
@@ -59,14 +57,23 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
 });
 
-// If the playing tab navigates to a new URL (link click, address bar, refresh, or SPA history push),
-// the content script / page is gone — stop playback to avoid orphaned audio.
+// If the playing tab really navigates away (link click, address bar, refresh,
+// cross-document navigation), the content script / page is gone — stop
+// playback to avoid orphaned audio.
+//
+// Only `status === 'loading'` counts. A URL change WITHOUT a document load is
+// a same-document history update (SPA pushState, #hash anchor, scroll-spy
+// query-string). The content script owns those: it re-maps its ranges and
+// keeps reading the same document. Stopping on `changeInfo.url` therefore
+// killed narration every time a single-page app updated its address bar —
+// measured symptom: reading a YouTube/Rails/Docs page stopped on its own a
+// few seconds in, with no navigation at all.
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status !== 'loading' && !changeInfo.url) return;
+  if (changeInfo.status !== 'loading') return;
   const state = playbackManager.getState();
   if (playbackManager.tabId === tabId &&
       (state.playbackState === PlaybackState.PLAYING || state.playbackState === PlaybackState.PAUSED)) {
-    console.warn('[Background] Playing tab', tabId, 'navigated or changed URL — stopping playback.');
+    console.warn('[Background] Playing tab', tabId, 'navigated — stopping playback.');
     playbackManager.stop();
   }
 });
@@ -131,18 +138,27 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
   if (info.menuItemId === 'read-aloud-selection' && info.selectionText) {
     const rawText = info.selectionText.trim();
-    if (rawText.length > 0) {
-      const sentences = splitIntoChunks(rawText);
-      const tabId = tab?.id || null;
-      console.log(`[Background] Context menu read triggered: ${sentences.length} sentences on tab`, tabId);
-      await playbackManager.start(sentences, 0, tabId);
-      if (tabId) {
-        chrome.tabs.sendMessage(tabId, {
-          action: 'SELECTION_READ_STARTED',
-          sentences
-        }).catch(() => {});
+    if (rawText.length === 0) return;
+
+    const tabId = tab?.id ?? null;
+
+    // Preferred path: let the TAB build the queue from its own selection.
+    // The content script is the only place that can map the selection onto
+    // DOM Ranges, so this is what makes the word capsule trace a selection
+    // read from the context menu. The background only tokenizes the text as
+    // a fallback for pages without a content script (PDF viewer, chrome://).
+    if (typeof tabId === 'number') {
+      try {
+        const response = await chrome.tabs.sendMessage(tabId, { action: 'TRIGGER_READ_SELECTION' });
+        if (response && response.success) return;
+      } catch (_) {
+        // No receiver in this tab — fall through to the background path.
       }
     }
+
+    const sentences = splitIntoChunks(rawText);
+    console.log(`[Background] Context menu read (fallback): ${sentences.length} sentences on tab`, tabId);
+    await playbackManager.start(sentences, 0, tabId);
   }
 });
 

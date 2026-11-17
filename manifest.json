@@ -1,13 +1,12 @@
 {
   "manifest_version": 3,
   "name": "NarraTrace — Narrates & Traces Every Word",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Narrates any page aloud with local neural voices and traces every word on screen as it speaks — eyes and ears, in sync.",
   "permissions": [
     "tts",
     "storage",
     "activeTab",
-    "scripting",
     "alarms",
     "contextMenus"
   ],
@@ -75,5 +74,8 @@
       },
       "description": "NarraTrace: previous sentence"
     }
-  }
+  },
+  "short_name": "NarraTrace",
+  "minimum_chrome_version": "116",
+  "homepage_url": "https://github.com/bicky911/NarraTrace"
 }

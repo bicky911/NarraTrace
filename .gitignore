@@ -1,3 +1,7 @@
+# Dependencies (never required at runtime)
+node_modules/
+package-lock.json
+
 # System & Editor
 .DS_Store
 Thumbs.db

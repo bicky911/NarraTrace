@@ -28,7 +28,17 @@
   let heartbeatTimer = null;
   let wordBoxEl = null;
   let activeWordRange = null;
+  // The word currently traced, kept as offsets rather than a Range: when the
+  // page re-renders, the Range dies with its text nodes but the character
+  // offsets survive and can be re-anchored onto the repaired sentence.
+  let lastWordHighlight = null;
   let lastBoxTop = -1;
+  // The shadow root is created further down, but handleContextInvalidated()
+  // and showToast() can be reached before that point (a dead extension
+  // context on the very first message). Declaring it up here keeps those
+  // paths from throwing a TDZ ReferenceError — `typeof shadow` does NOT
+  // protect a `const` in its temporal dead zone.
+  let shadow = null;
 
   // ─── Spring-Physics Word-Capsule Engine ─────────────────────────────────────
   // Simulates Hooke's Law: F = -k·x  with damping.
@@ -203,7 +213,8 @@
     if (typeof clearHighlight === 'function') clearHighlight();
     if (typeof hideHoverPlayBtn === 'function') hideHoverPlayBtn();
     if (typeof hideSelectionTooltip === 'function') hideSelectionTooltip();
-    const playBtnEl = shadow?.getElementById('ra-play');
+    if (!shadow) return;
+    const playBtnEl = shadow.getElementById('ra-play');
     if (playBtnEl) {
       playBtnEl.title = 'Extension reloaded — refresh page to reconnect';
       playBtnEl.style.opacity = '0.5';
@@ -317,7 +328,7 @@
   //    sentence-tokenizer.js before this script; background imports the
   //    same file, so tokenization can never drift between contexts).
   // -----------------------------------------------------------------
-  const { splitIntoSentences, splitIntoChunks } = globalThis.ReadAloudTokenizer;
+  const { splitIntoChunks } = globalThis.ReadAloudTokenizer;
 
   // -----------------------------------------------------------------
   // 3. Sentence DOM Range Mapper
@@ -521,11 +532,29 @@
   }
 
   /**
+   * Memoised `buildRangeIndex()` for one sentence.
+   *
+   * The word capsule moves ~22 times per second when the engine reports no
+   * word boundaries, and every move used to re-walk the sentence's text nodes
+   * and rebuild the whole character→(node, offset) table. The table only
+   * becomes stale when the sentence's range is replaced (SPA remap), so it is
+   * keyed on the Range object and built once per sentence instead of once per
+   * word.
+   */
+  function getRangeIndex(item) {
+    if (!item || !item.range) return null;
+    if (!item._rangeIndex || item._rangeIndexFor !== item.range) {
+      item._rangeIndex = buildRangeIndex(item.range);
+      item._rangeIndexFor = item.range;
+    }
+    return item._rangeIndex;
+  }
+
+  /**
    * Resolve a word sub-range within a sentence range using text offset.
    */
   function createSubRangeFromSentence(item, charIndex, charLength) {
     if (!item || !item.range) return null;
-    const baseRange = item.range;
     const text = item.text || '';
     if (charIndex < 0 || charIndex >= text.length) return null;
 
@@ -550,7 +579,8 @@
 
     const targetEnd = Math.min(targetStart + Math.max(1, len), text.length);
 
-    const { positions } = buildRangeIndex(baseRange);
+    const cached = getRangeIndex(item);
+    const positions = cached ? cached.positions : [];
     if (positions.length === 0) return null;
 
     const lastIndex = positions.length - 1;
@@ -615,6 +645,7 @@
 
     const wordRange = createSubRangeFromSentence(item, charIndex, charLength);
     activeWordRange = wordRange;
+    lastWordHighlight = { index, charIndex, charLength };
     if (wordRange) {
       updateWordBoxPosition();
       if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
@@ -627,6 +658,7 @@
 
   function clearWordHighlight() {
     activeWordRange = null;
+    lastWordHighlight = null;
     lastBoxTop = -1;
     // Stop any running spring RAF loop
     if (_springRafId) {
@@ -824,8 +856,16 @@
     // Still attached? The highlight is still valid — nothing to do.
     if (startNode && endNode && document.contains(startNode) && document.contains(endNode)) return;
 
+    // applyHighlight() clears the word capsule, so remember the word before
+    // repairing and re-anchor it afterwards. Without this the capsule vanished
+    // on the first re-render and only came back on the next word event —
+    // which never arrives on an engine that reports sentence boundaries only.
+    const word = lastWordHighlight;
     if (remapCurrentSentence()) {
       applyHighlight(currentSentenceIndex);
+      if (word && word.index === currentSentenceIndex) {
+        applyWordHighlight(word.index, word.charIndex, word.charLength);
+      }
     } else {
       // The sentence is genuinely gone — drop the highlight rather than
       // pointing it at the wrong text.
@@ -902,9 +942,14 @@
     return (typeof zoom === 'number' && isFinite(zoom) && zoom > 0) ? zoom : 1;
   }
 
+  let _lastAppliedZoom = -1;
   function updateZoomCompensation() {
     const zoom = currentPageZoom();
     if (typeof host !== 'undefined' && host) {
+      // Writing a custom property invalidates style for the whole shadow
+      // tree, so only write when the value actually changed.
+      if (zoom === _lastAppliedZoom) return;
+      _lastAppliedZoom = zoom;
       host.style.setProperty('--ra-page-zoom', String(zoom));
     }
   }
@@ -933,7 +978,17 @@
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', updateZoomCompensation);
   }
-  setInterval(updateZoomCompensation, 1200);
+  // Poll as a backstop (Ctrl +/- does not always fire resize before the pill
+  // visibly changes size), but never in a hidden tab and never for nothing:
+  // the tick costs one style write, and only when the zoom really moved.
+  const _zoomPollTimer = setInterval(() => {
+    if (document.visibilityState === 'hidden') return;
+    updateZoomCompensation();
+  }, 1200);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') updateZoomCompensation();
+  });
+  window.addEventListener('pagehide', () => clearInterval(_zoomPollTimer), { passive: true });
 
   // -----------------------------------------------------------------
   // 4. Create Host Element & Shadow DOM Player UI
@@ -946,7 +1001,7 @@
   // also works on a display that is not at 100% scaling.
   initZoomTracking();
 
-  const shadow = host.attachShadow({ mode: 'open' });
+  shadow = host.attachShadow({ mode: 'open' });
 
   const style = document.createElement('style');
   style.textContent = `
@@ -1977,7 +2032,14 @@
       opacity: 0;
       pointer-events: none;
       transform: translateY(12px) scale(0.99);
-      transition: opacity 220ms ease, transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+      /* visibility (not just opacity) keeps the closed overlay out of the
+         accessibility tree and out of the Tab order. The 220 ms delay lets the
+         fade-out finish before the element disappears. */
+      visibility: hidden;
+      transition:
+        opacity 220ms ease,
+        transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+        visibility 0s linear 220ms;
     }
 
     .reader-overlay.open,
@@ -1985,6 +2047,11 @@
       opacity: 1;
       pointer-events: all;
       transform: translateY(0) scale(1);
+      visibility: visible;
+      transition:
+        opacity 220ms ease,
+        transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+        visibility 0s linear 0s;
     }
 
     .reader-overlay.theme-cream {
@@ -2788,6 +2855,12 @@
   const readerOverlay = document.createElement('div');
   readerOverlay.className = 'reader-overlay theme-cream font-sans';
   readerOverlay.id = 'ra-reader-overlay';
+  // A full-screen reading surface is a modal dialog: name it, mark it modal,
+  // and hide it from assistive technology while it is closed.
+  readerOverlay.setAttribute('role', 'dialog');
+  readerOverlay.setAttribute('aria-modal', 'true');
+  readerOverlay.setAttribute('aria-label', 'Focus Reader');
+  readerOverlay.setAttribute('aria-hidden', 'true');
   readerOverlay.innerHTML = `
     <div class="reader-header">
       <div class="reader-header-left">
@@ -2883,7 +2956,6 @@
   const pronTextareaEl    = shadow.getElementById('ra-pron-textarea');
 
   // Focus Reader references
-  const readerBtn          = shadow.getElementById('ra-reader');
   const readerCloseBtn     = shadow.getElementById('ra-reader-close');
   const readerTitleEl      = shadow.getElementById('ra-reader-title');
   const readerMetaEl       = shadow.getElementById('ra-reader-meta');
@@ -2921,10 +2993,6 @@
   let currentSpeed = 1.0;
   let currentVolume = 1.0;
   let isSettingsOpen = false;
-  let currentTheme = 'te';
-  let currentLayout = 'compact';
-  let currentScale = 1.0;
-  let currentOpacity = 0.96;
   let selectionTooltipEnabled = true;
   let hoverToPlayEnabled = true;
   let isPillVisible = true;
@@ -3093,7 +3161,7 @@
     voiceStatusEl.className = 'voice-status';
 
     safeSendMessage({ action: 'GET_VOICES' }, (res) => {
-      if (!res || !res.success) {
+      if (!res || !res.success || !res.data) {
         voiceStatusEl.textContent = 'Could not load voice list.';
         voiceStatusEl.className = 'voice-status warn';
         return;
@@ -3180,7 +3248,6 @@
    * Apply Theme: te, te-field, midnight, light, sepia, glass, neon, nord, rose, mono.
    */
   function applyTheme(theme) {
-    currentTheme = theme;
     host.classList.remove(
       'theme-te', 'theme-te-field', 'theme-light', 'light',
       'theme-midnight', 'theme-sepia', 'theme-glass', 'theme-neon', 'theme-nord', 'theme-rose', 'theme-mono'
@@ -3200,7 +3267,6 @@
   }
 
   function applyPillLayout(layout) {
-    currentLayout = layout;
     container.classList.remove('pill-compact', 'pill-full', 'pill-mini');
     const valid = ['compact', 'full', 'mini'].includes(layout) ? layout : 'compact';
     container.classList.add(`pill-${valid}`);
@@ -3217,7 +3283,6 @@
    */
   function applyPillScale(scale) {
     const s = Math.max(0.5, Math.min(scale, 1.5));
-    currentScale = s;
     host.style.setProperty('--pill-scale', String(s));
     pillZoom = 1;
 
@@ -3231,7 +3296,6 @@
    */
   function applyPillOpacity(opacity) {
     const op = Math.max(0.5, Math.min(opacity, 1.0));
-    currentOpacity = op;
     host.style.setProperty('--pill-opacity', String(op));
     if (opacityRangeEl) opacityRangeEl.value = String(op);
     if (opacityValEl) opacityValEl.textContent = `${Math.round(op * 100)}%`;
@@ -3650,6 +3714,7 @@
 
   let statusToastTimer = null;
   function showToast(message) {
+    if (!shadow) return;
     const toast = shadow.getElementById('ra-status-toast');
     const text = shadow.getElementById('ra-status-toast-text');
     if (!toast || !text) return;
@@ -3733,6 +3798,10 @@
     safeStorageSet({ readAloud_readerFontSize: readerFontSize });
   }
 
+  // Where focus was before the reader opened, so Escape/EXIT returns the user
+  // to the control they came from instead of the top of the document.
+  let readerReturnFocus = null;
+
   function openReaderView() {
     if (currentSentenceRanges.length === 0) {
       buildPlaybackQueue();
@@ -3788,7 +3857,16 @@
     }
 
     isReaderOpen = true;
+    // ShadowRoot.activeElement is the element that actually has focus inside
+    // the player; document.activeElement is only the host.
+    readerReturnFocus = (shadow && shadow.activeElement) || document.activeElement;
     readerOverlay.classList.add('open');
+    readerOverlay.setAttribute('aria-hidden', 'false');
+    // Move focus into the dialog so keyboard and screen-reader users are not
+    // left navigating the page behind it.
+    try {
+      readerCloseBtn?.focus({ preventScroll: true });
+    } catch (_) { /* focus can fail in a background tab */ }
 
     // Sync reader playback controls with current state
     if (rctrlPlayIcon) {
@@ -3811,6 +3889,20 @@
   function closeReaderView() {
     isReaderOpen = false;
     readerOverlay.classList.remove('open');
+    readerOverlay.setAttribute('aria-hidden', 'true');
+    const back = readerReturnFocus;
+    readerReturnFocus = null;
+    // The opener can be gone (SPA re-render) or hidden (the settings panel
+    // closes when it launches the reader). Hand focus back only when the
+    // target is genuinely focusable, otherwise focus the pill's play button so
+    // the user never lands on <body> with no visible focus ring.
+    if (back && back.isConnected && typeof back.focus === 'function' && back.getClientRects().length > 0) {
+      back.focus({ preventScroll: true });
+    } else if (playBtn && typeof playBtn.focus === 'function') {
+      try {
+        playBtn.focus({ preventScroll: true });
+      } catch (_) { /* background tab */ }
+    }
   }
 
   function toggleReaderView() {
@@ -3884,13 +3976,31 @@
     });
   }
 
+  // Focus trap: while the dialog is open, Tab cycles inside it instead of
+  // walking into the page behind the overlay.
+  readerOverlay.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab' || !isReaderOpen) return;
+    const focusable = Array.from(
+      readerOverlay.querySelectorAll('button, select, [href], [tabindex]:not([tabindex="-1"])')
+    ).filter((el) => !el.disabled && el.getClientRects().length > 0);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    // Focus lives inside the shadow tree, so document.activeElement is only
+    // the host — it can never equal the first/last control.
+    const active = (shadow && shadow.activeElement) || document.activeElement;
+    if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
+
   // Reader Event Listeners
   if (readerCloseBtn) {
     readerCloseBtn.addEventListener('click', closeReaderView);
-  }
-
-  if (readerBtn) {
-    readerBtn.addEventListener('click', toggleReaderView);
   }
 
   readerThemeBtns.forEach(btn => {
@@ -4381,7 +4491,6 @@
   let isDragging = false;
   let startX = 0, startY = 0, initialLeft = 0, initialTop = 0;
   let isDocked = false;
-  let dockedEdge = null; // 'left' | 'right'
   tuckTimer = null; // declaration hoisted above IIFE for TDZ safety
 
   function scheduleTuck(delayMs = 2500) {
@@ -4400,7 +4509,6 @@
 
   function dockToEdge(edge, topY, asBead = false) {
     isDocked = true;
-    dockedEdge = edge;
     container.classList.remove('is-docked-left', 'is-docked-right', 'is-tucked', 'beaded', 'snap-guide-left', 'snap-guide-right');
     container.classList.add(edge === 'left' ? 'is-docked-left' : 'is-docked-right');
     if (asBead) {
@@ -4436,7 +4544,6 @@
 
   function undockFromEdge(leftX, topY) {
     isDocked = false;
-    dockedEdge = null;
     if (tuckTimer) clearTimeout(tuckTimer);
     container.classList.remove('is-docked-left', 'is-docked-right', 'is-tucked', 'beaded', 'snap-guide-left', 'snap-guide-right');
 
@@ -4592,7 +4699,6 @@
     } else {
       const pos = res?.readAloud_playerPosition;
       if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') {
-        const pad = 10;
         const maxLeft = window.innerWidth - 150;
         const maxTop = window.innerHeight - 50;
         if (pos.left >= 0 && pos.left <= maxLeft && pos.top >= 0 && pos.top <= maxTop) {
@@ -4795,7 +4901,7 @@
     const rect = block.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
 
-    const BTN = 26; // keep in sync with .hover-play-btn width/height in CSS
+    const BTN = 28; // keep in sync with .hover-play-btn width/height in CSS
 
     // Vertical: the hovered line, clamped inside the block.
     let top;
@@ -5370,6 +5476,25 @@
         return false;
       }
 
+      case 'TRIGGER_READ_SELECTION': {
+        // Context-menu "narrate selection": the page owns the DOM ranges, so
+        // it builds the queue (buildPlaybackQueue prioritises the selection)
+        // and the background only receives the finished sentence list.
+        const sentences = buildPlaybackQueue();
+        if (!sentences || sentences.length === 0) {
+          sendResponse({ success: false, message: 'Nothing selected.' });
+          return false;
+        }
+        safeSendMessage({
+          action: 'START_PLAYBACK',
+          sentences,
+          startIndex: 0,
+          options: { rate: currentSpeed, volume: currentVolume }
+        });
+        sendResponse({ success: true, count: sentences.length });
+        return false;
+      }
+
       case 'TRIGGER_READ_FROM_HERE': {
         const target = lastContextMenuTarget || document.activeElement;
         const block = findEligibleParagraph(target) || (target && target.closest ? target.closest('p, h1, h2, h3, h4, h5, h6, li, blockquote') : null);
@@ -5402,6 +5527,13 @@
             message.event.charIndex + (currentResumeOffset || 0),
             rawLength
           );
+        }
+        break;
+      }
+
+      case 'VOICE_CHANGED': {
+        if (voiceInfo && message.voiceName) {
+          voiceInfo.textContent = message.voiceName.split(' ').slice(0, 2).join(' ');
         }
         break;
       }
