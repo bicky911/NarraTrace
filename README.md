@@ -17,7 +17,7 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Manifest: V3](https://img.shields.io/badge/Manifest-V3-orange.svg)
 ![Static checks: 86](https://img.shields.io/badge/static%20checks-86-brightgreen.svg)
-![Behavioural tests: 76](https://img.shields.io/badge/behavioural%20tests-76-brightgreen.svg)
+![Behavioural tests: 94](https://img.shields.io/badge/behavioural%20tests-94-brightgreen.svg)
 
 ---
 
@@ -53,7 +53,7 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 Three independent gates, all runnable offline with no dependencies:
 
 ```bash
-npm test          # 76 behavioural tests on Node's built-in runner
+npm test          # 94 behavioural tests on Node's built-in runner
 npm run lint      # package integrity: manifest, permissions, API allowlist, message wiring
 python3 test-harness.py   # 86 static structural checks (calibration invariants)
 npm run check     # all three gates in one command

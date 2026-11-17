@@ -216,6 +216,23 @@ chrome.storage.local.get('readAloud_userPreferences').then(({ readAloud_userPref
       counter advances without stutter.
       *(The queue is now persisted once per run instead of on every sentence.)*
 
+### 8.11 Word tracing on rewritten sentences (60 s)
+
+Open a page whose prose contains a citation or URL, an em-dash and a
+parenthetical, e.g.:
+
+> Yield rose 12% [1] in 2024 — a record — after the (unexpected) rain.
+
+- [ ] The sentence highlight (the block-level trace) advances normally.
+- [ ] On that sentence the word capsule does **not** trace a wrong word; it may
+      sit still or stay hidden — both are correct, the fallback is deliberate.
+- [ ] The next sentence, if it contains none of those constructs, traces its
+      words normally again.
+- [ ] Pause during the rewritten sentence, then resume: playback restarts at the
+      **beginning of that sentence**, never mid-word.
+- [ ] The same holds for a sentence rewritten by a pronunciation override
+      (`C++ = see plus plus`): sentence tracking continues, word tracing pauses.
+
 ---
 
 ## If something is wrong

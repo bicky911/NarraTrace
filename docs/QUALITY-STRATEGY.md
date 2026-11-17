@@ -36,7 +36,7 @@ an observable expected result.
 note in the changelog, and a regression test at the lowest layer that can hold
 it.
 
-The 1.5.0 pass found and fixed eight defects this way, several of which had
+The 1.5.0 pass found and fixed nine defects this way, several of which had
 survived earlier releases because the static harness only proved that *code
 existed*, not that it *behaved*:
 
@@ -50,6 +50,7 @@ existed*, not that it *behaved*:
 | `C++ = see plus plus` did nothing | trailing `\b` cannot follow `+` | `tests/playback-manager.test.js` |
 | English sentences with one Bangla word read in Bangla | "any native character wins" routing | `tests/speech-engine.test.js` |
 | Word capsule disappeared after an in-place re-render | DOM repair re-applied only the sentence highlight | manual §8.9 + `npm run test:dom` |
+| Word capsule traced the wrong word after a citation/dash rewrite | spoken-text offsets were applied to page text; only pronunciation rewrites disabled alignment | `tests/text-offsets.test.js` (18) |
 
 **Rule:** a bug is not closed until the failing test exists and passes.
 
@@ -118,7 +119,7 @@ The behavioural suite runs on Node's built-in runner with a fake `chrome.tts`
 that can complete an utterance automatically or emit every event by hand. It
 covers the tokenizer, speech engine, voice resolution, playback state machine,
 error budgets, pause/resume offsets, storage migration and batch grouping —
-76 tests in under a second, no dependencies, no browser.
+94 tests in under a second, no dependencies, no browser.
 
 ### 2.6 Release discipline
 
@@ -238,7 +239,7 @@ A change is complete when:
 
 - [ ] The behaviour is described by a failing test that now passes (or a
       regression pin when a DOM harness is disproportionate).
-- [ ] `npm run check` is green: 76 behavioural tests, 86 static checks, zero
+- [ ] `npm run check` is green: 94 behavioural tests, 86 static checks, zero
       lint errors.
 - [ ] The changelog entry names the symptom and the cause, not just the diff.
 - [ ] No new permission, remote code, dependency or `chrome.*` namespace was

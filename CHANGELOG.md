@@ -54,6 +54,31 @@ package-integrity linter instead of a string-matching checklist alone.
   a real document load (`status === 'loading'`); the content script continues
   to own same-document navigation.
 
+### Fixed — word positions from rewritten speech were applied to the page
+
+- **The speech pipeline rewrites what the voice says** — citations and URLs are
+  stripped, em-dashes and parentheticals become comma pauses, pronunciation
+  rules replace terms — but word events index that *rewritten* text. The page
+  highlight used the number as an offset into the original sentence, so any
+  sentence containing a citation, a URL, a dash or a parenthetical traced the
+  wrong word from the rewrite onwards (measured: 4 characters early after
+  `[1]`). `pause()` stored the same number, so resume could cut into the
+  middle of a different word.
+- **`buildBatch()` now records, per sentence, whether the spoken form is
+  byte-for-byte the source.** Only those sentences may turn an engine offset
+  into a highlight or a resume point. A rewritten sentence keeps full
+  sentence-level tracking and simply does not trace individual words — the
+  deliberate conservative fallback; a general speech→page index map was
+  rejected as less reliable than one sentence without word tracing.
+- **Pause/resume only reuses an offset that belongs to the current sentence
+  and maps onto the page.** Offsets from a previous sentence, or from rewritten
+  speech, are discarded, so resume restarts the sentence instead of resuming
+  mid-word. The same rule covers rate/volume/pitch restarts and the watchdog
+  continuation.
+- **18 regression tests** (`tests/text-offsets.test.js`) cover citations, URLs,
+  em-dashes, parentheticals, pronunciation rules, untouched control sentences,
+  grouped utterances, resumed playback and cross-sentence stale offsets.
+
 ### Fixed — the word capsule survives a re-render
 
 - **A DOM repair re-anchors the traced word, not just the sentence.** When a
@@ -115,7 +140,7 @@ package-integrity linter instead of a string-matching checklist alone.
 
 ### Added — quality infrastructure
 
-- **`npm test`** — 76 behavioural tests on Node's built-in runner (zero
+- **`npm test`** — 94 behavioural tests on Node's built-in runner (zero
   dependencies): tokenizer regressions, the speech pipeline, voice resolution,
   the playback state machine against a controllable fake `chrome.tts`, error
   budgets, pause/resume offsets, recovery and reset, session persistence and

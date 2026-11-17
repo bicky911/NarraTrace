@@ -230,8 +230,12 @@ export class PlaybackManager {
     // watchdog remainder re-queue. Absolute char index into the FULL sentence.
     this.lastWordCharIndex = 0;
     this.sawWordEvents = false;
-    // False when pronunciation overrides rewrote the sentence: word events
-    // then index the rewritten text and can no longer be mapped reliably.
+    // Which sentence that offset belongs to. Offsets are per sentence, so one
+    // left over from the previous sentence is never valid for the next one.
+    this.lastWordSentence = -1;
+    // False when any rewrite (citation noise, prosody, pronunciation) changed
+    // the spoken form of a sentence in the current batch: word events then
+    // index the rewritten text and cannot be mapped onto the page.
     this.wordEventsUsable = true;
     this.resumeOffset = 0;
     // SW-side keep-alive interval handle (see _syncKeepAliveTick).
@@ -490,6 +494,7 @@ export class PlaybackManager {
     this.resumeOffset = 0;
     this.lastWordCharIndex = 0;
     this.sawWordEvents = false;
+    this.lastWordSentence = -1;
     this._queueDirty = true;   // overwrite the stored queue with the empty one
     await this.saveToSession();
   }
@@ -886,6 +891,9 @@ export class PlaybackManager {
     const items = [];
     const offsets = [];
     const spokenTexts = [];
+    // Per sentence: is the spoken form byte-for-byte the source sentence?
+    // Only then does a spoken char index equal a page char index.
+    const wordAligned = [];
     let pronunciationChanged = false;
     let acc = 0;
 
@@ -918,6 +926,7 @@ export class PlaybackManager {
       items.push(item);
       spokenTexts.push(norm.text);
       offsets.push(acc);
+      wordAligned.push(norm.text === source);
       acc += norm.text.length + 1; // +1 for the joining space
 
       // Rewritten text can no longer be matched to the original offsets.
@@ -933,6 +942,8 @@ export class PlaybackManager {
       items,
       offsets,
       spokenTexts,
+      // A word offset may only be treated as a page offset for `true` slots.
+      wordAligned,
       spokenLengths: spokenTexts.map((t) => t.length),
       text: spokenTexts.join(' '),
       firstIndex,
@@ -973,6 +984,61 @@ export class PlaybackManager {
   }
 
   /**
+   * Can a word offset for this sentence be applied to the page?
+   *
+   * Word events index the SPOKEN text. `buildBatch()` records, per sentence,
+   * whether that text is byte-for-byte the source sentence; it is not once a
+   * citation, URL, em-dash, parenthesis or pronunciation rule rewrote it. Only
+   * an aligned sentence may turn an engine offset into a highlight or a resume
+   * point — everything else keeps sentence-level tracking only.
+   */
+  canMapWordOffset(batch, sentenceIndex) {
+    if (!batch || !Array.isArray(batch.wordAligned)) return false;
+    const slot = sentenceIndex - batch.firstIndex;
+    return batch.wordAligned[slot] === true;
+  }
+
+  /**
+   * The only word offset allowed to survive into a resume.
+   *
+   * Conservative by design: returns 0 unless the last word event came from the
+   * sentence that is current NOW and that sentence's spoken form is identical
+   * to the page text. A general speech-index → page-index map through every
+   * rewrite was deliberately rejected: restarting one sentence is cheaper and
+   * far more reliable than cutting into the middle of a word.
+   */
+  validResumeOffset() {
+    if (!this.sawWordEvents) return 0;
+    if (this.lastWordSentence !== this.currentIndex) return 0;
+    const item = this.queue[this.currentIndex];
+    if (!item || typeof item.text !== 'string') return 0;
+    const offset = this.lastWordCharIndex;
+    return (offset > 0 && offset < item.text.length) ? offset : 0;
+  }
+
+  /**
+   * Record a word position — but only if it indexes the page text.
+   *
+   * @returns {boolean} true when the position was usable (and the caller may
+   *   broadcast it as aligned).
+   */
+  recordWordPosition(batch, sentenceIndex, pageOffset) {
+    const mapped = this.canMapWordOffset(batch, sentenceIndex);
+    if (mapped) {
+      this.lastWordCharIndex = pageOffset;
+      this.sawWordEvents = true;
+      this.lastWordSentence = sentenceIndex;
+    } else {
+      // An offset into a rewrite is not a page offset. Drop it, and drop any
+      // offset inherited from an earlier sentence with it.
+      this.lastWordCharIndex = 0;
+      this.sawWordEvents = false;
+      this.lastWordSentence = -1;
+    }
+    return mapped;
+  }
+
+  /**
    * Move the reader's position to a sentence and tell the UI about it.
    */
   setCurrentSentence(sentenceIndex, batch) {
@@ -988,7 +1054,7 @@ export class PlaybackManager {
       sentence: item,
       totalSentences: this.queue.length,
       resumeOffset: (sentenceIndex === batch.firstIndex && batch.resumeOffset > 0) ? batch.resumeOffset : 0,
-      wordAligned: this.wordEventsUsable
+      wordAligned: this.canMapWordOffset(batch, sentenceIndex)
     });
   }
 
@@ -1162,8 +1228,12 @@ export class PlaybackManager {
       batch.lastWordIndex = rel;
 
       // Absolute position inside the full sentence (used by pause/resume).
-      this.lastWordCharIndex = (batch.resumeOffset || 0) + rel;
-      this.sawWordEvents = true;
+      // The number is only meaningful when the engine read the source text
+      // verbatim; a rewritten sentence's offset would cut into another word on
+      // resume, so it is discarded rather than stored.
+      const mapped = this.recordWordPosition(
+        batch, loc.sentenceIndex, (batch.resumeOffset || 0) + rel
+      );
 
       const wordLength = (typeof event.length === 'number' && event.length > 0)
         ? event.length
@@ -1177,7 +1247,7 @@ export class PlaybackManager {
           length: wordLength
         },
         index: loc.sentenceIndex,
-        aligned: this.wordEventsUsable,
+        aligned: mapped,
         resumeOffset: 0
       });
       return;
@@ -1389,14 +1459,16 @@ export class PlaybackManager {
 
       // Feed the estimate into the pause/resume bookkeeping too, so pausing
       // with an engine that reports no word boundaries still resumes near the
-      // right place instead of restarting the sentence.
-      this.lastWordCharIndex = (batch.resumeOffset || 0) + wordStart;
-      this.sawWordEvents = true;
+      // right place instead of restarting the sentence — but only when the
+      // estimate indexes the page text rather than a rewrite of it.
+      const mapped = this.recordWordPosition(
+        batch, loc.sentenceIndex, (batch.resumeOffset || 0) + wordStart
+      );
 
       this.broadcast('TTS_EVENT', {
         event: { type: 'word', charIndex: wordStart, charLength: len, length: len },
         index: loc.sentenceIndex,
-        aligned: this.wordEventsUsable,
+        aligned: mapped,
         resumeOffset: 0
       });
     }, ESTIMATOR_INTERVAL_MS);
@@ -1493,16 +1565,18 @@ export class PlaybackManager {
     // Resume/continuation: speak only the remainder from `offset`, while
     // highlight metadata keeps referencing the FULL sentence text.
     this.resumeOffset = safeOffset;
+    // A new utterance invalidates the previous sentence's word position.
+    this.lastWordSentence = -1;
     if (safeOffset === 0) {
       this.lastWordCharIndex = 0;
       this.sawWordEvents = false;
     }
 
-    // Pronunciation overrides rewrite the SPOKEN text only; the queue and
-    // highlight always use the original. When they changed the text, word
-    // events can no longer be mapped onto the original — degrade to
-    // sentence-level highlight for that sentence.
-    this.wordEventsUsable = !batch.pronunciationChanged;
+    // Any rewrite (noise stripping, prosody cadence, pronunciation) changes
+    // the spoken text; word events then index that text, not the page. When
+    // even one sentence in the batch was rewritten, the coarse batch-level
+    // flag is false. Per-sentence decisions use canMapWordOffset().
+    this.wordEventsUsable = batch.wordAligned.every(Boolean);
 
     console.log(
       `[PlaybackManager] Speaking [${firstIndex + 1}/${this.queue.length}]` +
@@ -1528,6 +1602,9 @@ export class PlaybackManager {
       offsets: batch.offsets,
       spokenLengths: batch.spokenLengths,
       spokenTexts: batch.spokenTexts,
+      // Per-sentence mapability: word events may only become page offsets for
+      // sentences whose spoken form was not rewritten.
+      wordAligned: batch.wordAligned,
       text: batch.text,
       resumeOffset: safeOffset,
       // The moment the request was handed to the engine. The engine's own
@@ -1608,7 +1685,7 @@ export class PlaybackManager {
           && !this.isSwitchingSentence) {
         const spokenIndex = batchRef.currentSentence;
         const spokenItem = this.queue[spokenIndex];
-        const cont = this.sawWordEvents ? this.lastWordCharIndex : 0;
+        const cont = (spokenIndex === this.currentIndex) ? this.validResumeOffset() : 0;
         if (spokenItem && cont > 0 && cont < spokenItem.text.length) {
           this.currentIndex = spokenIndex;
           this.speakCurrentSentence(runId, cont);
@@ -1662,11 +1739,12 @@ export class PlaybackManager {
 
     // Remember how far into the current sentence we got so resume continues
     // from the spoken word instead of replaying the whole sentence.
-    const item = this.queue[this.currentIndex];
-    const spoken = this.sawWordEvents ? this.lastWordCharIndex : 0;
-    this.resumeOffset = (this.wordEventsUsable && item && spoken > 0 && spoken < item.text.length)
-      ? spoken
-      : 0;
+    //
+    // validResumeOffset() returns 0 unless that offset indexes the page text
+    // of the sentence that is current right now. Storing an offset that came
+    // from a rewritten sentence used to resume in the middle of a different
+    // word — the audible half of the F1 defect.
+    this.resumeOffset = this.validResumeOffset();
 
     this.playbackRunId = (this.playbackRunId || 0) + 1;
     this.isSwitchingSentence = true;
@@ -1780,6 +1858,7 @@ export class PlaybackManager {
     this.resumeOffset = 0;
     this.lastWordCharIndex = 0;
     this.sawWordEvents = false;
+    this.lastWordSentence = -1;
 
     if (wasPaused) {
       // Seeking while paused moves the reading position but does not start
@@ -1821,7 +1900,7 @@ export class PlaybackManager {
       this.playbackRunId = (this.playbackRunId || 0) + 1;
       this.isSwitchingSentence = true;
       await stopSpeechAndWait();
-      const resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0) ? this.lastWordCharIndex : (this.resumeOffset || 0);
+      const resumeFrom = this.validResumeOffset() || (this.resumeOffset || 0);
       this.speakCurrentSentence(this.playbackRunId, resumeFrom);
     } else {
       this.broadcast('OPTIONS_CHANGED', { options: this.options });
@@ -1843,7 +1922,7 @@ export class PlaybackManager {
       this.playbackRunId = (this.playbackRunId || 0) + 1;
       this.isSwitchingSentence = true;
       await stopSpeechAndWait();
-      const resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0) ? this.lastWordCharIndex : (this.resumeOffset || 0);
+      const resumeFrom = this.validResumeOffset() || (this.resumeOffset || 0);
       this.speakCurrentSentence(this.playbackRunId, resumeFrom);
     } else {
       this.broadcast('OPTIONS_CHANGED', { options: this.options });
@@ -1864,9 +1943,7 @@ export class PlaybackManager {
       this.playbackRunId = (this.playbackRunId || 0) + 1;
       this.isSwitchingSentence = true;
       await stopSpeechAndWait();
-      const resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0)
-        ? this.lastWordCharIndex
-        : (this.resumeOffset || 0);
+      const resumeFrom = this.validResumeOffset() || (this.resumeOffset || 0);
       this.speakCurrentSentence(this.playbackRunId, resumeFrom);
     } else {
       this.broadcast('OPTIONS_CHANGED', { options: this.options });
