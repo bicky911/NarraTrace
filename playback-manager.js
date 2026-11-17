@@ -233,6 +233,9 @@ class PlaybackManager {
     // then index the rewritten text and can no longer be mapped reliably.
     this.wordEventsUsable = true;
     this.resumeOffset = 0;
+    // True when a worker restart was detected while a browser-owned utterance
+    // was still speaking. Persisted so a later alarm can advance after it ends.
+    this.recoveryPendingAdvance = false;
     // SW-side keep-alive interval handle (see _syncKeepAliveTick).
     this._keepAliveTimer = null;
     // Explicit grouping override (0 = automatic).
@@ -397,6 +400,7 @@ class PlaybackManager {
         tabId: this.tabId,
         options: this.options,
         resumeOffset: this.resumeOffset || 0,
+        recoveryPendingAdvance: this.recoveryPendingAdvance === true,
         timestamp: Date.now()
       };
       await chrome.storage.session.set({ [SESSION_STORAGE_KEY]: data });
@@ -429,6 +433,7 @@ class PlaybackManager {
         this.playbackState = data.playbackState || PlaybackState.IDLE;
         this.tabId = typeof data.tabId === 'number' ? data.tabId : null;
         this.resumeOffset = typeof data.resumeOffset === 'number' ? Math.max(0, data.resumeOffset) : 0;
+        this.recoveryPendingAdvance = data.recoveryPendingAdvance === true;
         if (data.options) {
           this.allVoices = [];
     this.options = { ...this.options, ...data.options };
@@ -447,6 +452,7 @@ class PlaybackManager {
    */
   async reset() {
     this.playbackRunId = (this.playbackRunId || 0) + 1;
+    this.recoveryPendingAdvance = false;
     this.queue = [];
     this.currentIndex = 0;
     this.playbackState = PlaybackState.IDLE;
@@ -495,36 +501,67 @@ class PlaybackManager {
     if (this.playbackState !== PlaybackState.PLAYING) return;
     if (this.queue.length === 0) return;
 
-    // Hold the keep-alive heartbeat off while we recover, so it cannot start a
-    // second recovery chain on top of this one during the awaits below.
+    // Keep duplicate recovery attempts from overlapping while asynchronous
+    // TTS status checks are in progress.
     this.isSwitchingSentence = true;
-
+    const recoveryRunId = this.playbackRunId;
     const speaking = await isSpeaking();
-    if (!speaking) {
+
+    if (this.playbackState !== PlaybackState.PLAYING ||
+        recoveryRunId !== this.playbackRunId) return;
+
+    if (speaking) {
+      // Persist this fact before waiting. If the wait times out and the worker
+      // wakes on a later alarm, it must know that the current utterance was
+      // already in progress rather than replaying the same sentence.
+      this.recoveryPendingAdvance = true;
+    }
+
+    if (!this.recoveryPendingAdvance) {
+      // The worker died before the browser accepted the utterance. Replaying
+      // the current sentence is safe because no browser-owned speech is active.
       console.log('[PlaybackManager] Recovering interrupted playback at sentence #', this.currentIndex + 1);
       this.isSwitchingSentence = false;
-      this.speakCurrentSentence(this.playbackRunId);
+      this.speakCurrentSentence(recoveryRunId);
       return;
     }
 
-    console.warn('[PlaybackManager] Worker restarted mid-utterance — waiting for it to finish.');
-    const wentIdle = await this.waitForSpeechIdle(10000);
-    if (this.playbackState !== PlaybackState.PLAYING) return;
-    if (wentIdle) {
-      // The orphaned utterance completed; its event was lost, so advance here.
-      this.currentIndex++;
-      if (this.currentIndex >= this.queue.length) {
-        console.log('[PlaybackManager] Recovered queue finished after last sentence.');
-        this.playbackState = PlaybackState.STOPPED;
-        this.currentIndex = 0;
+    if (speaking) {
+      console.warn('[PlaybackManager] Worker restarted mid-utterance — waiting for it to finish.');
+      const wentIdle = await this.waitForSpeechIdle(10000);
+
+      if (this.playbackState !== PlaybackState.PLAYING ||
+          recoveryRunId !== this.playbackRunId) return;
+
+      if (!wentIdle) {
+        console.warn('[PlaybackManager] Orphaned utterance is still active — deferring recovery until the next alarm.');
+        this.awaitingSpeech = false;
+        this.isSwitchingSentence = false;
         await this.saveToSession();
-        this.broadcast('PLAYBACK_COMPLETED');
         return;
       }
     }
+
+    // The orphaned utterance has now been observed idle, either during this
+    // recovery attempt or on a later alarm. Its end event belonged to the
+    // previous worker, so advance exactly once before starting a new request.
+    this.recoveryPendingAdvance = false;
+    this.currentIndex++;
+    if (this.currentIndex >= this.queue.length) {
+      console.log('[PlaybackManager] Recovered queue finished after last sentence.');
+      this.playbackState = PlaybackState.STOPPED;
+      this.currentIndex = 0;
+      this.awaitingSpeech = false;
+      await this.saveToSession();
+      this.broadcast('PLAYBACK_COMPLETED');
+      return;
+    }
+
     await this.saveToSession();
+    if (this.playbackState !== PlaybackState.PLAYING ||
+        recoveryRunId !== this.playbackRunId) return;
     this.isSwitchingSentence = false;
-    this.speakCurrentSentence(this.playbackRunId);
+    this.speakCurrentSentence(recoveryRunId);
   }
 
   /**
@@ -712,6 +749,7 @@ class PlaybackManager {
     this.playbackRunId = (this.playbackRunId || 0) + 1;
     this.isSwitchingSentence = true;
     this.awaitingSpeech = false;
+    this.recoveryPendingAdvance = false;
     this.consecutiveErrors = 0;
     await stopSpeechAndWait();
 
@@ -1602,6 +1640,8 @@ class PlaybackManager {
       return;
     }
 
+    this.recoveryPendingAdvance = false;
+
     // Remember how far into the current sentence we got so resume continues
     // from the spoken word instead of replaying the whole sentence.
     const item = this.queue[this.currentIndex];
@@ -1640,6 +1680,7 @@ class PlaybackManager {
    * Stop playback and reset to beginning.
    */
   async stop() {
+    this.recoveryPendingAdvance = false;
     this.playbackRunId = (this.playbackRunId || 0) + 1;
     this.isSwitchingSentence = true;
     this.playbackState = PlaybackState.STOPPED;
@@ -1657,6 +1698,7 @@ class PlaybackManager {
   async skipForward() {
     if (this.queue.length === 0) return;
 
+    this.recoveryPendingAdvance = false;
     this.playbackRunId = (this.playbackRunId || 0) + 1;
     this.isSwitchingSentence = true;
     await stopSpeechAndWait();
@@ -1684,6 +1726,7 @@ class PlaybackManager {
   async skipBackward() {
     if (this.queue.length === 0) return;
 
+    this.recoveryPendingAdvance = false;
     this.playbackRunId = (this.playbackRunId || 0) + 1;
     this.isSwitchingSentence = true;
     await stopSpeechAndWait();
@@ -1711,6 +1754,7 @@ class PlaybackManager {
   async jumpToIndex(index) {
     if (this.queue.length === 0) return;
 
+    this.recoveryPendingAdvance = false;
     this.playbackRunId = (this.playbackRunId || 0) + 1;
     this.isSwitchingSentence = true;
     await stopSpeechAndWait();
@@ -1727,6 +1771,7 @@ class PlaybackManager {
    * Change playback speed rate.
    */
   async setRate(rate) {
+    this.recoveryPendingAdvance = false;
     const validRate = Math.max(0.5, Math.min(rate, 3.0));
     this.options.rate = validRate;
     await this.savePreferences();
@@ -1748,6 +1793,7 @@ class PlaybackManager {
    * Change playback volume (0.0 to 1.0).
    */
   async setVolume(volume) {
+    this.recoveryPendingAdvance = false;
     const validVolume = Math.max(0.0, Math.min(volume, 1.0));
     this.options.volume = validVolume;
     await this.savePreferences();
@@ -1769,6 +1815,7 @@ class PlaybackManager {
    * Change playback pitch (0.5 to 2.0).
    */
   async setPitch(pitch) {
+    this.recoveryPendingAdvance = false;
     const validPitch = Math.max(0.5, Math.min(pitch, 2.0));
     this.options.pitch = validPitch;
     await this.savePreferences();
@@ -1778,7 +1825,10 @@ class PlaybackManager {
       this.playbackRunId = (this.playbackRunId || 0) + 1;
       this.isSwitchingSentence = true;
       await stopSpeechAndWait();
-      this.speakCurrentSentence(this.playbackRunId, this.resumeOffset || 0);
+      const resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0)
+        ? this.lastWordCharIndex
+        : (this.resumeOffset || 0);
+      this.speakCurrentSentence(this.playbackRunId, resumeFrom);
     } else {
       this.broadcast('OPTIONS_CHANGED', { options: this.options });
     }
@@ -1837,6 +1887,7 @@ class PlaybackManager {
    * Change voice.
    */
   async setVoice(voiceName, extensionId = null, lang = null) {
+    this.recoveryPendingAdvance = false;
     // Defensive: only real strings reach the options, never a raw payload value.
     const name = typeof voiceName === 'string' ? voiceName.trim() : '';
     const ext = typeof extensionId === 'string' ? extensionId.trim() : '';

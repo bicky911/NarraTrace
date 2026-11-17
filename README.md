@@ -1,6 +1,6 @@
 # NarraTrace — Narrates the Page. Traces Every Word.
 
-> **Narra**te + **Trace**: NarraTrace narrates any web page aloud with local neural voices — and traces every word on screen as it speaks, so your eyes and ears never lose their place.
+> **Narra**te + **Trace**: NarraTrace narrates any web page aloud through the selected Chrome TTS provider — and traces every word on screen as it speaks, so your eyes and ears never lose their place.
 
 A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized text-to-speech with spring-physics word tracking, Focus Reader mode, and multi-engine speech synthesis. *(Renamed from "Read Aloud" in 1.4.0 — same extension, same settings; existing preferences carry over untouched.)*
 
@@ -16,7 +16,8 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Manifest: V3](https://img.shields.io/badge/Manifest-V3-orange.svg)
-![Tests: 86/86 Passing](https://img.shields.io/badge/Tests-86%2F86%20Passing-brightgreen.svg)
+![Unit Tests: 20 cases](https://img.shields.io/badge/Unit%20Tests-20%20cases-blue.svg)
+![Static Checks: 86](https://img.shields.io/badge/Static%20Checks-86-blue.svg)
 
 ---
 
@@ -49,21 +50,30 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 
 ## 🧪 Automated Verification Suite
 
-Run the comprehensive test harness:
+Requirements: Node.js 22+ and Python 3.10+. No npm packages are required.
+
+Run the executable unit tests:
 ```bash
-python test-harness.py
+npm test
 ```
-Output:
+
+Run the existing source-structure checks:
+```bash
+npm run test:static
 ```
-Result: 86/86 checks passed (100%)
-✓ All checks passed — extension is ready.
+
+Run both layers:
+```bash
+npm run test:all
 ```
+
+The Node.js suite exercises tokenizer, voice-routing, queue, pronunciation, pitch-resume, and worker-recovery behavior. The Python harness checks source-level invariants and markup. Neither layer replaces manual testing with real Chrome TTS providers; see `docs/TESTING.md`.
 
 ---
 
 ## 📄 Architecture & Rules
 
 * **Plain JavaScript MV3:** Zero bundlers, zero npm dependencies, and no node_modules.
-* **Zero External Analytics or Trackers:** Runs 100% locally on your browser.
+* **No first-party analytics or trackers:** NarraTrace has no application backend. The selected Chrome TTS voice provider receives the text to be spoken; provider extensions may process it locally or remotely. Review each provider's privacy documentation before use.
 * **Accessible (WCAG AA Compliant):** Full keyboard focus rings (`#FF5C00`), ARIA attributes, and high-contrast color palettes.
 * **Legacy internal identifiers:** Invisible plumbing (`readAloud_*` storage keys, `ra-*` element IDs, `--ra-*` CSS tokens) deliberately keeps its pre-rename names so upgrading users keep every saved voice, speed, and theme setting. Only what the user can see is branded NarraTrace.
