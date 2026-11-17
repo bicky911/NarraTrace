@@ -276,7 +276,10 @@ test('exposes accessible controls and keyboard-operable playback progress', asyn
 
   // Focus Reader acts as a dialog: it receives focus on open and returns it
   // to the invoking settings control on Escape.
+  const playerPill = articlePage.locator('#read-aloud-player-host .player-pill');
+  await playerPill.hover();
   const settingsButton = articlePage.locator('#read-aloud-player-host #ra-settings');
+  await expect(settingsButton).toBeVisible();
   await settingsButton.click();
   const readerButton = articlePage.locator('#read-aloud-player-host #ra-settings-reader');
   await readerButton.click();
