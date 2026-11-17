@@ -793,7 +793,10 @@ class PlaybackManager {
     try {
       // Read-modify-write so fields saved elsewhere (pronunciationText) survive.
       const res = await chrome.storage.local.get(PREFS_STORAGE_KEY);
-      const prefs = (res && res[PREFS_STORAGE_KEY]) || {};
+      const stored = res && res[PREFS_STORAGE_KEY];
+      const prefs = stored && typeof stored === 'object' && !Array.isArray(stored)
+        ? { ...stored }
+        : {};
       prefs.rate = this.options.rate;
       prefs.pitch = this.options.pitch;
       prefs.volume = this.options.volume;
@@ -1982,7 +1985,10 @@ class PlaybackManager {
     try {
       chrome.storage.local.get(PREFS_STORAGE_KEY, (res) => {
         void chrome.runtime.lastError;
-        const prefs = (res && res[PREFS_STORAGE_KEY]) || {};
+        const stored = res && res[PREFS_STORAGE_KEY];
+        const prefs = stored && typeof stored === 'object' && !Array.isArray(stored)
+          ? { ...stored }
+          : {};
         prefs.pronunciationText = text;
         chrome.storage.local.set({ [PREFS_STORAGE_KEY]: prefs }).catch(() => {});
       });
