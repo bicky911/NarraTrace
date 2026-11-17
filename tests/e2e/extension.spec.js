@@ -179,7 +179,7 @@ test('uses Chrome TTS word events and re-anchors highlighting after a live DOM r
   expect(replacedBlock).not.toBeNull();
 
   await expect.poll(() => articlePage.evaluate(() => {
-    const highlights = window.CSS?.highlights?.get('read-aloud-word');
+    const highlights = window.CSS?.highlights?.get('read-aloud-sentence');
     const range = highlights ? Array.from(highlights)[0] : null;
     const replacement = document.querySelector('[data-e2e-active-block="true"]');
     return Boolean(range && replacement && replacement.contains(range.startContainer));
