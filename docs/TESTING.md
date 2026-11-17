@@ -63,6 +63,8 @@ The unit suite currently exercises:
 - Sentence whitespace normalization, decimal punctuation, Indic terminators, and chunk limits
 - Bengali/Hindi script detection and voice matching
 - Playback queue sanitation and pronunciation rules
+- Piper/Kokoro/Supertonic priority, dynamic Piper IDs, unknown-provider grouping, and system-voice fallback
+- Chrome TTS request options, provider error events, API callback errors, and empty-text handling
 - Pitch-change resume offsets
 - Service-worker recovery when an orphaned utterance is still active
 - Persistence of deferred recovery state across session save/restore
@@ -93,7 +95,7 @@ The Python harness remains useful for source-level invariants and markup checks.
 
 The release builder discovers the manifest's entry points, follows local JavaScript imports and HTML/CSS resources, verifies every referenced file exists, includes the diagnostics page and license, and excludes development-only files. The ZIP and SHA-256 sidecar are generated under `dist/`.
 
-The automated tests do not prove that Chrome's TTS providers behave correctly on a particular device, nor do source checks measure page-level CPU cost. Before a release, also follow docs/MANUAL-TEST-CHECKLIST.md with each supported engine. Include the dynamic-page and browser-zoom checks, and record the Chrome version, operating system, engine version, and result when reporting an engine-specific defect.
+The automated tests do not prove that Chrome's TTS providers behave correctly on a particular device, nor do source checks measure page-level CPU cost. Before a release, follow both docs/MANUAL-TEST-CHECKLIST.md and docs/REAL-ENGINE-VALIDATION.md with each supported engine. Include the dynamic-page and browser-zoom checks, and record the Chrome version, operating system, engine version, selected voice/model, and result when reporting an engine-specific defect. The real-engine matrix is a manual release gate because CI's synthetic TTS provider does not produce audio.
 
 
 ## Word-alignment behavior
