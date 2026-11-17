@@ -9,6 +9,8 @@ Tests:
   4. setRate / setVolume offset logic: resumeFrom uses lastWordCharIndex
   5. setCurrentSentence: resumeOffset conditional logic
   6. Runtime: event-driven zoom tracking and targeted DOM mutation repair
+  7. Accessibility: keyboard progress sliders, live status regions, and reader dialog focus
+  8. Release packaging: manifest dependency resolution and development-file exclusion
 """
 
 import re
@@ -27,6 +29,8 @@ E2E_SPEC = os.path.join(os.path.dirname(__file__), 'tests', 'e2e', 'extension.sp
 E2E_SERVER = os.path.join(os.path.dirname(__file__), 'tests', 'e2e', 'server.mjs')
 FAKE_TTS_MANIFEST = os.path.join(os.path.dirname(__file__), 'tests', 'e2e', 'fixtures', 'fake-tts-engine', 'manifest.json')
 FAKE_TTS_WORKER = os.path.join(os.path.dirname(__file__), 'tests', 'e2e', 'fixtures', 'fake-tts-engine', 'background.js')
+RELEASE_SCRIPT = os.path.join(os.path.dirname(__file__), 'build-release.py')
+RELEASE_LICENSE = os.path.join(os.path.dirname(__file__), 'LICENSE')
 
 PASS = '\033[92mPASS\033[0m'
 FAIL = '\033[91mFAIL\033[0m'
@@ -826,6 +830,87 @@ check(
     'browser-integration:' in read(os.path.join(os.path.dirname(__file__), '.github', 'workflows', 'ci.yml')) and
     'npx playwright install --with-deps chromium' in read(os.path.join(os.path.dirname(__file__), '.github', 'workflows', 'ci.yml')) and
     'npm run test:e2e' in read(os.path.join(os.path.dirname(__file__), '.github', 'workflows', 'ci.yml')),
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Product accessibility and release readiness
+# ─────────────────────────────────────────────────────────────────────────────
+print('\n── Product Accessibility & Release Readiness ─────────────────────')
+popup_html = read(POPUP_HTML)
+popup_js = read(POPUP_JS)
+content_js = read(CONTENT_JS)
+release_script = read(RELEASE_SCRIPT)
+ci_workflow = read(os.path.join(os.path.dirname(__file__), '.github', 'workflows', 'ci.yml'))
+readme_text = read(os.path.join(os.path.dirname(__file__), 'README.md'))
+license_text = read(RELEASE_LICENSE)
+
+check(
+    'popup.html: playback and voice feedback use polite live status regions',
+    'id="sentence-box" role="status" aria-live="polite"' in popup_html and
+    'id="voice-substatus" role="status" aria-live="polite"' in popup_html and
+    'id="engine-badge" class="engine-badge" role="status" aria-live="polite"' in popup_html,
+)
+check(
+    'popup.html/popup.js: speed chips expose exclusive pressed state',
+    'aria-pressed="true"' in popup_html and
+    "chip.setAttribute('aria-pressed', String(isActive))" in popup_js,
+)
+check(
+    'content.js: both floating and reader progress controls are keyboard sliders',
+    'id="ra-progress-track"' in content_js and
+    'id="ra-rprogress-track"' in content_js and
+    'role="slider" tabindex="0" aria-orientation="horizontal"' in content_js and
+    "progressTrackEl.addEventListener('keydown', handleProgressKeyboard)" in content_js and
+    "rprogressTrackEl.addEventListener('keydown', handleProgressKeyboard)" in content_js,
+)
+check(
+    'content.js: progress sliders support arrows, page keys, Home, and End',
+    "case 'ArrowRight':" in content_js and
+    "case 'PageUp':" in content_js and
+    "case 'PageDown':" in content_js and
+    "case 'Home':" in content_js and
+    "case 'End':" in content_js,
+)
+check(
+    'content.js: Focus Reader declares a modal dialog and restores invoking focus',
+    "readerOverlay.setAttribute('role', 'dialog')" in content_js and
+    "readerOverlay.setAttribute('aria-modal', 'true')" in content_js and
+    "readerOverlay.addEventListener('keydown'" in content_js and
+    'readerReturnFocus = shadow.activeElement || document.activeElement;' in content_js and
+    'returnTarget.focus();' in content_js,
+)
+check(
+    'content.js: reader theme and playback state are exposed to assistive technology',
+    "btn.setAttribute('aria-pressed', String(isActive))" in content_js and
+    "rctrlPlayBtn.setAttribute('aria-label', 'Pause reading')" in content_js,
+)
+check(
+    'release packager resolves local assets and rejects unsafe/missing files',
+    'def discover_runtime_files(manifest: dict)' in release_script and
+    'Required runtime file is missing' in release_script and
+    'Unsafe manifest resource path' in release_script,
+)
+check(
+    'release archive excludes development files and includes the diagnostics page and license',
+    '"manifest.json", "test.html", "LICENSE"' in release_script and
+    'Development-only path must not enter the release archive' in release_script and
+    'node_modules/' in release_script and 'tests/' in release_script,
+)
+check(
+    'CI validates, builds, and uploads the clean release ZIP',
+    'npm run package:check' in ci_workflow and
+    'npm run package:build' in ci_workflow and
+    'narratrace-extension-package' in ci_workflow,
+)
+check(
+    'README distinguishes zero runtime dependencies from Playwright development tooling',
+    'no runtime npm dependencies' in readme_text.lower() and
+    'Playwright' in readme_text and
+    'LICENSE' not in readme_text or 'MIT' in readme_text,
+)
+check(
+    'repository license text agrees with the MIT badge',
+    'MIT License' in license_text and 'permission notice' in license_text.lower(),
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
