@@ -1,33 +1,25 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures.js';
 
-async function openInactiveExtensionPage(context, worker, relativePath) {
-  const tab = await worker.evaluate(async (pagePath) => {
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!activeTab) throw new Error('No active page tab to test against.');
+async function getActiveTabId(worker) {
+  return worker.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return Number.isInteger(tab?.id) ? tab.id : null;
+  });
+}
 
-    await chrome.tabs.create({
-      url: chrome.runtime.getURL(pagePath),
-      active: false,
-      windowId: activeTab.windowId
-    });
-    return chrome.runtime.getURL(pagePath);
-  }, relativePath);
-
-  await expect.poll(
-    () => context.pages().some(page => page.url() === tab),
-    { timeout: 10000 }
-  ).toBe(true);
-
-  const page = context.pages().find(candidate => candidate.url() === tab);
+async function openExtensionPage(context, extensionId, relativePath, query = '') {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/${relativePath}${query}`);
   await page.waitForLoadState('domcontentloaded');
   return page;
 }
 
 async function setTestVoice(popup, voiceName) {
   const voiceSelect = popup.locator('#popup-voice-select');
-  await expect.poll(async () => voiceSelect.locator('option').evaluateAll(options =>
-    options.some(option => option.value === voiceName)
+  await expect.poll(async () => voiceSelect.locator('option').evaluateAll(
+    (options, expectedVoiceName) => options.some(option => option.value === expectedVoiceName),
+    voiceName
   ), { timeout: 15000 }).toBe(true);
 
   await voiceSelect.selectOption(voiceName);
@@ -52,14 +44,17 @@ test('injects the floating player and keeps session diagnostics behind the exten
   extensionWorkers,
   articlePage
 }) => {
-  const popup = await openInactiveExtensionPage(
+  const targetTabId = await getActiveTabId(extensionWorkers.narratrace);
+  expect(targetTabId).not.toBeNull();
+  const popup = await openExtensionPage(
     extensionContext,
-    extensionWorkers.narratrace,
-    'popup.html'
+    extensionWorkers.narratraceId,
+    'popup.html',
+    `?tab=${targetTabId}`
   );
-  const diagnostics = await openInactiveExtensionPage(
+  const diagnostics = await openExtensionPage(
     extensionContext,
-    extensionWorkers.narratrace,
+    extensionWorkers.narratraceId,
     'test.html'
   );
 
@@ -99,10 +94,13 @@ test('uses Chrome TTS word events and re-anchors highlighting after a live DOM r
   extensionWorkers,
   articlePage
 }) => {
-  const popup = await openInactiveExtensionPage(
+  const targetTabId = await getActiveTabId(extensionWorkers.narratrace);
+  expect(targetTabId).not.toBeNull();
+  const popup = await openExtensionPage(
     extensionContext,
-    extensionWorkers.narratrace,
-    'popup.html'
+    extensionWorkers.narratraceId,
+    'popup.html',
+    `?tab=${targetTabId}`
   );
 
   await extensionWorkers.fakeTtsEngine.evaluate(() => {
@@ -156,14 +154,17 @@ test('scans a large local article and records browser performance and queue metr
   await page.goto('http://127.0.0.1:4173/large-article');
   await page.locator('#read-aloud-player-host').waitFor({ state: 'attached', timeout: 15000 });
 
-  const popup = await openInactiveExtensionPage(
+  const targetTabId = await getActiveTabId(extensionWorkers.narratrace);
+  expect(targetTabId).not.toBeNull();
+  const popup = await openExtensionPage(
     extensionContext,
-    extensionWorkers.narratrace,
-    'popup.html'
+    extensionWorkers.narratraceId,
+    'popup.html',
+    `?tab=${targetTabId}`
   );
-  const diagnostics = await openInactiveExtensionPage(
+  const diagnostics = await openExtensionPage(
     extensionContext,
-    extensionWorkers.narratrace,
+    extensionWorkers.narratraceId,
     'test.html'
   );
 
