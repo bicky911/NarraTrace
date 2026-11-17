@@ -998,9 +998,10 @@
     try {
       const query = window.matchMedia(`(resolution: ${dpr}dppx)`);
       const onChange = () => {
-        // A resolution query is tied to the old DPR, so re-arm it after change.
+        // Re-arm for the new DPR and ask Chrome for the actual tab zoom again.
+        // This keeps OS display scaling separate from browser page zoom.
         watchDevicePixelRatioChanges();
-        updateZoomCompensation();
+        initZoomTracking();
       };
       if (typeof query.addEventListener === 'function') {
         query.addEventListener('change', onChange);
