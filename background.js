@@ -302,8 +302,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.action) {
     case 'GET_VOICES': {
       // Report the voice set with the CURRENT selection highlighted. The
-      // manager already resolved the engine (Kokoro first, then Supertonic,
-      // then the Windows voices) when the worker started.
+      // manager resolves automatic selection in registry priority order:
+      // Piper, Kokoro, Supertonic, other extension providers, then system.
       detectAndSelectVoice({
         voiceName: message.preferredVoiceName || playbackManager.options.voiceName,
         pinned: message.preferredVoiceName ? true : playbackManager.voicePinned
