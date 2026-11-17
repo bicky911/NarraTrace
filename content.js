@@ -5516,8 +5516,8 @@
       }
 
       case 'TTS_EVENT': {
-        // aligned === false → pronunciation overrides rewrote this sentence;
-        // word offsets then index the rewritten text and can't be mapped.
+        // aligned === false → speech normalization rewrote the source text;
+        // TTS offsets then cannot be mapped safely onto the page's DOM range.
         if (message.event && message.event.type === 'word' && typeof message.event.charIndex === 'number' && message.aligned !== false) {
           const rawLength = (typeof message.event.length === 'number' && message.event.length > 0)
             ? message.event.length

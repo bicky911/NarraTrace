@@ -188,6 +188,66 @@ test('a word event from rewritten speech is broadcast unaligned and stores no of
   assert.equal(manager.lastWordCharIndex, 0);
 });
 
+test('the initial sentence event reports alignment for the first sentence only', async () => {
+  const manager = await newManager(2);
+  await manager.start([
+    'Plain opener here.',
+    'An aside with (parentheses) inside.'
+  ], 0, 1);
+
+  assert.equal(manager.wordEventsUsable, false, 'the grouped batch contains a rewrite');
+  const initial = mock.tabMessages.find((entry) =>
+    entry.message.action === 'SENTENCE_CHANGED'
+  );
+  assert.ok(initial);
+  assert.equal(initial.message.wordAligned, true, 'the first sentence is still verbatim');
+});
+
+test('watchdog continuation remains available for an aligned sentence in a mixed batch', async () => {
+  const manager = await newManager(2);
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  const timers = [];
+
+  // Capture only the speech watchdog without waiting 45–60 seconds.
+  globalThis.setTimeout = (callback, ms) => {
+    const timer = { callback, ms, cleared: false };
+    timers.push(timer);
+    return timers.length;
+  };
+  globalThis.clearTimeout = (id) => {
+    if (timers[id - 1]) timers[id - 1].cleared = true;
+  };
+
+  try {
+    await manager.start([
+      'Plain opener here.',
+      'An aside with (parentheses) inside.'
+    ], 0, 1);
+    manager.stopEstimator();
+
+    emit({ type: 'start', charIndex: 0 });
+    emit({ type: 'word', charIndex: 6, length: 6 });
+    assert.equal(manager.wordEventsUsable, false, 'the batch-level summary is false');
+    assert.equal(manager.validResumeOffset(), 6, 'the current sentence itself is safely aligned');
+
+    const watchdog = timers.filter((timer) => !timer.cleared && timer.ms >= 45000).at(-1);
+    assert.ok(watchdog, 'the speech watchdog was armed');
+    watchdog.callback();
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+  }
+
+  await waitFor(() => mock.speaks.length >= 2, 1000, 'watchdog continuation');
+  assert.equal(
+    lastUtterance().text,
+    'opener here.',
+    'timeout recovery resumes the aligned current sentence instead of skipping the grouped batch'
+  );
+  await manager.stop();
+});
+
 test('a word event from untouched speech still maps to the page', async () => {
   const manager = await newManager();
   const original = 'Plain sentence without rewrites.';

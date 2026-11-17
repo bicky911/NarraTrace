@@ -877,11 +877,10 @@ export class PlaybackManager {
   /**
    * Build the utterance for the current position.
    *
-   * Returns the items to speak, the character offset of each item inside the
-   * utterance, and the utterance text itself. Grouping is skipped whenever it
-   * would break the text↔offset mapping:
-   *   - a resume offset (only the first sentence can start mid-way)
-   *   - a pronunciation override that rewrote the text
+   * Returns the items to speak, each item's offset inside the utterance, and
+   * the normalized text sent to TTS. Grouping may include rewritten sentences:
+   * each sentence carries its own word-alignment flag. A resume offset applies
+   * only to the first sentence, so resumed utterances are never grouped.
    *
    * @param {number} firstIndex Queue index the utterance starts at
    * @param {number} offset Character offset to resume the first sentence from
@@ -1325,7 +1324,7 @@ export class PlaybackManager {
     this.broadcast('TTS_EVENT', {
       event,
       index: this.currentIndex,
-      aligned: this.wordEventsUsable,
+      aligned: this.canMapWordOffset(batch, batch.currentSentence),
       resumeOffset: 0
     });
   }
@@ -1589,7 +1588,7 @@ export class PlaybackManager {
       sentence: firstItem,
       totalSentences: this.queue.length,
       resumeOffset: safeOffset,
-      wordAligned: this.wordEventsUsable
+      wordAligned: this.canMapWordOffset(batch, firstIndex)
     });
 
     this.saveToSession().catch(() => {});
@@ -1680,12 +1679,17 @@ export class PlaybackManager {
 
       // Watchdog fired mid-utterance: instead of silently dropping the rest,
       // re-speak the remainder from the last confirmed word position.
-      if (result && result.type === 'timeout' && this.wordEventsUsable
+      if (result && result.type === 'timeout'
           && this.playbackState === PlaybackState.PLAYING
           && !this.isSwitchingSentence) {
         const spokenIndex = batchRef.currentSentence;
         const spokenItem = this.queue[spokenIndex];
-        const cont = (spokenIndex === this.currentIndex) ? this.validResumeOffset() : 0;
+        // A later rewritten sentence must not disable safe continuation from
+        // an earlier verbatim sentence in the same grouped utterance.
+        const alignedCurrentSentence = this.canMapWordOffset(batchRef, spokenIndex);
+        const cont = (spokenIndex === this.currentIndex && alignedCurrentSentence)
+          ? this.validResumeOffset()
+          : 0;
         if (spokenItem && cont > 0 && cont < spokenItem.text.length) {
           this.currentIndex = spokenIndex;
           this.speakCurrentSentence(runId, cont);
