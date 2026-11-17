@@ -1,6 +1,18 @@
-# Read Aloud — Modern Text-to-Speech Chrome Extension
+# NarraTrace — Narrates the Page. Traces Every Word.
 
-A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized text-to-speech with spring-physics word tracking, Focus Reader mode, and multi-engine speech synthesis.
+> **Narra**te + **Trace**: NarraTrace narrates any web page aloud with local neural voices — and traces every word on screen as it speaks, so your eyes and ears never lose their place.
+
+A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized text-to-speech with spring-physics word tracking, Focus Reader mode, and multi-engine speech synthesis. *(Renamed from "Read Aloud" in 1.4.0 — same extension, same settings; existing preferences carry over untouched.)*
+
+---
+
+## 🏷️ The Brand
+
+* **Name:** **NarraTrace** — the name *is* the feature list. **Narra-** = it narrates the page aloud. **-Trace** = it traces each word with a luminous capsule as the voice reaches it.
+* **Tagline:** *Narrates the page. Traces every word.*
+* **Device mark:** **NT·1** — the hardware-style model badge carried in the popup and Focus Reader, in the Teenage Engineering-inspired design language.
+* **Icon:** a white **N** struck through by the signal-orange trace diagonal (`#FF5C00` on near-black `#0F0F0F`) — the path of the voice cutting across the letter, ending in the tracking dot.
+* **Voice of the brand:** controls and menus say what NarraTrace does — *"NarraTrace: narrate selection"*, *"NarraTrace: narrate from here"* — never a generic "read".
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Manifest: V3](https://img.shields.io/badge/Manifest-V3-orange.svg)
@@ -26,7 +38,7 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/read-aloud.git
+   git clone https://github.com/bicky911/NarraTrace.git
    ```
 2. Open Google Chrome and navigate to `chrome://extensions`.
 3. Enable **Developer mode** (toggle in top-right corner).
@@ -54,3 +66,4 @@ Result: 86/86 checks passed (100%)
 * **Plain JavaScript MV3:** Zero bundlers, zero npm dependencies, and no node_modules.
 * **Zero External Analytics or Trackers:** Runs 100% locally on your browser.
 * **Accessible (WCAG AA Compliant):** Full keyboard focus rings (`#FF5C00`), ARIA attributes, and high-contrast color palettes.
+* **Legacy internal identifiers:** Invisible plumbing (`readAloud_*` storage keys, `ra-*` element IDs, `--ra-*` CSS tokens) deliberately keeps its pre-rename names so upgrading users keep every saved voice, speed, and theme setting. Only what the user can see is branded NarraTrace.

@@ -1,8 +1,8 @@
 @echo off
 cd /d "%~dp0"
-title Upload Read Aloud to GitHub
+title Upload NarraTrace to GitHub
 echo ================================================================
-echo       READ ALOUD - 1-CLICK GITHUB UPLOAD
+echo       NARRATRACE - 1-CLICK GITHUB UPLOAD
 echo ================================================================
 echo.
 

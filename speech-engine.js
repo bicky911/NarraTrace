@@ -1,11 +1,11 @@
 /**
- * Read Aloud - Speech Engine Module
+ * NarraTrace - Speech Engine Module
  * 
  * HARD RULES RESPECTED:
  * 1. Only uses chrome.tts. Zero use of prohibited web speech APIs.
  * 2. Runs exclusively in extension background contexts where chrome.tts is available.
  * 3. Voice selection is ENGINE-AGNOSTIC: any TTS engine extension that registers
- *    voices through chrome.tts can drive Read Aloud. The engines listed in
+ *    voices through chrome.tts can drive NarraTrace. The engines listed in
  *    TTS_ENGINES are only a preference order — Kokoro first, Supertonic second —
  *    plus a sensible default voice each. With graceful fallback to Windows
  *    local/system voices and informative status messages.
@@ -18,13 +18,13 @@ export const KOKORO_EXTENSION_ID = 'mefecoigjodlohjacogkbbfpnifhfocb';
 export const SUPERTONIC_EXTENSION_ID = 'mdoplmghlkjcnegkdhocjbjcncocbdhk';
 
 /**
- * The TTS engines Read Aloud knows about, best first.
+ * The TTS engines NarraTrace knows about, best first.
  *
  * An engine is a Chrome extension that registers voices through the `tts_engine`
  * manifest key. Chrome exposes those voices through chrome.tts.getVoices(), each
  * tagged with the id of the extension that owns it, and routes a speak() request
  * to that extension when the request carries its id. So supporting a new engine
- * is a matter of knowing its id — nothing else in Read Aloud is engine specific.
+ * is a matter of knowing its id — nothing else in NarraTrace is engine specific.
  *
  * Measured behaviour of each engine (Chrome 156):
  *
@@ -154,7 +154,7 @@ export function getAllVoices() {
 
 /**
  * Find the voice set, group the extension-provided voices by engine and select
- * the voice Read Aloud should speak with.
+ * the voice NarraTrace should speak with.
  *
  * Selection order:
  *   1. A voice the user explicitly picked (preference.pinned) — always wins, so

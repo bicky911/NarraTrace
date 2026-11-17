@@ -1,5 +1,5 @@
 /**
- * Read Aloud - Playback Manager Module
+ * NarraTrace - Playback Manager Module
  * 
  * Orchestrates the sentence queue, playback states, and session storage persistence.
  * 
