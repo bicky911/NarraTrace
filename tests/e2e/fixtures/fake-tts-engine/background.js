@@ -32,7 +32,7 @@ chrome.ttsEngine.onSpeak.addListener((utterance, options, sendTtsEvent) => {
     throw error;
   }
 
-  const words = Array.from(utterance.matchAll(/\\S+/gu));
+  const words = Array.from(utterance.matchAll(/\S+/gu));
   let cursor = 0;
 
   const emitNext = () => {
