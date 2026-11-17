@@ -2706,6 +2706,8 @@
 
   const container = document.createElement('div');
   container.className = 'player-pill pill-compact';
+  container.setAttribute('role', 'group');
+  container.setAttribute('aria-label', 'NarraTrace playback controls');
   container.innerHTML = `
     <div class="drag-handle" title="Drag player anywhere">
       <svg viewBox="0 0 24 24"><path d="M9 5a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4zm6-16a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4z"/></svg>
@@ -2745,7 +2747,8 @@
     </button>
 
     <div class="progress-track" id="ra-progress-track" title="Click or drag to seek"
-      role="slider" aria-label="Playback progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      role="slider" tabindex="0" aria-orientation="horizontal" aria-label="Playback progress"
+      aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Not started">
       <div class="progress-fill" id="ra-progress-fill"></div>
     </div>
   `;
@@ -2776,6 +2779,9 @@
   const statusToast = document.createElement('div');
   statusToast.className = 'resume-toast';
   statusToast.id = 'ra-status-toast';
+  statusToast.setAttribute('role', 'status');
+  statusToast.setAttribute('aria-live', 'polite');
+  statusToast.setAttribute('aria-atomic', 'true');
   statusToast.innerHTML = '<span id="ra-status-toast-text"></span>';
   shadow.appendChild(statusToast);
 
@@ -2911,10 +2917,14 @@
   const readerOverlay = document.createElement('div');
   readerOverlay.className = 'reader-overlay theme-cream font-sans';
   readerOverlay.id = 'ra-reader-overlay';
+  readerOverlay.setAttribute('role', 'dialog');
+  readerOverlay.setAttribute('aria-modal', 'true');
+  readerOverlay.setAttribute('aria-labelledby', 'ra-reader-dialog-title');
   readerOverlay.innerHTML = `
+    <h2 id="ra-reader-dialog-title" class="sr-only">Focus Reader</h2>
     <div class="reader-header">
       <div class="reader-header-left">
-        <button class="reader-hdr-btn" id="ra-reader-close" title="Exit Focus Reader (Esc)">
+        <button type="button" class="reader-hdr-btn" id="ra-reader-close" title="Exit Focus Reader (Esc)" aria-label="Exit Focus Reader">
           <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
           <span>EXIT</span>
         </button>
@@ -2924,13 +2934,13 @@
       <div class="reader-header-right">
         <!-- Font Size Stepper -->
         <div class="reader-tool-group">
-          <button class="reader-tool-btn" id="ra-font-dec" title="Decrease font size">A-</button>
+          <button type="button" class="reader-tool-btn" id="ra-font-dec" title="Decrease font size" aria-label="Decrease reader font size">A-</button>
           <span class="reader-tool-val" id="ra-font-size-val">19px</span>
-          <button class="reader-tool-btn" id="ra-font-inc" title="Increase font size">A+</button>
+          <button type="button" class="reader-tool-btn" id="ra-font-inc" title="Increase font size" aria-label="Increase reader font size">A+</button>
         </div>
 
         <!-- Font Family Selector -->
-        <select class="reader-select" id="ra-reader-font" title="Select typography font">
+        <select class="reader-select" id="ra-reader-font" title="Select typography font" aria-label="Reader font">
           <option value="sans">Sans-Serif</option>
           <option value="serif">Serif (Editorial)</option>
           <option value="mono">Monospace</option>
@@ -2939,10 +2949,10 @@
 
         <!-- Theme Finish -->
         <div class="reader-theme-group">
-          <button class="reader-th-btn active" data-rtheme="cream" title="Warm Cream Book" style="background:#FBF0D9; color:#2A2421;">Aa</button>
-          <button class="reader-th-btn" data-rtheme="dark" title="Dark Slate" style="background:#181818; color:#F0F0F0; border-color:#333;">Aa</button>
-          <button class="reader-th-btn" data-rtheme="sepia" title="Vintage Sepia" style="background:#F4ECD8; color:#5B4636;">Aa</button>
-          <button class="reader-th-btn" data-rtheme="oled" title="OLED Midnight" style="background:#000000; color:#FFFFFF; border-color:#222;">Aa</button>
+          <button type="button" class="reader-th-btn active" data-rtheme="cream" title="Warm Cream Book" aria-label="Warm cream theme" aria-pressed="true" style="background:#FBF0D9; color:#2A2421;">Aa</button>
+          <button type="button" class="reader-th-btn" data-rtheme="dark" title="Dark Slate" aria-label="Dark slate theme" aria-pressed="false" style="background:#181818; color:#F0F0F0; border-color:#333;">Aa</button>
+          <button type="button" class="reader-th-btn" data-rtheme="sepia" title="Vintage Sepia" aria-label="Sepia theme" aria-pressed="false" style="background:#F4ECD8; color:#5B4636;">Aa</button>
+          <button type="button" class="reader-th-btn" data-rtheme="oled" title="OLED Midnight" aria-label="OLED midnight theme" aria-pressed="false" style="background:#000000; color:#FFFFFF; border-color:#222;">Aa</button>
         </div>
       </div>
     </div>
@@ -2958,19 +2968,21 @@
 
     <!-- Floating Reader Bar at bottom -->
     <div class="reader-bar">
-      <button class="reader-ctrl-btn" id="ra-rctrl-prev" title="Previous sentence (Alt+,)">
+      <button type="button" class="reader-ctrl-btn" id="ra-rctrl-prev" title="Previous sentence (Alt+,)" aria-label="Previous sentence">
         <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
       </button>
 
-      <button class="reader-ctrl-btn reader-play-main" id="ra-rctrl-play" title="Play / Pause (Alt+P)">
+      <button type="button" class="reader-ctrl-btn reader-play-main" id="ra-rctrl-play" title="Play / Pause (Alt+P)" aria-label="Play or pause reading">
         <svg id="ra-rctrl-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       </button>
 
-      <button class="reader-ctrl-btn" id="ra-rctrl-next" title="Next sentence (Alt+.)">
+      <button type="button" class="reader-ctrl-btn" id="ra-rctrl-next" title="Next sentence (Alt+.)" aria-label="Next sentence">
         <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
       </button>
 
-      <div class="reader-progress-wrap" id="ra-rprogress-track" title="Click or scrub to seek">
+      <div class="reader-progress-wrap" id="ra-rprogress-track" title="Click or scrub to seek"
+        role="slider" tabindex="0" aria-orientation="horizontal" aria-label="Reader playback progress"
+        aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Not started">
         <div class="reader-progress-fill" id="ra-rprogress-fill"></div>
       </div>
 
@@ -3028,6 +3040,7 @@
   const rspeedBadge        = shadow.getElementById('ra-rspeed');
 
   let isReaderOpen = false;
+  let readerReturnFocus = null;
   let readerFontSize = 19;
   let currentReaderTheme = 'cream';
   let currentReaderFont = 'sans';
@@ -3711,8 +3724,14 @@
     if (rprogressTextEl) {
       rprogressTextEl.textContent = `${String(index + 1).padStart(2, '0')}/${String(total).padStart(2, '0')}`;
     }
-    // Keep ARIA slider in sync for screen readers
+    // Keep both progress sliders understandable to screen readers.
+    const valueText = total > 0
+      ? `Sentence ${Math.min(index + 1, total)} of ${total}`
+      : 'No active reading session';
     progressTrackEl?.setAttribute('aria-valuenow', pct);
+    progressTrackEl?.setAttribute('aria-valuetext', valueText);
+    rprogressTrackEl?.setAttribute('aria-valuenow', pct);
+    rprogressTrackEl?.setAttribute('aria-valuetext', valueText);
   }
 
   // ── Seekable Progress Bar Interaction ───────────────────────────
@@ -3731,6 +3750,57 @@
       safeSendMessage({ action: 'JUMP_TO_INDEX', index: targetIndex });
       applyHighlight(targetIndex);
     }
+  }
+
+  function handleProgressKeyboard(event) {
+    const total = currentSentenceRanges.length;
+    if (total <= 0) return;
+
+    const current = currentSentenceIndex >= 0
+      ? currentSentenceIndex
+      : 0;
+    let target = current;
+
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowUp':
+        target += 1;
+        break;
+      case 'ArrowLeft':
+      case 'ArrowDown':
+        target -= 1;
+        break;
+      case 'PageUp':
+        target -= 10;
+        break;
+      case 'PageDown':
+        target += 10;
+        break;
+      case 'Home':
+        target = 0;
+        break;
+      case 'End':
+        target = total - 1;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    target = Math.max(0, Math.min(total - 1, target));
+    if (target === currentSentenceIndex) return;
+
+    safeSendMessage({ action: 'JUMP_TO_INDEX', index: target });
+    applyHighlight(target);
+    updateProgressBar(target, total);
+  }
+
+  if (progressTrackEl) {
+    progressTrackEl.addEventListener('keydown', handleProgressKeyboard);
+  }
+
+  if (rprogressTrackEl) {
+    rprogressTrackEl.addEventListener('keydown', handleProgressKeyboard);
   }
 
   if (progressTrackEl) {
@@ -3789,7 +3859,10 @@
       playBtn.title = 'Pause';
       playBtn.setAttribute('aria-label', 'Pause reading');
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PAUSE;
-      if (rctrlPlayBtn) rctrlPlayBtn.title = 'Pause (Alt+P)';
+      if (rctrlPlayBtn) {
+        rctrlPlayBtn.title = 'Pause (Alt+P)';
+        rctrlPlayBtn.setAttribute('aria-label', 'Pause reading');
+      }
       container.classList.add('is-playing');
       startMutationObserver();
       startHeartbeat();
@@ -3798,7 +3871,10 @@
       playBtn.title = 'Play';
       playBtn.setAttribute('aria-label', 'Play or pause reading');
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PLAY;
-      if (rctrlPlayBtn) rctrlPlayBtn.title = 'Play (Alt+P)';
+      if (rctrlPlayBtn) {
+        rctrlPlayBtn.title = state === 'PAUSED' ? 'Resume (Alt+P)' : 'Play (Alt+P)';
+        rctrlPlayBtn.setAttribute('aria-label', state === 'PAUSED' ? 'Resume reading' : 'Play reading');
+      }
       container.classList.remove('is-playing');
       stopHeartbeat();
       if (state === 'STOPPED' || state === 'IDLE') {
@@ -3832,11 +3908,9 @@
     readerOverlay.classList.remove('theme-cream', 'theme-dark', 'theme-sepia', 'theme-oled');
     readerOverlay.classList.add(`theme-${currentReaderTheme}`);
     readerThemeBtns.forEach(btn => {
-      if (btn.dataset.rtheme === currentReaderTheme) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
+      const isActive = btn.dataset.rtheme === currentReaderTheme;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', String(isActive));
     });
     safeStorageSet({ readAloud_readerTheme: currentReaderTheme });
   }
@@ -3910,15 +3984,19 @@
       readerBodyEl.innerHTML = html;
     }
 
+    readerReturnFocus = shadow.activeElement || document.activeElement;
     isReaderOpen = true;
     readerOverlay.classList.add('open');
+    readerCloseBtn?.focus();
 
     // Sync reader playback controls with current state
     if (rctrlPlayIcon) {
       rctrlPlayIcon.innerHTML = (currentPlaybackState === 'PLAYING') ? SVG_PAUSE : SVG_PLAY;
     }
     if (rctrlPlayBtn) {
-      rctrlPlayBtn.title = (currentPlaybackState === 'PLAYING') ? 'Pause (Alt+P)' : 'Play (Alt+P)';
+      const isPlaying = currentPlaybackState === 'PLAYING';
+      rctrlPlayBtn.title = isPlaying ? 'Pause (Alt+P)' : 'Play (Alt+P)';
+      rctrlPlayBtn.setAttribute('aria-label', isPlaying ? 'Pause reading' : 'Play reading');
     }
     if (rspeedBadge) {
       rspeedBadge.textContent = `${currentSpeed.toFixed(1)}x`;
@@ -3934,6 +4012,13 @@
   function closeReaderView() {
     isReaderOpen = false;
     readerOverlay.classList.remove('open');
+    const returnTarget = readerReturnFocus;
+    readerReturnFocus = null;
+    if (returnTarget && returnTarget.isConnected && typeof returnTarget.focus === 'function') {
+      returnTarget.focus();
+    } else {
+      shadow.getElementById('ra-settings')?.focus();
+    }
   }
 
   function toggleReaderView() {
@@ -4006,6 +4091,38 @@
       }
     });
   }
+
+  // Focus Reader is a modal surface: keep keyboard focus inside it while
+  // open, and return focus to the invoking control when it closes.
+  readerOverlay.addEventListener('keydown', (event) => {
+    if (!isReaderOpen || event.key !== 'Tab') return;
+
+    const focusable = Array.from(readerOverlay.querySelectorAll(
+      'button:not([disabled]), select:not([disabled]), input:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+    )).filter(element =>
+      !element.hasAttribute('hidden') &&
+      element.getAttribute('aria-hidden') !== 'true' &&
+      element.getClientRects().length > 0
+    );
+
+    if (focusable.length === 0) {
+      event.preventDefault();
+      readerCloseBtn?.focus();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = shadow.activeElement || document.activeElement;
+
+    if (event.shiftKey && (active === first || active === readerOverlay)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
 
   // Reader Event Listeners
   if (readerCloseBtn) {

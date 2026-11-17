@@ -36,6 +36,21 @@ jobs:
       - name: Run source-structure checks
         run: npm run test:static
 
+      - name: Validate release package contents
+        run: npm run package:check
+
+      - name: Build clean unpacked-extension archive
+        run: npm run package:build
+
+      - name: Upload release ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: narratrace-extension-package
+          path: |
+            dist/*.zip
+            dist/*.zip.sha256
+          if-no-files-found: error
+
   browser-integration:
     name: Browser integration and performance
     runs-on: ubuntu-latest
