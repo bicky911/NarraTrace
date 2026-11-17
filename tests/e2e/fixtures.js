@@ -21,10 +21,7 @@ async function findExtensionWorker(context, expectedName) {
       }
     }
 
-    await Promise.race([
-      context.waitForEvent('serviceworker', { timeout: 1000 }).catch(() => null),
-      new Promise(resolve => setTimeout(resolve, 100))
-    ]);
+    await new Promise(resolve => setTimeout(resolve, 150));
   }
 
   throw new Error(`Timed out waiting for extension service worker: ${expectedName}`);
