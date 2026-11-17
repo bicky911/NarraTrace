@@ -429,7 +429,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'SET_RATE': {
-      const rate = typeof message.rate === 'number' && Number.isFinite(message.rate) ? message.rate : 1.0;
+      if (typeof message.rate !== 'number' || !Number.isFinite(message.rate)) {
+        sendResponse({ success: false, error: 'rate must be a finite number.' });
+        return false;
+      }
+      const rate = message.rate;
       playbackManager.setRate(rate)
         .then(() => sendResponse({ success: true, state: playbackManager.getState() }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
@@ -437,7 +441,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'SET_VOLUME': {
-      const volume = typeof message.volume === 'number' && Number.isFinite(message.volume) ? message.volume : 1.0;
+      if (typeof message.volume !== 'number' || !Number.isFinite(message.volume)) {
+        sendResponse({ success: false, error: 'volume must be a finite number.' });
+        return false;
+      }
+      const volume = message.volume;
       playbackManager.setVolume(volume)
         .then(() => sendResponse({ success: true, state: playbackManager.getState() }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
@@ -445,7 +453,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'SET_PITCH': {
-      const pitch = typeof message.pitch === 'number' && Number.isFinite(message.pitch) ? message.pitch : 1.0;
+      if (typeof message.pitch !== 'number' || !Number.isFinite(message.pitch)) {
+        sendResponse({ success: false, error: 'pitch must be a finite number.' });
+        return false;
+      }
+      const pitch = message.pitch;
       playbackManager.setPitch(pitch)
         .then(() => sendResponse({ success: true, state: playbackManager.getState() }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
@@ -462,9 +474,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'SET_BATCH_SIZE': {
-      // 0 = automatic (group sentences only for network voices), 1..4 = forced.
-      const raw = message.size;
-      const size = typeof raw === 'number' && Number.isFinite(raw) ? Math.trunc(raw) : 0;
+      // 0 = automatic; 1..12 = an explicit utterance group size.
+      if (typeof message.size !== 'number' || !Number.isFinite(message.size) ||
+          Math.trunc(message.size) < 0 || Math.trunc(message.size) > 12) {
+        sendResponse({ success: false, error: 'size must be an integer from 0 to 12.' });
+        return false;
+      }
+      const size = Math.trunc(message.size);
       playbackManager.setBatchSize(size)
         .then((applied) => sendResponse({ success: true, batchSize: applied }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
@@ -472,11 +488,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'SET_VOICE': {
-      // Only ever forward real strings — a non-string would throw on .trim()
-      // inside setVoice() and leave the worker with a half-applied change.
-      const voiceName = typeof message.voiceName === 'string' ? message.voiceName : null;
-      const extensionId = typeof message.extensionId === 'string' ? message.extensionId : null;
-      const lang = typeof message.lang === 'string' ? message.lang : null;
+      const voiceName = typeof message.voiceName === 'string' ? message.voiceName.trim() : '';
+      const extensionId = message.extensionId == null ? null : message.extensionId;
+      const lang = message.lang == null ? null : message.lang;
+      if (!voiceName || voiceName.length > 256 ||
+          (extensionId !== null && (typeof extensionId !== 'string' || extensionId.length > 128)) ||
+          (lang !== null && (typeof lang !== 'string' || lang.length > 64))) {
+        sendResponse({ success: false, error: 'Invalid voice selection payload.' });
+        return false;
+      }
       playbackManager.setVoice(voiceName, extensionId, lang)
         .then(() => sendResponse({ success: true, state: playbackManager.getState() }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
