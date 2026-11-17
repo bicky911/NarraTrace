@@ -16,10 +16,11 @@ from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parent
 IMPORT_RE = re.compile(
-    r"(?:\\bimport\\s*(?:[^'\\";]*?\\sfrom\\s*)?|\\bexport\\s+[^'\\";]*?\\sfrom\\s*)['\\"]([^'\\"]+)['\\"]"
+    r"""(?:\bimport\s*(?:[^'";]*?\sfrom\s*)?|\bexport\s+[^'";]*?\sfrom\s*)["']([^"']+)["']"""
 )
-HTML_REF_RE = re.compile(r"\\b(?:src|href)=['\\"]([^'\\"]+)['\\"]", re.IGNORECASE)
-CSS_URL_RE = re.compile(r"url\\(\\s*['\\"]?([^'\\")]+)['\\"]?\\s*\\)", re.IGNORECASE)
+HTML_REF_RE = re.compile(r"""(?:src|href)=["']([^"']+)["']""", re.IGNORECASE)
+CSS_URL_RE = re.compile(r"""url\(\s*["']?([^"')]+)["']?\s*\)""", re.IGNORECASE)
+
 
 
 class PackageError(Exception):
@@ -173,7 +174,7 @@ def main() -> int:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if manifest.get("manifest_version") != 3:
             raise PackageError("manifest.json must declare Manifest V3")
-        if not re.fullmatch(r"\\d+\\.\\d+\\.\\d+", str(manifest.get("version", ""))):
+        if not re.fullmatch(r"\d+\.\d+\.\d+", str(manifest.get("version", ""))):
             raise PackageError("manifest.json must declare a semantic version (MAJOR.MINOR.PATCH)")
         if not manifest.get("name") or not manifest.get("background", {}).get("service_worker"):
             raise PackageError("manifest.json is missing the extension name or service worker")
