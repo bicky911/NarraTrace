@@ -43,7 +43,7 @@ let diagnosticReport = null;
 let diagnosticStartPerf = null;
 
 const manifestInfo = chrome.runtime.getManifest();
-const chromeVersion = navigator.userAgent.match(/Chrome\\/(\\d+(?:\\.\\d+)+)/)?.[1] || 'Unknown';
+const chromeVersion = navigator.userAgent.match(/Chrome\/(\d+(?:\.\d+)+)/)?.[1] || 'Unknown';
 const environmentInfo = {
   capturedAt: new Date().toISOString(),
   extensionVersion: manifestInfo.version,
@@ -83,7 +83,7 @@ function renderDiagnosticEvents() {
     if (event.charLength !== null) parts.push(`charLength=${event.charLength}`);
     if (event.errorMessage) parts.push(`error=${event.errorMessage}`);
     return parts.join(' · ');
-  }).join('\\n');
+  }).join('\n');
 }
 
 function finishDiagnosticTimeout(requestId) {
@@ -465,10 +465,15 @@ chrome.runtime.onMessage.addListener((message) => {
       if (diagnosticTimeoutId) clearTimeout(diagnosticTimeoutId);
       diagnosticTimeoutId = null;
       activeDiagnosticRequestId = null;
-      diagnosticReport.success = message.success === true;
       diagnosticReport.resultType = message.resultType || 'unknown';
       diagnosticReport.durationMs = Number.isFinite(message.durationMs) ? message.durationMs : null;
-      diagnosticReport.error = typeof message.error === 'string' ? message.error : null;
+      const audibleWasMarked = Number.isFinite(diagnosticReport.test.audibleStartMarkedMs);
+      diagnosticReport.success = message.success === true && audibleWasMarked;
+      diagnosticReport.error = typeof message.error === 'string'
+        ? message.error
+        : (message.success === true && !audibleWasMarked
+          ? 'Chrome returned an end event, but audible output was not manually confirmed.'
+          : null);
       diagnosticReport.test.completedAt = new Date().toISOString();
       btnRunDiagnostic.disabled = false;
       btnMarkAudible.disabled = true;
@@ -476,9 +481,11 @@ chrome.runtime.onMessage.addListener((message) => {
       btnExportDiagnostic.disabled = false;
       setDiagnosticStatus(
         diagnosticReport.success
-          ? `Completed: ${diagnosticReport.resultType} after ${diagnosticReport.durationMs} ms. Check the event order and audible result.`
-          : `Diagnostic did not complete cleanly: ${diagnosticReport.error || diagnosticReport.resultType}.`,
-        diagnosticReport.success ? 'success' : 'danger'
+          ? `Passed: ${diagnosticReport.resultType} after ${diagnosticReport.durationMs} ms; first audible output marked at approximately ${diagnosticReport.test.audibleStartMarkedMs} ms.`
+          : (message.success === true
+            ? `Chrome TTS completed after ${diagnosticReport.durationMs} ms, but audible output was not confirmed. Repeat the test and click “I Hear Audio” while the sample is playing.`
+            : `Diagnostic did not complete cleanly: ${diagnosticReport.error || diagnosticReport.resultType}.`),
+        diagnosticReport.success ? 'success' : (message.success === true ? 'warning' : 'danger')
       );
       break;
     }
