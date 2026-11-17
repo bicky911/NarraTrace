@@ -21,6 +21,7 @@ POPUP_JS    = os.path.join(os.path.dirname(__file__), 'popup.js')
 PLAYBACK_JS = os.path.join(os.path.dirname(__file__), 'playback-manager.js')
 SPEECH_JS   = os.path.join(os.path.dirname(__file__), 'speech-engine.js')
 BACKGROUND_JS = os.path.join(os.path.dirname(__file__), 'background.js')
+MANIFEST_JSON = os.path.join(os.path.dirname(__file__), 'manifest.json')
 
 PASS = '\033[92mPASS\033[0m'
 FAIL = '\033[91mFAIL\033[0m'
@@ -691,6 +692,7 @@ check(
 print('\n── Architecture & Security Boundaries ────────────────────────────')
 runtime_bg = read(BACKGROUND_JS)
 runtime_pm = read(PLAYBACK_JS)
+runtime_manifest = read(MANIFEST_JSON)
 
 check(
     'playback-manager.js: incoming and stored options pass through a bounded allow-list',
@@ -738,6 +740,12 @@ check(
 check(
     'background.js: message actions must be non-empty strings',
     "typeof message.action !== 'string'" in runtime_bg,
+)
+
+check(
+    'manifest.json: unused chrome.scripting permission is not requested',
+    '"scripting"' not in runtime_manifest and 'chrome.scripting' not in runtime_bg and
+    'chrome.scripting' not in content_js and 'chrome.scripting' not in popup_js,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
