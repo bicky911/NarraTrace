@@ -205,6 +205,45 @@ test("Kokoro late first boundary does not inherit Supertonic lead-in delay", () 
   assert.equal(manager.calculateEstimatedPosition(batch, 12000), 27);
 });
 
+test("first early boundary interval does not erase Supertonic's seeded lead-in", () => {
+  const manager = createManager();
+  manager.options.extensionId = SUPERTONIC_EXTENSION_ID;
+  const profile = manager.engineProfile();
+  assert.equal(profile.leadInMs, 3200);
+  assert.equal(profile.baseCharsPerSecond, 0);
+
+  const text = "x".repeat(100);
+  manager.queue = [{ index: 0, text }];
+  manager.broadcast = () => {};
+  const batch = {
+    firstIndex: 0,
+    offsets: [0],
+    spokenLengths: [100],
+    spokenTexts: [text],
+    wordAlignmentMaps: [[]],
+    text,
+    currentSentence: 0,
+    anchorChar: 0,
+    anchorTime: 1000,
+    anchorEnd: null,
+    segmentIndex: 0,
+    firstBoundaryDelay: 0,
+    firstBoundaryTime: 1000,
+    requestedAt: 1000
+  };
+
+  const originalNow = Date.now;
+  Date.now = () => 9000;
+  try {
+    manager.handleTtsEvent({ type: "sentence", charIndex: 65 }, batch);
+  } finally {
+    Date.now = originalNow;
+  }
+
+  assert.ok(profile.baseCharsPerSecond > 0);
+  assert.equal(profile.leadInMs, 3200);
+});
+
 test("system voice estimator does not inherit a network provider lead-in", () => {
   const manager = createManager();
   manager.options.extensionId = null;
