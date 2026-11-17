@@ -207,7 +207,7 @@ async function initActiveTabAndState() {
   // controlled automation; ordinary toolbar launches use the active tab.
   try {
     let tab = null;
-    if (requestedTabId !== null && /^\\d+$/.test(requestedTabId)) {
+    if (requestedTabId !== null && /^\d+$/.test(requestedTabId)) {
       const tabId = Number(requestedTabId);
       if (Number.isSafeInteger(tabId)) {
         try {
