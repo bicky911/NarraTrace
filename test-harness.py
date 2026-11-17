@@ -160,6 +160,13 @@ print('\n── popup.js A11y ────────────────�
 popup_js = read(POPUP_JS)
 
 check(
+    'popup.js: supports a validated explicit target tab ID for deterministic popup testing',
+    'requestedTabId !== null && /^' in read(POPUP_JS) and
+    '.test(requestedTabId)' in read(POPUP_JS) and
+    'chrome.tabs.get(tabId)' in read(POPUP_JS),
+)
+
+check(
     'popup.js: updatePlayState sets aria-label on play button dynamically',
     "setAttribute('aria-label'" in popup_js or 'setAttribute("aria-label"' in popup_js,
 )
@@ -787,7 +794,7 @@ check(
 check(
     'Browser integration tests cover live DOM replacement and word-range recovery',
     'replaceWith(replacement)' in e2e_spec and
-    "highlights.get('read-aloud-word')" in e2e_spec,
+    "highlights?.get('read-aloud-word')" in e2e_spec,
 )
 check(
     'Browser integration tests record large-article performance metrics',
