@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Read Aloud // RA·1</title>
+  <style>
+    :root {
+      --ra-bg:        #0F0F0F;
+      --ra-surface:   #181818;
+      --ra-inner:     #0A0A0A;
+      --ra-border:    #2A2A2A;
+      --ra-line:      #000000;
+      --ra-text:      #F0F0F0;
+      --ra-muted:     #8A8A8A;
+      --ra-accent:    #FF5C00;
+      --ra-accent-hover: #E65300;
+      --ra-led-green: #00FF66;
+      --ra-font:      ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    body.light {
+      --ra-bg:        #F5F4F0;
+      --ra-surface:   #ECEAE4;
+      --ra-inner:     #DFDDD6;
+      --ra-border:    #D0CEC8;
+      --ra-line:      #000000;
+      --ra-text:      #1A1A1A;
+      --ra-muted:     #686862;
+      --ra-accent:    #FF5C00;
+      --ra-accent-hover: #E65300;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: var(--ra-font);
+      font-variant-numeric: tabular-nums;
+      user-select: none;
+    }
+
+    body {
+      width: 320px;
+      background: var(--ra-bg);
+      color: var(--ra-text);
+      padding: 14px;
+      overflow-x: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      transition: background 150ms ease, color 150ms ease;
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-logo {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+    }
+
+    .header-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ra-text);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .engine-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 12px;
+      background: rgba(0, 255, 102, 0.1);
+      color: var(--ra-led-green);
+      border: 1px solid rgba(0, 255, 102, 0.25);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .engine-badge.warning {
+      color: var(--ra-accent);
+      background: rgba(255, 92, 0, 0.1);
+      border-color: rgba(255, 92, 0, 0.3);
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--ra-led-green);
+      display: inline-block;
+      box-shadow: 0 0 6px rgba(0, 255, 102, 0.6);
+    }
+
+    .status-dot.pulsing {
+      background: var(--ra-accent);
+      box-shadow: 0 0 8px rgba(255, 92, 0, 0.9);
+      animation: te-pulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes te-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+
+    button.icon-toggle {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 7px;
+      width: 26px;
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--ra-muted);
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.14s ease;
+    }
+
+    button.icon-toggle:hover {
+      color: var(--ra-text);
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: scale(1.06);
+    }
+
+    button.icon-toggle:active {
+      transform: scale(0.94);
+    }
+
+    /* ── Modern Card ────────────────────────────────────── */
+    .card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    }
+
+    .tab-info-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .tab-title {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--ra-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
+    }
+
+    .progress-counter {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--ra-accent);
+      background: rgba(255, 92, 0, 0.1);
+      padding: 2px 6px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 92, 0, 0.25);
+      letter-spacing: 0.04em;
+    }
+
+    /* Sentence preview console */
+    .sentence-box {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-left: 3px solid transparent;
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-size: 11px;
+      line-height: 1.45;
+      min-height: 48px;
+      max-height: 64px;
+      overflow-y: auto;
+      color: var(--ra-text);
+      display: flex;
+      align-items: center;
+      word-break: break-word;
+      transition: border-left-color 150ms ease;
+    }
+
+    .sentence-box.active {
+      border-left-color: var(--ra-accent);
+      background: rgba(255, 92, 0, 0.06);
+    }
+
+    .sentence-box.idle {
+      color: var(--ra-muted);
+      font-style: italic;
+      justify-content: center;
+      text-align: center;
+    }
+
+    /* Tape Progress Bar */
+    .progress-bar-wrap {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+      margin-top: 10px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--ra-accent), #FFA040);
+      border-radius: 2px;
+      transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* ── Controls Row ────────────────────────────────────── */
+    .controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin: 12px 0 4px 0;
+    }
+
+    button.ctrl-btn {
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--ra-text);
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.14s ease;
+      outline: none;
+    }
+
+    button.ctrl-btn:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.25);
+      transform: scale(1.08);
+    }
+
+    button.ctrl-btn:active {
+      transform: scale(0.92);
+    }
+
+    /* Signature Play Key */
+    button.ctrl-btn.play-main {
+      width: 42px;
+      height: 42px;
+      background: linear-gradient(135deg, #FF7A00 0%, #FF5C00 100%);
+      color: #000000;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 12px;
+      box-shadow: 0 4px 14px rgba(255, 92, 0, 0.45);
+    }
+
+    button.ctrl-btn.play-main:hover {
+      background: linear-gradient(135deg, #FF8C1A 0%, #E65300 100%);
+      box-shadow: 0 6px 18px rgba(255, 92, 0, 0.6);
+      transform: scale(1.1);
+    }
+
+    button.ctrl-btn.play-main:active {
+      transform: scale(0.92);
+      box-shadow: 0 2px 6px rgba(255, 92, 0, 0.3);
+    }
+
+    button.ctrl-btn svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    button.ctrl-btn.play-main svg {
+      width: 18px;
+      height: 18px;
+      fill: #000000;
+    }
+
+    /* ── Form Controls (Voice & Speed) ───────────────────── */
+    .form-group {
+      margin-bottom: 10px;
+    }
+
+    .form-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+
+    .form-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--ra-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .form-val {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--ra-accent);
+      background: rgba(255, 92, 0, 0.1);
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 92, 0, 0.2);
+    }
+
+    select.voice-select {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      color: var(--ra-text);
+      padding: 7px 10px;
+      font-size: 11px;
+      font-family: var(--ra-font);
+      outline: none;
+      cursor: pointer;
+      transition: all 0.14s ease;
+    }
+    select.voice-select:hover, select.voice-select:focus {
+      border-color: var(--ra-accent);
+      background-color: rgba(255, 255, 255, 0.09);
+    }
+
+    select.voice-select option {
+      background: #18181a;
+      color: var(--ra-text);
+    }
+
+    .voice-substatus {
+      font-size: 9px;
+      color: var(--ra-muted);
+      margin-top: 4px;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Speed Slider */
+    .speed-slider-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 7px;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      appearance: none;
+      -webkit-appearance: none;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.14);
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--ra-accent);
+      border: 1.5px solid #ffffff;
+      cursor: pointer;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+      transition: transform 0.1s ease;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    .speed-chips {
+      display: flex;
+      gap: 5px;
+    }
+
+    button.chip {
+      flex: 1;
+      padding: 4px 0;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      color: var(--ra-muted);
+      font-size: 9px;
+      font-weight: 700;
+      font-family: var(--ra-font);
+      cursor: pointer;
+      transition: all 0.14s ease;
+    }
+
+    button.chip:hover {
+      color: var(--ra-text);
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+
+    button.chip.active {
+      background: var(--ra-accent);
+      border-color: var(--ra-accent);
+      color: #000000;
+      box-shadow: 0 0 10px var(--ra-accent-dim);
+    }
+
+    /* ── Footer ──────────────────────────────────────────── */
+    .footer-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    button.footer-btn {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      color: var(--ra-text);
+      padding: 7px 12px;
+      font-size: 10px;
+      font-weight: 700;
+      font-family: var(--ra-font);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      transition: all 0.14s ease;
+    }
+
+    button.footer-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: var(--ra-accent);
+      transform: translateY(-1px);
+    }
+
+    button.footer-btn:active {
+      transform: scale(0.96);
+    }
+
+    button.footer-btn svg {
+      width: 13px;
+      height: 13px;
+      fill: currentColor;
+    }
+
+    button:focus-visible, select:focus-visible, input:focus-visible {
+      outline: 2px solid var(--ra-accent) !important;
+      outline-offset: 2px !important;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <img src="icons/icon48.png" alt="Read Aloud" class="header-logo">
+      <span class="header-title">READ ALOUD // RA·1</span>
+    </div>
+    <div class="header-right">
+      <span id="engine-badge" class="engine-badge">
+        <span id="status-dot" class="status-dot"></span>
+        <span id="badge-text">ENGINE</span>
+      </span>
+      <button class="icon-toggle" id="theme-toggle" title="Toggle OP-1 Light / Dark mode" aria-label="Toggle light or dark theme">☼</button>
+    </div>
+  </div>
+
+  <!-- Main Machine Card -->
+  <div class="card">
+    <div class="tab-info-row">
+      <span class="tab-title" id="tab-title">STANDBY</span>
+      <span class="progress-counter" id="reading-est" style="display: none; color: var(--ra-muted); margin-right: 6px;"></span>
+      <span class="progress-counter" id="progress-counter" style="display: none;">SEN 00/00</span>
+    </div>
+
+    <div class="sentence-box idle" id="sentence-box">
+      Ready to read this webpage. Press play to start.
+    </div>
+
+    <div class="progress-bar-wrap" role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="progress-bar-fill" id="progress-bar-fill"></div>
+    </div>
+
+    <!-- Playback Controls -->
+    <div class="controls-row">
+      <button class="ctrl-btn" id="ctrl-prev" title="Previous sentence (Alt+,)" aria-label="Previous sentence">
+        <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+      </button>
+
+      <button class="ctrl-btn play-main" id="ctrl-play" title="Play / Pause (Alt+P)" aria-label="Play or pause reading">
+        <svg id="ctrl-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+
+      <button class="ctrl-btn" id="ctrl-next" title="Next sentence (Alt+.)" aria-label="Next sentence">
+        <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+      </button>
+
+      <button class="ctrl-btn" id="ctrl-stop" title="Stop (Alt+X)" aria-label="Stop reading">
+        <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Voice & Speed Settings Card -->
+  <div class="card" style="margin-bottom: 0;">
+    <!-- Voice -->
+    <div class="form-group">
+      <div class="form-label-row">
+        <label class="form-label" for="popup-voice-select">VOICE ENGINE</label>
+      </div>
+      <select class="voice-select" id="popup-voice-select">
+        <option value="">Scanning local voices…</option>
+      </select>
+      <div class="voice-substatus" id="voice-substatus">Scanning local voices…</div>
+    </div>
+
+    <!-- Speed -->
+    <div class="form-group" style="margin-bottom: 0;">
+      <div class="form-label-row">
+        <label class="form-label" for="popup-speed-slider">PLAYBACK SPEED</label>
+        <span class="form-val" id="popup-speed-display">1.0×</span>
+      </div>
+      <div class="speed-slider-wrap">
+        <input type="range" id="popup-speed-slider" min="0.5" max="3.0" step="0.1" value="1.0">
+      </div>
+      <div class="speed-chips">
+        <button class="chip active" data-speed="1.0">1.0×</button>
+        <button class="chip" data-speed="1.2">1.2×</button>
+        <button class="chip" data-speed="1.5">1.5×</button>
+        <button class="chip" data-speed="2.0">2.0×</button>
+      </div>
+    </div>
+
+    <!-- Volume -->
+    <div class="form-group" style="margin-top: 12px; margin-bottom: 0;">
+      <div class="form-label-row">
+        <label class="form-label" for="popup-volume-slider">VOLUME</label>
+        <span class="form-val" id="popup-volume-display">100%</span>
+      </div>
+      <div class="speed-slider-wrap">
+        <input type="range" id="popup-volume-slider" min="0" max="1" step="0.05" value="1.0">
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Hardware Actions -->
+  <div class="footer-actions">
+    <button class="footer-btn" id="btn-toggle-pill" title="Toggle floating on-screen pill module" aria-label="Toggle floating on-screen pill player">
+      <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+      <span id="btn-toggle-text">HIDE SCREEN MODULE</span>
+    </button>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+# Read Aloud — Modern Text-to-Speech Chrome Extension
+
+A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized text-to-speech with spring-physics word tracking, Focus Reader mode, and multi-engine speech synthesis.
+
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![Manifest: V3](https://img.shields.io/badge/Manifest-V3-orange.svg)
+![Tests: 86/86 Passing](https://img.shields.io/badge/Tests-86%2F86%20Passing-brightgreen.svg)
+
+---
+
+## ✨ Key Features
+
+* **Spring-Physics Word Capsule:** Hooke's Law damped harmonic oscillator engine ($k=220, d=24$) with kinetic velocity-based squish and zero idle CPU cost.
+* **Focus Reader Mode:** Distraction-free reading overlay with curved inline sentence flow (`box-decoration-break: clone`), luminous word capsules, and a floating glassmorphic control bar.
+* **Magnetic Edge-Docking Pill:** Draggable floating player pill with $20\text{px}$ boundary proximity detection. Snaps and animates into a sleek $24\text{px}$ vertical bead hugging the display bezel.
+* **Golden Gaze Auto-Scroll:** Friction-damped critically stable viewport tracking that locks the active reading sentence at the natural biomechanical sight line ($38\%$ from viewport top).
+* **Context-Aware Prosody Pauses:** Intelligent clause-boundary cadence detection that inserts natural human breathing pauses at em-dashes, semicolons, colons, ellipses, and lists.
+* **Semantic Noise Stripper:** Cleans citations (`[1]`, `[citation needed]`), academic parentheticals (`(Smith et al., 2024)`), raw URLs, DOIs, and markdown symbols before TTS without mutating DOM highlights.
+* **Multi-Engine Speech Support:** High-priority Piper local neural TTS extension integration, Supertonic, Kokoro, and native Chrome TTS voices.
+* **Multilingual Script Routing:** Auto-detects Bangla (বাংলা), Hindi (हिन्दी), and Latin scripts, routing each to native neural voices.
+* **100% Shadow DOM Encapsulated:** Complete style isolation guarantees the player never clashes with host website styles.
+
+---
+
+## 🚀 Installation & Local Development
+
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/read-aloud.git
+   ```
+2. Open Google Chrome and navigate to `chrome://extensions`.
+3. Enable **Developer mode** (toggle in top-right corner).
+4. Click **Load unpacked** and select this directory.
+5. Pin the extension to your toolbar.
+
+---
+
+## 🧪 Automated Verification Suite
+
+Run the comprehensive test harness:
+```bash
+python test-harness.py
+```
+Output:
+```
+Result: 86/86 checks passed (100%)
+✓ All checks passed — extension is ready.
+```
+
+---
+
+## 📄 Architecture & Rules
+
+* **Plain JavaScript MV3:** Zero bundlers, zero npm dependencies, and no node_modules.
+* **Zero External Analytics or Trackers:** Runs 100% locally on your browser.
+* **Accessible (WCAG AA Compliant):** Full keyboard focus rings (`#FF5C00`), ARIA attributes, and high-contrast color palettes.

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Read Aloud - Phase 3: Background Worker & Queue Test</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --border: #334155;
+      --highlight: #fef08a;
+      --highlight-text: #0f172a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      min-width: 480px;
+      max-width: 580px;
+      padding: 16px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    header img {
+      width: 32px;
+      height: 32px;
+    }
+
+    header h1 {
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    header p {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge.success {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .badge.warning {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--warning);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .badge.info {
+      background: rgba(99, 102, 241, 0.15);
+      color: var(--primary);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+
+    .status-text {
+      margin-top: 8px;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--text);
+    }
+
+    .form-group {
+      margin-bottom: 10px;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 5px;
+    }
+
+    select, textarea, input[type="range"] {
+      width: 100%;
+    }
+
+    select {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 12px;
+      outline: none;
+    }
+
+    textarea {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 12px;
+      resize: vertical;
+      min-height: 60px;
+      outline: none;
+    }
+
+    .range-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .range-row input {
+      flex: 1;
+      accent-color: var(--primary);
+    }
+
+    .range-val {
+      font-size: 12px;
+      font-weight: 600;
+      min-width: 40px;
+      text-align: right;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    button {
+      flex: 1;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    button:hover {
+      background: var(--primary-hover);
+    }
+
+    button.secondary {
+      background: var(--border);
+      color: var(--text);
+    }
+
+    button.secondary:hover {
+      background: #475569;
+    }
+
+    button.danger {
+      background: var(--danger);
+    }
+
+    button.danger:hover {
+      background: #dc2626;
+    }
+
+    /* Sentence preview box with live highlighting */
+    .sentences-list {
+      background: #090d16;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      max-height: 140px;
+      overflow-y: auto;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .sentence-item {
+      display: inline;
+      padding: 2px 4px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .sentence-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .sentence-item.active {
+      background: var(--highlight);
+      color: var(--highlight-text);
+      font-weight: 600;
+    }
+
+    .storage-box {
+      background: #090d16;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px;
+      font-family: monospace;
+      font-size: 11px;
+      color: #38bdf8;
+      max-height: 90px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="icons/icon48.png" alt="Read Aloud Icon">
+    <div>
+      <h1>Read Aloud</h1>
+      <p>Phase 3: Background Worker & Sentence Queue</p>
+    </div>
+  </header>
+
+  <!-- Voice & Engine Card -->
+  <div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <span style="font-size: 12px; font-weight: 600; color: var(--text-muted);">Voice Engine Status</span>
+      <span id="supertonic-badge" class="badge warning">Scanning...</span>
+    </div>
+    <div id="status-message" class="status-text">Detecting voices...</div>
+    
+    <div class="form-group" style="margin-top: 10px;">
+      <label for="voice-select">Voice Selection:</label>
+      <select id="voice-select">
+        <option value="">Loading voices...</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <div style="display: flex; justify-content: space-between;">
+        <label for="rate-slider">Speed (Applies Immediately):</label>
+        <span id="rate-display" class="range-val">1.0x</span>
+      </div>
+      <div class="range-row">
+        <input type="range" id="rate-slider" min="0.5" max="2.0" step="0.1" value="1.0">
+      </div>
+    </div>
+  </div>
+
+  <!-- Multi-Sentence Queue & Playback Card -->
+  <div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <label style="margin: 0;">Multi-Sentence Article Test:</label>
+      <span id="queue-status-badge" class="badge info">Ready</span>
+    </div>
+
+    <textarea id="article-text">Speechify transformed reading with fluid voice synthesis. Read Aloud brings that same experience locally to your Windows PC! It uses chrome.tts with zero cloud APIs. The background service worker manages the entire sentence queue. Even if Chrome suspends the worker, chrome.storage.session remembers your exact place. Try clicking any sentence below to jump straight to it.</textarea>
+
+    <!-- Sentence Progress & Preview -->
+    <div style="margin-top: 8px; margin-bottom: 4px; display: flex; justify-content: space-between;">
+      <span style="font-size: 11px; color: var(--text-muted);">Sentence Highlight Preview:</span>
+      <span id="sentence-counter" style="font-size: 11px; font-weight: 600; color: #38bdf8;">0 / 0</span>
+    </div>
+    <div id="sentences-preview" class="sentences-list">
+      <em>Sentences will appear here once loaded...</em>
+    </div>
+
+    <!-- Playback Control Buttons -->
+    <div class="btn-group">
+      <button id="btn-play-queue">▶ Play Queue</button>
+      <button id="btn-pause-queue" class="secondary">⏸ Pause</button>
+      <button id="btn-resume-queue" class="secondary">▶ Resume</button>
+      <button id="btn-prev" class="secondary">⏮ Prev</button>
+      <button id="btn-next" class="secondary">⏭ Next</button>
+      <button id="btn-stop-queue" class="danger">⏹ Stop</button>
+    </div>
+  </div>
+
+  <!-- Session Storage Persistence Inspector -->
+  <div class="card" style="margin-bottom: 0;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+      <label style="margin: 0;">chrome.storage.session Inspector:</label>
+      <button id="btn-inspect-storage" class="secondary" style="flex: 0; padding: 3px 8px; font-size: 11px;">🔍 Inspect Session</button>
+    </div>
+    <div id="storage-display" class="storage-box">Click "Inspect Session" to verify stored queue and index...</div>
+  </div>
+
+  <script src="test.js" type="module"></script>
+</body>
+</html>

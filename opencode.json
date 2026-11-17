@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode/deepseek-v4.1-flash-free",
+  "instructions": [
+    "This is a plain JavaScript Manifest V3 Chrome Extension ('Read Aloud').",
+    "HARD RULES:",
+    "1. Strictly plain JavaScript MV3 — zero npm dependencies, no bundlers, no build steps.",
+    "2. Strictly uses chrome.tts via background messaging.",
+    "3. Encapsulated in Shadow DOM so website styles never conflict.",
+    "4. All tests must pass: always verify by running `python test-harness.py`."
+  ]
+}

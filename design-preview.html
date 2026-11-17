@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RA·1 — Teenage Engineering UI Design Showcase</title>
+<style>
+  :root {
+    --ra-font: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    --ra-accent: #FF5C00;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: var(--ra-font);
+    font-variant-numeric: tabular-nums;
+  }
+
+  body {
+    background: #111111;
+    color: #F0F0F0;
+    padding: 40px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 36px;
+  }
+
+  header {
+    text-align: center;
+    max-width: 600px;
+  }
+
+  h1 {
+    font-size: 16px;
+    letter-spacing: 0.18em;
+    color: #FFFFFF;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  p.subtitle {
+    font-size: 11px;
+    color: #737373;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .showcase-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 32px;
+    max-width: 1000px;
+    width: 100%;
+  }
+
+  .section-card {
+    background: #181818;
+    border: 1.5px solid #000000;
+    border-radius: 4px;
+    box-shadow: 3.5px 3.5px 0 rgba(0, 0, 0, 0.85);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: #737373;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    border-bottom: 1px solid #2A2A2A;
+    padding-bottom: 6px;
+  }
+
+  /* ── Pill Hardware Simulation ── */
+  .pill-mock {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 7px;
+    background: #181818;
+    border: 1.5px solid #000000;
+    border-radius: 4px;
+    box-shadow: 2.5px 2.5px 0 rgba(0, 0, 0, 0.7);
+    color: #F0F0F0;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .pill-mock::before {
+    content: '';
+    width: 3px;
+    align-self: stretch;
+    margin: 2px 2px 2px 0;
+    background: repeating-linear-gradient(180deg, #000000 0 1px, transparent 1px 3px);
+    opacity: 0.5;
+    border-radius: 1px;
+    flex-shrink: 0;
+  }
+
+  .pill-mock::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: var(--ra-accent);
+    width: 48%;
+  }
+
+  .pill-mock.light-mode {
+    background: #ECEAE4;
+    color: #1A1A1A;
+  }
+
+  .drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 2px;
+    color: #737373;
+  }
+
+  .ra-led {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ra-accent);
+    box-shadow: 0 0 6px rgba(255, 92, 0, 0.85);
+    border: 1px solid #000000;
+  }
+
+  .icon-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: inherit;
+    width: 26px;
+    height: 26px;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .play-btn {
+    background: var(--ra-accent) !important;
+    color: #000000 !important;
+    border: 1.5px solid #000000 !important;
+    border-radius: 3px;
+    width: 28px;
+    height: 28px;
+    box-shadow: 1.5px 1.5px 0 #000000;
+  }
+
+  .speed-badge {
+    background: #000000;
+    border: 1px solid #000000;
+    color: var(--ra-accent);
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 2px;
+    padding: 1px 5px;
+  }
+
+  .progress-pill {
+    background: #000000;
+    border: 1px solid #000000;
+    color: #FFFFFF;
+    font-size: 9px;
+    font-weight: 700;
+    border-radius: 2px;
+    padding: 1px 5px;
+  }
+
+  .ra-brand {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    color: #737373;
+    padding: 0 2px;
+  }
+
+  svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+  }
+  .play-btn svg {
+    fill: #000000;
+  }
+
+  /* ── Highlight Demo ── */
+  .text-sample {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+    font-size: 14px;
+    color: #C0C0C0;
+    max-width: 480px;
+    background: #0C0C0C;
+    padding: 14px;
+    border-radius: 3px;
+    border: 1px solid #222222;
+  }
+
+  .te-highlight {
+    color: #FF5C00 !important;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+  <header>
+    <h1>READ ALOUD // RA·1</h1>
+    <p class="subtitle">Teenage Engineering Brutalist Design Language & UX</p>
+  </header>
+
+  <div class="showcase-grid">
+
+    <!-- Dark Module -->
+    <div class="section-card">
+      <div class="section-title">TE DARK ANODIZED (DEFAULT)</div>
+      <div class="pill-mock">
+        <div class="drag-handle">
+          <svg viewBox="0 0 24 24"><path d="M9 5a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4zm6-16a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4z"/></svg>
+        </div>
+        <span class="ra-led"></span>
+        <button class="icon-btn">
+          <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+        </button>
+        <button class="icon-btn play-btn">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button class="icon-btn">
+          <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+        </button>
+        <span class="progress-pill">04/22</span>
+        <span class="speed-badge">1.0×</span>
+        <span class="ra-brand">RA·1</span>
+      </div>
+    </div>
+
+    <!-- OP-1 Light Module -->
+    <div class="section-card" style="background: #F5F4F0; color: #1A1A1A;">
+      <div class="section-title" style="color: #888880; border-color: #D0CEC8;">OP-1 WARM OFF-WHITE (LIGHT MODE)</div>
+      <div class="pill-mock light-mode">
+        <div class="drag-handle" style="color: #888880;">
+          <svg viewBox="0 0 24 24"><path d="M9 5a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4zm6-16a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4zm0 8a2 2 0 100-4 2 2 0 000 4z"/></svg>
+        </div>
+        <span class="ra-led"></span>
+        <button class="icon-btn">
+          <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+        </button>
+        <button class="icon-btn play-btn">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button class="icon-btn">
+          <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+        </button>
+        <span class="progress-pill">04/22</span>
+        <span class="speed-badge">1.0×</span>
+        <span class="ra-brand">RA·1</span>
+      </div>
+    </div>
+
+    <!-- Sentence Highlighting Philosophy -->
+    <div class="section-card" style="width: 100%;">
+      <div class="section-title">SURGICAL ORANGE TEXT HIGHLIGHTING (ZERO BACKGROUND BLOBS)</div>
+      <div class="text-sample">
+        Scheduling your trip, pay attention to Roosevelt House and remember to choose where to eat. 
+        <span class="te-highlight">Tasty parfait, apple pie and orange madeleine can make a deep impression on you.</span> 
+        The wine list is extensive, every visitor can find something that satisfies their taste.
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>
