@@ -27,9 +27,17 @@ The unit suite currently exercises:
 - Pitch-change resume offsets
 - Service-worker recovery when an orphaned utterance is still active
 - Persistence of deferred recovery state across session save/restore
+- Mapping spoken-word offsets back to original text after punctuation/prosody changes
+- Safe sentence-level fallback when semantic cleanup or pronunciation rules change word tokens
+- Per-engine lead-in calibration for Supertonic, Kokoro, and system voices
 
 The Python harness remains useful for source-level invariants and markup checks. It is not a substitute for running the extension in Chrome.
 
 ## Browser and real-engine verification
 
 The unit tests do not prove that Chrome's TTS providers behave correctly on a particular device. Before a release, also follow docs/MANUAL-TEST-CHECKLIST.md with each supported engine. Record the Chrome version, operating system, engine version, and test result when reporting an engine-specific defect.
+
+
+## Word-alignment behavior
+
+Word-level highlighting is used only when every spoken word can be mapped one-to-one to the original sentence. Punctuation and spacing changes are mapped by word spans. If cleanup removes words (for example, citations or URLs) or a pronunciation rule replaces words, NarraTrace deliberately falls back to sentence-level highlighting for that utterance rather than drawing an incorrect word capsule.

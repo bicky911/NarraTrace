@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { playbackManager, PlaybackState } from "../../playback-manager.js";
+import { KOKORO_EXTENSION_ID, SUPERTONIC_EXTENSION_ID } from "../../speech-engine.js";
 
 const PlaybackManager = playbackManager.constructor;
 
@@ -82,6 +83,181 @@ test("pronunciation replacements are case-insensitive and do not mutate original
   assert.equal(result.changed, true);
   assert.equal(result.text, "zee-uh maze is a crop. zee-uh maze is widely grown.");
   assert.equal(input, "Zea mays is a crop. zea mays is widely grown.");
+});
+
+test("buildBatch maps words across punctuation-only prosody rewrites", () => {
+  const manager = createManager();
+  manager.batchSize = 1;
+  manager.pronunciationRules = [];
+  const source = "Alpha — beta: gamma.";
+  manager.queue = [{ index: 0, text: source }];
+
+  const batch = manager.buildBatch(0, 0);
+  assert.equal(batch.wordAlignmentUsable, true);
+
+  const beta = batch.wordAlignmentMaps[0].find((word) =>
+    batch.spokenTexts[0].slice(word.spokenStart, word.spokenEnd) === "beta"
+  );
+  assert.ok(beta);
+  assert.equal(beta.sourceStart, source.indexOf("beta"));
+  assert.notEqual(beta.spokenStart, beta.sourceStart);
+});
+
+test("buildBatch disables word highlighting when semantic cleanup removes source words", () => {
+  const manager = createManager();
+  manager.batchSize = 1;
+  manager.pronunciationRules = [];
+  manager.queue = [{
+    index: 0,
+    text: "Read [1] the report at https://example.com/report and continue."
+  }];
+
+  const batch = manager.buildBatch(0, 0);
+  assert.equal(batch.wordAlignmentUsable, false);
+  assert.equal(batch.wordAlignmentMaps[0], null);
+});
+
+test("buildBatch disables word highlighting when pronunciation changes spoken words", () => {
+  const manager = createManager();
+  manager.batchSize = 1;
+  manager.pronunciationRules = PlaybackManager.parsePronunciations(
+    "Zea mays = zee-uh maze"
+  );
+  manager.queue = [{ index: 0, text: "Zea mays is a crop." }];
+
+  const batch = manager.buildBatch(0, 0);
+  assert.equal(batch.wordAlignmentUsable, false);
+  assert.equal(batch.wordAlignmentMaps[0], null);
+});
+
+test("native word events are mapped back to original sentence character offsets", () => {
+  const manager = createManager();
+  manager.batchSize = 1;
+  manager.pronunciationRules = [];
+  const source = "Alpha — beta: gamma.";
+  manager.queue = [{ index: 0, text: source }];
+  const built = manager.buildBatch(0, 0);
+  const batch = {
+    ...built,
+    currentSentence: 0,
+    firstBoundaryDelay: null,
+    firstBoundaryTime: null,
+    requestedAt: Date.now(),
+    startedAt: Date.now(),
+    sawWords: false,
+    sawSentences: false,
+    firstWordAt: 0,
+    lastWordAt: 0,
+    firstWordIndex: 0,
+    lastWordIndex: 0,
+    anchorChar: null,
+    anchorTime: null,
+    anchorEnd: null,
+    segmentIndex: 0
+  };
+  const messages = [];
+  manager.broadcast = (action, payload) => messages.push({ action, payload });
+
+  const spokenIndex = batch.spokenTexts[0].indexOf("beta");
+  manager.handleTtsEvent({ type: "word", charIndex: spokenIndex, length: 4 }, batch);
+
+  const wordMessage = messages.find((item) => item.action === "TTS_EVENT");
+  assert.ok(wordMessage);
+  assert.equal(wordMessage.payload.event.charIndex, source.indexOf("beta"));
+  assert.equal(wordMessage.payload.event.charLength, 4);
+  assert.equal(manager.lastWordCharIndex, source.indexOf("beta"));
+});
+
+test("Supertonic first-boundary estimator uses its seeded lead-in delay", () => {
+  const manager = createManager();
+  manager.options.extensionId = SUPERTONIC_EXTENSION_ID;
+  const batch = {
+    firstIndex: 0,
+    offsets: [0],
+    spokenLengths: [100],
+    text: "x".repeat(100),
+    anchorTime: 1000,
+    anchorChar: 0,
+    anchorEnd: 100,
+    firstBoundaryDelay: 0,
+    segmentIndex: 0
+  };
+
+  assert.equal(manager.calculateEstimatedPosition(batch, 3000), 0);
+  assert.ok(manager.calculateEstimatedPosition(batch, 5000) > 0);
+});
+
+test("Kokoro late first boundary does not inherit Supertonic lead-in delay", () => {
+  const manager = createManager();
+  manager.options.extensionId = KOKORO_EXTENSION_ID;
+  const batch = {
+    firstIndex: 0,
+    offsets: [0],
+    spokenLengths: [100],
+    text: "x".repeat(100),
+    anchorTime: 10000,
+    anchorChar: 0,
+    anchorEnd: 100,
+    firstBoundaryDelay: 10000,
+    segmentIndex: 0
+  };
+
+  assert.equal(manager.calculateEstimatedPosition(batch, 12000), 27);
+});
+
+test("first early boundary interval does not erase Supertonic's seeded lead-in", () => {
+  const manager = createManager();
+  manager.options.extensionId = SUPERTONIC_EXTENSION_ID;
+  const profile = manager.engineProfile();
+  assert.equal(profile.leadInMs, 3200);
+  assert.equal(profile.baseCharsPerSecond, 0);
+
+  const text = "x".repeat(100);
+  manager.queue = [{ index: 0, text }];
+  manager.broadcast = () => {};
+  const batch = {
+    firstIndex: 0,
+    offsets: [0],
+    spokenLengths: [100],
+    spokenTexts: [text],
+    wordAlignmentMaps: [[]],
+    text,
+    currentSentence: 0,
+    anchorChar: 0,
+    anchorTime: 1000,
+    anchorEnd: null,
+    segmentIndex: 0,
+    firstBoundaryDelay: 0,
+    firstBoundaryTime: 1000,
+    requestedAt: 1000
+  };
+
+  const originalNow = Date.now;
+  Date.now = () => 9000;
+  try {
+    manager.handleTtsEvent({ type: "sentence", charIndex: 65 }, batch);
+  } finally {
+    Date.now = originalNow;
+  }
+
+  assert.ok(profile.baseCharsPerSecond > 0);
+  assert.equal(profile.leadInMs, 3200);
+});
+
+test("system voice estimator does not inherit a network provider lead-in", () => {
+  const manager = createManager();
+  manager.options.extensionId = null;
+  const batch = {
+    firstIndex: 0,
+    offsets: [0],
+    spokenLengths: [100],
+    text: "x".repeat(100),
+    startedAt: 1000,
+    anchorTime: null,
+    requestedAt: 1000
+  };
+
+  assert.equal(manager.calculateEstimatedPosition(batch, 2000), 13.5);
 });
 
 test("deferred worker recovery state survives session save and restore", async (t) => {
