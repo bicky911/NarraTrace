@@ -1957,13 +1957,14 @@ class PlaybackManager {
   static parsePronunciations(rawText) {
     const rules = [];
     if (typeof rawText !== 'string') return rules;
-    for (const line of rawText.split(/\r?\n/)) {
+    for (const line of rawText.slice(0, MAX_PRONUNCIATION_TEXT_CHARS).split(/\r?\n/)) {
+      if (rules.length >= MAX_PRONUNCIATION_RULES) break;
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
       const eq = trimmed.indexOf('=');
       const find = trimmed.slice(0, eq).trim();
       const say = trimmed.slice(eq + 1).trim();
-      if (!find || !say) continue;
+      if (!find || !say || find.length > 80 || say.length > 160) continue;
       const escaped = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       try {
         rules.push({ re: new RegExp(`\\b${escaped}\\b`, 'gi'), say });
@@ -1973,7 +1974,8 @@ class PlaybackManager {
   }
 
   setPronunciationText(rawText) {
-    const text = typeof rawText === 'string' ? rawText : '';
+    const text = (typeof rawText === 'string' ? rawText : '')
+      .slice(0, MAX_PRONUNCIATION_TEXT_CHARS);
     this.pronunciationRules = PlaybackManager.parsePronunciations(text);
     try {
       chrome.storage.local.get(PREFS_STORAGE_KEY, (res) => {
