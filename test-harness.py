@@ -765,9 +765,16 @@ check(
     'chrome.runtime.id' in runtime_bg and
     'if (!isDiagnosticsPageSender(sender))' in runtime_bg,
 )
+diagnostic_route_start = runtime_bg.find("case 'RUN_TTS_DIAGNOSTIC'")
+diagnostic_route_end = runtime_bg.find("case 'GET_PAGE_ZOOM'", diagnostic_route_start)
+diagnostic_route = runtime_bg[diagnostic_route_start:diagnostic_route_end]
+
 check(
-    'background.js: direct SPEAK_TEXT diagnostic TTS bypass has been removed',
-    "case 'SPEAK_TEXT'" not in runtime_bg and 'safeSpeak' not in runtime_bg,
+    'background.js: legacy SPEAK_TEXT action is removed and diagnostic speech stays behind its guarded route',
+    "case 'SPEAK_TEXT'" not in runtime_bg and
+    "case 'RUN_TTS_DIAGNOSTIC'" in diagnostic_route and
+    "if (!isDiagnosticsPageSender(sender))" in diagnostic_route and
+    'const result = await safeSpeak(' in diagnostic_route,
 )
 check(
     'background.js: player visibility requires an explicit boolean',
