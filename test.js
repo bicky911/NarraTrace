@@ -26,6 +26,199 @@ const btnNext = document.getElementById('btn-next');
 const btnStopQueue = document.getElementById('btn-stop-queue');
 const btnInspectStorage = document.getElementById('btn-inspect-storage');
 
+const diagnosticBadgeEl = document.getElementById('engine-diagnostic-badge');
+const diagnosticEnvironmentEl = document.getElementById('engine-diagnostic-environment');
+const diagnosticProviderVersionEl = document.getElementById('diagnostic-provider-version');
+const diagnosticSampleTextEl = document.getElementById('diagnostic-sample-text');
+const diagnosticStatusEl = document.getElementById('engine-diagnostic-status');
+const diagnosticLogEl = document.getElementById('engine-diagnostic-log');
+const btnRunDiagnostic = document.getElementById('btn-run-engine-diagnostic');
+const btnExportDiagnostic = document.getElementById('btn-export-engine-diagnostic');
+const btnClearDiagnostic = document.getElementById('btn-clear-engine-diagnostic');
+
+let activeDiagnosticRequestId = null;
+let diagnosticTimeoutId = null;
+let diagnosticReport = null;
+
+const manifestInfo = chrome.runtime.getManifest();
+const chromeVersion = navigator.userAgent.match(/Chrome\\/(\\d+(?:\\.\\d+)+)/)?.[1] || 'Unknown';
+const environmentInfo = {
+  capturedAt: new Date().toISOString(),
+  extensionVersion: manifestInfo.version,
+  browser: 'Chrome',
+  browserVersion: chromeVersion,
+  userAgent: navigator.userAgent,
+  platform: navigator.platform || 'Unknown',
+  language: navigator.language || 'Unknown',
+  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown'
+};
+diagnosticEnvironmentEl.textContent =
+  `NarraTrace ${environmentInfo.extensionVersion} · Chrome ${environmentInfo.browserVersion} · ${environmentInfo.platform} · ${environmentInfo.timeZone}`;
+
+function setDiagnosticStatus(message, tone = 'info') {
+  diagnosticStatusEl.textContent = message;
+  diagnosticBadgeEl.className = `badge ${tone}`;
+  diagnosticBadgeEl.textContent =
+    tone === 'success' ? 'Passed' :
+    tone === 'warning' ? 'Attention' :
+    tone === 'danger' ? 'Failed' : 'Ready';
+}
+
+function renderDiagnosticEvents() {
+  if (!diagnosticReport || diagnosticReport.events.length === 0) {
+    diagnosticLogEl.textContent = 'No diagnostic events recorded.';
+    return;
+  }
+
+  diagnosticLogEl.textContent = diagnosticReport.events.map((entry) => {
+    const event = entry.event;
+    const parts = [
+      `${String(entry.elapsedMs).padStart(5, ' ')} ms`,
+      event.type
+    ];
+    if (event.charIndex !== null) parts.push(`char=${event.charIndex}`);
+    if (event.length !== null) parts.push(`length=${event.length}`);
+    if (event.charLength !== null) parts.push(`charLength=${event.charLength}`);
+    if (event.errorMessage) parts.push(`error=${event.errorMessage}`);
+    return parts.join(' · ');
+  }).join('\\n');
+}
+
+function finishDiagnosticTimeout(requestId) {
+  if (activeDiagnosticRequestId !== requestId) return;
+  activeDiagnosticRequestId = null;
+  diagnosticTimeoutId = null;
+  if (diagnosticReport) {
+    diagnosticReport.success = false;
+    diagnosticReport.resultType = 'client-timeout';
+    diagnosticReport.error = 'No completion message arrived within 70 seconds. Check whether Chrome suspended the service worker or the provider stopped responding.';
+    diagnosticReport.durationMs = null;
+  }
+  btnRunDiagnostic.disabled = false;
+  btnExportDiagnostic.disabled = !diagnosticReport;
+  setDiagnosticStatus('No completion event arrived within 70 seconds. Export the report and check the service-worker console.', 'danger');
+}
+
+async function runEngineDiagnostic() {
+  if (activeDiagnosticRequestId) return;
+
+  const option = voiceSelectEl.selectedOptions[0];
+  if (!option || !option.value) {
+    setDiagnosticStatus('Select an available Chrome TTS voice first.', 'warning');
+    return;
+  }
+
+  const sampleText = diagnosticSampleTextEl.value.trim();
+  if (!sampleText || sampleText.length > 500) {
+    setDiagnosticStatus('Enter a sample between 1 and 500 characters.', 'warning');
+    return;
+  }
+
+  const requestId = globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID()
+    : `diag-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const selectedExtensionId = option.dataset.extensionId || null;
+  const selectedLang = option.dataset.lang || null;
+  const engineGroup = option.parentElement?.label || 'Unknown / system';
+  const startedAt = new Date().toISOString();
+
+  diagnosticReport = {
+    schemaVersion: 1,
+    environment: environmentInfo,
+    provider: {
+      group: engineGroup,
+      voiceName: option.value,
+      extensionId: selectedExtensionId,
+      language: selectedLang,
+      version: diagnosticProviderVersionEl.value.trim() || null
+    },
+    test: {
+      startedAt,
+      rate: Number.parseFloat(rateSliderEl.value),
+      sampleCharacterCount: sampleText.length,
+      sampleTextIncluded: false
+    },
+    events: [],
+    success: null,
+    resultType: null,
+    durationMs: null,
+    error: null
+  };
+
+  activeDiagnosticRequestId = requestId;
+  btnRunDiagnostic.disabled = true;
+  btnExportDiagnostic.disabled = true;
+  setDiagnosticStatus('Starting audible test…', 'warning');
+  diagnosticLogEl.textContent = 'Waiting for the Chrome TTS provider…';
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      action: 'RUN_TTS_DIAGNOSTIC',
+      requestId,
+      text: sampleText,
+      voiceName: option.value,
+      extensionId: selectedExtensionId,
+      lang: selectedLang,
+      rate: Number.parseFloat(rateSliderEl.value)
+    });
+
+    if (activeDiagnosticRequestId !== requestId) return;
+    if (!response?.success) {
+      activeDiagnosticRequestId = null;
+      btnRunDiagnostic.disabled = false;
+      diagnosticReport.success = false;
+      diagnosticReport.resultType = 'request-rejected';
+      diagnosticReport.error = response?.error || 'Background service worker rejected the test request.';
+      btnExportDiagnostic.disabled = false;
+      setDiagnosticStatus(diagnosticReport.error, 'danger');
+      return;
+    }
+
+    diagnosticReport.test.startedAt = response.startedAt || startedAt;
+    diagnosticReport.provider.voiceName = response.voice?.voiceName || option.value;
+    diagnosticReport.provider.extensionId = response.voice?.extensionId || null;
+    diagnosticReport.provider.language = response.voice?.lang || selectedLang;
+
+    diagnosticTimeoutId = setTimeout(
+      () => finishDiagnosticTimeout(requestId),
+      70000
+    );
+    setDiagnosticStatus('Speaking through the selected provider. Listen for gaps and compare the highlight on a normal article separately.', 'warning');
+  } catch (error) {
+    if (activeDiagnosticRequestId !== requestId) return;
+    activeDiagnosticRequestId = null;
+    btnRunDiagnostic.disabled = false;
+    diagnosticReport.success = false;
+    diagnosticReport.resultType = 'message-error';
+    diagnosticReport.error = String(error?.message || error);
+    btnExportDiagnostic.disabled = false;
+    setDiagnosticStatus(diagnosticReport.error, 'danger');
+  }
+}
+
+btnRunDiagnostic.addEventListener('click', runEngineDiagnostic);
+
+btnExportDiagnostic.addEventListener('click', () => {
+  if (!diagnosticReport) return;
+  const blob = new Blob([JSON.stringify(diagnosticReport, null, 2)], {
+    type: 'application/json'
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `narratrace-tts-diagnostic-${Date.now()}.json`;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+btnClearDiagnostic.addEventListener('click', () => {
+  if (activeDiagnosticRequestId) return;
+  diagnosticReport = null;
+  btnExportDiagnostic.disabled = true;
+  diagnosticLogEl.textContent = 'No diagnostic events recorded.';
+  setDiagnosticStatus('Diagnostic report cleared. Select a voice and run the test when ready.', 'info');
+});
+
 let currentSentences = [];
 let activeSentenceIndex = -1;
 
@@ -222,6 +415,42 @@ chrome.runtime.onMessage.addListener((message) => {
   if (!message || !message.action) return;
 
   switch (message.action) {
+    case 'TTS_DIAGNOSTIC_EVENT': {
+      if (!diagnosticReport || message.requestId !== activeDiagnosticRequestId || !message.event) break;
+      const event = {
+        type: String(message.event.type || 'unknown'),
+        charIndex: Number.isFinite(message.event.charIndex) ? message.event.charIndex : null,
+        length: Number.isFinite(message.event.length) ? message.event.length : null,
+        charLength: Number.isFinite(message.event.charLength) ? message.event.charLength : null,
+        errorMessage: typeof message.event.errorMessage === 'string' ? message.event.errorMessage : null
+      };
+      diagnosticReport.events.push({
+        elapsedMs: Number.isFinite(message.elapsedMs) ? message.elapsedMs : null,
+        event
+      });
+      renderDiagnosticEvents();
+      break;
+    }
+    case 'TTS_DIAGNOSTIC_COMPLETE': {
+      if (!diagnosticReport || message.requestId !== activeDiagnosticRequestId) break;
+      if (diagnosticTimeoutId) clearTimeout(diagnosticTimeoutId);
+      diagnosticTimeoutId = null;
+      activeDiagnosticRequestId = null;
+      diagnosticReport.success = message.success === true;
+      diagnosticReport.resultType = message.resultType || 'unknown';
+      diagnosticReport.durationMs = Number.isFinite(message.durationMs) ? message.durationMs : null;
+      diagnosticReport.error = typeof message.error === 'string' ? message.error : null;
+      diagnosticReport.test.completedAt = new Date().toISOString();
+      btnRunDiagnostic.disabled = false;
+      btnExportDiagnostic.disabled = false;
+      setDiagnosticStatus(
+        diagnosticReport.success
+          ? `Completed: ${diagnosticReport.resultType} after ${diagnosticReport.durationMs} ms. Check the event order and audible result.`
+          : `Diagnostic did not complete cleanly: ${diagnosticReport.error || diagnosticReport.resultType}.`,
+        diagnosticReport.success ? 'success' : 'danger'
+      );
+      break;
+    }
     case 'SENTENCE_CHANGED': {
       updateActiveSentence(message.index);
       queueStatusBadgeEl.className = 'badge success';
