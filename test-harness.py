@@ -684,8 +684,8 @@ check(
     'function scheduleMutationCheck(records)' in content_js,
 )
 check(
-    'content.js: unrelated mutations are ignored while active range endpoints remain attached',
-    'if (endpointsAttached && !textChangedInsideRange) return;' in content_js,
+    'content.js: unrelated mutations are ignored while active range and owner remain attached',
+    'if (endpointsAttached && !ownerDetached && !textChangedInsideRange) return;' in content_js,
 )
 check(
     'content.js: text mutations intersecting the active range trigger a forced remap',
