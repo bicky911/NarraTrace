@@ -698,10 +698,12 @@ check(
     'mutationObserver.disconnect();' in content_js,
 )
 check(
-    'content.js: DOM repair detects a detached sentence owner even when Range endpoints auto-adjust',
+    'content.js: DOM repair detects detached owners and removed descendants containing the active sentence',
     'const ownerDetached = Boolean(ownerElement && !document.contains(ownerElement));' in content_js and
-    'endpointsAttached && !ownerDetached && !textChangedInsideRange' in content_js and
-    'mutationRequiresRemap || ownerDetached || textChangedInsideRange' in content_js,
+    'const activeSentenceRemoved = Boolean(' in content_js and
+    'removedText.includes(activeSentenceText)' in content_js and
+    'endpointsAttached && !ownerDetached && !activeSentenceRemoved && !textChangedInsideRange' in content_js and
+    'activeSentenceRemoved || textChangedInsideRange' in content_js,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
