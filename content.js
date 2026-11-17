@@ -3902,11 +3902,9 @@
     readerOverlay.classList.remove('theme-cream', 'theme-dark', 'theme-sepia', 'theme-oled');
     readerOverlay.classList.add(`theme-${currentReaderTheme}`);
     readerThemeBtns.forEach(btn => {
-      if (btn.dataset.rtheme === currentReaderTheme) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
+      const isActive = btn.dataset.rtheme === currentReaderTheme;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', String(isActive));
     });
     safeStorageSet({ readAloud_readerTheme: currentReaderTheme });
   }
@@ -3990,7 +3988,9 @@
       rctrlPlayIcon.innerHTML = (currentPlaybackState === 'PLAYING') ? SVG_PAUSE : SVG_PLAY;
     }
     if (rctrlPlayBtn) {
-      rctrlPlayBtn.title = (currentPlaybackState === 'PLAYING') ? 'Pause (Alt+P)' : 'Play (Alt+P)';
+      const isPlaying = currentPlaybackState === 'PLAYING';
+      rctrlPlayBtn.title = isPlaying ? 'Pause (Alt+P)' : 'Play (Alt+P)';
+      rctrlPlayBtn.setAttribute('aria-label', isPlaying ? 'Pause reading' : 'Play reading');
     }
     if (rspeedBadge) {
       rspeedBadge.textContent = `${currentSpeed.toFixed(1)}x`;
@@ -4085,6 +4085,38 @@
       }
     });
   }
+
+  // Focus Reader is a modal surface: keep keyboard focus inside it while
+  // open, and return focus to the invoking control when it closes.
+  readerOverlay.addEventListener('keydown', (event) => {
+    if (!isReaderOpen || event.key !== 'Tab') return;
+
+    const focusable = Array.from(readerOverlay.querySelectorAll(
+      'button:not([disabled]), select:not([disabled]), input:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+    )).filter(element =>
+      !element.hasAttribute('hidden') &&
+      element.getAttribute('aria-hidden') !== 'true' &&
+      element.getClientRects().length > 0
+    );
+
+    if (focusable.length === 0) {
+      event.preventDefault();
+      readerCloseBtn?.focus();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = shadow.activeElement || document.activeElement;
+
+    if (event.shiftKey && (active === first || active === readerOverlay)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
 
   // Reader Event Listeners
   if (readerCloseBtn) {
