@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "NarraTrace Browser Test TTS Engine",
+  "version": "1.0.0",
+  "description": "Silent deterministic TTS engine used only by NarraTrace browser tests.",
+  "permissions": ["ttsEngine"],
+  "tts_engine": {
+    "voices": [
+      {
+        "voice_name": "NarraTrace Browser Test Voice",
+        "lang": "en-US",
+        "event_types": ["start", "word", "sentence", "end", "error"]
+      }
+    ]
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
