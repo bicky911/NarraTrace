@@ -796,9 +796,10 @@ check(
     r'matchAll(/\S+/gu)' in fake_tts_worker and r'matchAll(/\\S+/gu)' not in fake_tts_worker,
 )
 check(
-    'Browser integration tests cover live DOM replacement and word-range recovery',
+    'Browser integration tests cover live word tracking and active sentence re-anchoring',
+    'ra-word-box' in e2e_spec and
     'replaceWith(replacement)' in e2e_spec and
-    "highlights?.get('read-aloud-word')" in e2e_spec,
+    "highlights?.get('read-aloud-sentence')" in e2e_spec,
 )
 check(
     'Browser integration tests record large-article performance metrics',
