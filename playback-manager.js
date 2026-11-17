@@ -166,7 +166,7 @@ function stripSemanticNoise(text) {
 function getWordSpans(text) {
   if (typeof text !== 'string') return [];
   const spans = [];
-  const pattern = /[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu;
+  const pattern = /[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*(?:[.,:/-][\p{L}\p{N}]+)*/gu;
   let match;
   while ((match = pattern.exec(text)) !== null) {
     spans.push({
@@ -1158,6 +1158,10 @@ class PlaybackManager {
         const seconds = (now - batch.anchorTime) / 1000;
         const chars = charIndex - batch.anchorChar;
         const cps = seconds > 0 ? chars / seconds : 0;
+        // Preserve the pre-event estimate: the first boundary interval may
+        // include the engine's lead-in and must not calibrate that delay using
+        // the same contaminated interval as its own speaking-rate baseline.
+        const priorBaseCharsPerSecond = profile.baseCharsPerSecond;
 
         if (cps > 1 && cps < 200) {
           // The interval rate is what the reader actually hears (it includes
@@ -1185,10 +1189,10 @@ class PlaybackManager {
         // The lead-in only exists when the engine announces the boundary
         // BEFORE the voice starts — that is, when its first boundary arrived
         // together with 'start' rather than when the speech actually began.
-        if (batch.segmentIndex === 0 && batch.firstBoundaryDelay <= BOUNDARY_ANNOUNCED_EARLY_MS) {
-          const steady = profile.baseCharsPerSecond > 0
-            ? profile.baseCharsPerSecond
-            : DEFAULT_CHARS_PER_SECOND;
+        if (batch.segmentIndex === 0 &&
+            batch.firstBoundaryDelay <= BOUNDARY_ANNOUNCED_EARLY_MS &&
+            priorBaseCharsPerSecond > 0) {
+          const steady = priorBaseCharsPerSecond;
           const speechSeconds = chars / (steady * (this.options.rate || 1));
           const leadInMs = Math.max(0, (seconds - speechSeconds) * 1000);
           profile.leadInMs = profile.leadInMs > 0
@@ -1441,6 +1445,7 @@ class PlaybackManager {
       const mapped = mapSpokenPositionToSource(batch.wordAlignmentMaps?.[slot], wordStart);
       if (!mapped) {
         this.wordEventsUsable = false;
+        this.stopEstimator();
         return;
       }
 
