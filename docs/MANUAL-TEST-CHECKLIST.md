@@ -30,7 +30,7 @@ replaced by source-code assertions or unit tests.
 | # | Do this | Expected |
 |---|---------|----------|
 | 1.1 | Click the NarraTrace toolbar icon | The popup badge reads **KOKORO** |
-| 1.2 | Open the voice dropdown | Three groups: `★ Kokoro (local neural)` with 28 voices, `★ Supertonic (local neural)`, `Windows System Voices` |
+| 1.2 | Open the voice dropdown | Three groups: `★ Kokoro (local neural)` with 28 voices, `★ Supertonic (network)`, `Windows System Voices` |
 | 1.3 | The selected voice | **Kokoro Heart** |
 | 1.4 | Open a Wikipedia article and press play | It speaks with a Kokoro voice, not the Supertonic one |
 
