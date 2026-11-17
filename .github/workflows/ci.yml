@@ -35,3 +35,33 @@ jobs:
 
       - name: Run source-structure checks
         run: npm run test:static
+
+  browser-integration:
+    name: Browser integration and performance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install browser-test tooling
+        run: npm install --no-package-lock --no-audit --no-fund
+
+      - name: Install Playwright Chromium and Linux dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Run extension browser tests
+        run: npm run test:e2e
+
+      - name: Upload browser diagnostics on failure
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: narratrace-browser-test-results
+          path: test-results/
+          if-no-files-found: ignore
+
