@@ -98,6 +98,7 @@ function finishDiagnosticTimeout(requestId) {
   }
   btnRunDiagnostic.disabled = false;
   btnMarkAudible.disabled = true;
+  btnClearDiagnostic.disabled = false;
   btnExportDiagnostic.disabled = !diagnosticReport;
   setDiagnosticStatus('No completion event arrived within 70 seconds. Export the report and check the service-worker console.', 'danger');
 }
