@@ -19,7 +19,8 @@ import {
   isSpeaking,
   detectAndSelectVoice,
   detectScript,
-  findBestVoiceForLang
+  findBestVoiceForLang,
+  SUPERTONIC_EXTENSION_ID
 } from './speech-engine.js';
 
 export const PlaybackState = {
@@ -158,6 +159,69 @@ function stripSemanticNoise(text) {
   return out.length > 0 ? out : text.trim();
 }
 
+/**
+ * Return Unicode word spans for a string. Punctuation is deliberately excluded
+ * so punctuation-only prosody rewrites do not destroy text-to-highlight mapping.
+ */
+function getWordSpans(text) {
+  if (typeof text !== 'string') return [];
+  const spans = [];
+  const pattern = /[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*/gu;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    spans.push({
+      text: match[0],
+      start: match.index,
+      end: match.index + match[0].length
+    });
+  }
+  return spans;
+}
+
+/**
+ * Map spoken word positions back to their original sentence positions.
+ *
+ * This intentionally requires a one-to-one, in-order word match. When semantic
+ * cleanup removes source words (citations/URLs) or pronunciation rules replace
+ * words, returning no map is safer than highlighting the wrong text.
+ */
+function buildWordAlignmentMap(sourceText, spokenText) {
+  const sourceWords = getWordSpans(sourceText);
+  const spokenWords = getWordSpans(spokenText);
+  if (sourceWords.length === 0 || sourceWords.length !== spokenWords.length) return null;
+
+  const map = [];
+  for (let i = 0; i < spokenWords.length; i++) {
+    if (sourceWords[i].text.normalize('NFKC').toLowerCase() !==
+        spokenWords[i].text.normalize('NFKC').toLowerCase()) {
+      return null;
+    }
+    map.push({
+      spokenStart: spokenWords[i].start,
+      spokenEnd: spokenWords[i].end,
+      sourceStart: sourceWords[i].start,
+      sourceEnd: sourceWords[i].end
+    });
+  }
+  return map;
+}
+
+/**
+ * Find the original-source word corresponding to a spoken-text character
+ * position. A position in punctuation/whitespace resolves to the next word.
+ */
+function mapSpokenPositionToSource(wordMap, position) {
+  if (!Array.isArray(wordMap) || !Number.isFinite(position)) return null;
+  const word = wordMap.find((entry) =>
+    position >= entry.spokenStart && position < entry.spokenEnd
+  ) || wordMap.find((entry) => entry.spokenStart >= position);
+  if (!word) return null;
+  return {
+    charIndex: word.sourceStart,
+    charLength: word.sourceEnd - word.sourceStart
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Context-Aware Prosody & Punctuation Cadence
 // ─────────────────────────────────────────────────────────────────────────────
@@ -247,11 +311,6 @@ class PlaybackManager {
     // Measured speaking speed in characters per second, used by the position
     // estimator when the engine does not emit word/sentence events.
     this.charsPerSecond = 0;
-    // Lead-in delay: the seconds a network voice spends preparing the
-    // synthesis before the first word of an utterance is audible. Measured
-    // against the real Supertonic engine at ~3.2 s; learned and refined from
-    // the engine's own sentence boundaries as reading continues.
-    this.leadInMs = 3200;
     // What we have learned about each TTS engine, keyed by extension id.
     //
     //   prepareMs          time from the engine's 'start' event to its first
@@ -281,7 +340,10 @@ class PlaybackManager {
       profile = {
         prepareMs: 0,
         baseCharsPerSecond: 0,
-        leadInMs: 0,
+        // Supertonic announces its first sentence boundary before audio is
+        // audible. Seed only that known engine with its measured initial
+        // lead-in; other engines must not inherit a network-specific delay.
+        leadInMs: id === SUPERTONIC_EXTENSION_ID ? 3200 : 0,
         boundariesSeen: 0,
         // Average rate between sentence boundaries. It includes the gaps an
         // engine leaves when it cannot synthesise as fast as it plays, so it
@@ -880,7 +942,9 @@ class PlaybackManager {
     const items = [];
     const offsets = [];
     const spokenTexts = [];
+    const wordAlignmentMaps = [];
     let pronunciationChanged = false;
+    let wordAlignmentUsable = true;
     let acc = 0;
 
     let firstScript = null;
@@ -908,13 +972,19 @@ class PlaybackManager {
       const clean   = stripSemanticNoise(source);
       const cadence = applyProsodyCadence(clean);
       const norm    = this.applyPronunciations(cadence);
+      const wordMap = buildWordAlignmentMap(source, norm.text);
 
       items.push(item);
       spokenTexts.push(norm.text);
+      wordAlignmentMaps.push(wordMap);
+      if (!wordMap) wordAlignmentUsable = false;
       offsets.push(acc);
       acc += norm.text.length + 1; // +1 for the joining space
 
-      // Rewritten text can no longer be matched to the original offsets.
+      // A one-to-one word map is required for precise word-level highlighting.
+      // Keep this sentence speakable, but do not group further sentences after
+      // a mapping-breaking transform.
+      if (!wordMap) break;
       if (norm.changed) {
         pronunciationChanged = true;
         break;
@@ -928,6 +998,8 @@ class PlaybackManager {
       offsets,
       spokenTexts,
       spokenLengths: spokenTexts.map((t) => t.length),
+      wordAlignmentMaps,
+      wordAlignmentUsable,
       text: spokenTexts.join(' '),
       firstIndex,
       resumeOffset: offset,
@@ -974,6 +1046,8 @@ class PlaybackManager {
     const changed = batch.currentSentence !== sentenceIndex;
     batch.currentSentence = sentenceIndex;
     this.currentIndex = sentenceIndex;
+    const slot = sentenceIndex - batch.firstIndex;
+    this.wordEventsUsable = Boolean(batch.wordAlignmentMaps && batch.wordAlignmentMaps[slot]);
 
     if (!changed) return;
     const item = this.queue[sentenceIndex];
@@ -1120,7 +1194,6 @@ class PlaybackManager {
           profile.leadInMs = profile.leadInMs > 0
             ? (profile.leadInMs * 0.6 + leadInMs * 0.4)
             : leadInMs;
-          this.leadInMs = profile.leadInMs;
         }
         batch.segmentIndex++;
       }
@@ -1145,7 +1218,14 @@ class PlaybackManager {
 
       this.setCurrentSentence(loc.sentenceIndex, batch);
 
+      const slot = loc.sentenceIndex - batch.firstIndex;
       const rel = loc.offset;
+      const mapped = mapSpokenPositionToSource(batch.wordAlignmentMaps?.[slot], rel);
+      if (!mapped) {
+        this.wordEventsUsable = false;
+        return;
+      }
+
       const now = Date.now();
       this.noteFirstBoundary(batch, now);
       if (!batch.firstWordAt) {
@@ -1155,23 +1235,21 @@ class PlaybackManager {
       batch.lastWordAt = now;
       batch.lastWordIndex = rel;
 
-      // Absolute position inside the full sentence (used by pause/resume).
-      this.lastWordCharIndex = (batch.resumeOffset || 0) + rel;
+      // Offsets used for pause/resume refer to the ORIGINAL sentence, not the
+      // cleaned/re-written text sent to the speech provider.
+      const sourceOffset = slot === 0 ? (batch.resumeOffset || 0) : 0;
+      this.lastWordCharIndex = sourceOffset + mapped.charIndex;
       this.sawWordEvents = true;
-
-      const wordLength = (typeof event.length === 'number' && event.length > 0)
-        ? event.length
-        : ((typeof event.charLength === 'number' && event.charLength > 0) ? event.charLength : 0);
 
       this.broadcast('TTS_EVENT', {
         event: {
           type: 'word',
-          charIndex: rel,
-          charLength: wordLength,
-          length: wordLength
+          charIndex: mapped.charIndex,
+          charLength: mapped.charLength,
+          length: mapped.charLength
         },
         index: loc.sentenceIndex,
-        aligned: this.wordEventsUsable,
+        aligned: true,
         resumeOffset: 0
       });
       return;
@@ -1293,6 +1371,53 @@ class PlaybackManager {
    * preparing the synthesis. Extrapolating from 'start' therefore made the
    * highlight run up to 7 s AHEAD of the voice — measured, not guessed.
    */
+  /**
+   * Calculate an estimated character position in the spoken utterance.
+   * Returns null while a provider is still preparing audio.
+   */
+  calculateEstimatedPosition(batch, now = Date.now()) {
+    const profile = this.engineProfile();
+    const cps = this.effectiveCharsPerSecond();
+    let pos;
+
+    if (batch.anchorTime !== null) {
+      let elapsed = (now - batch.anchorTime) / 1000;
+      const firstBoundaryWasEarly = batch.firstBoundaryDelay !== null &&
+        batch.firstBoundaryDelay <= BOUNDARY_ANNOUNCED_EARLY_MS;
+      if (batch.segmentIndex === 0 && firstBoundaryWasEarly) {
+        elapsed -= (profile.leadInMs || 0) / 1000;
+      }
+      pos = batch.anchorChar + Math.max(0, elapsed) * cps;
+
+      // The estimate must not pass the provider's current sentence boundary.
+      let ceiling = null;
+      if (batch.anchorEnd !== null && batch.anchorEnd > batch.anchorChar) {
+        ceiling = batch.anchorEnd;
+      } else {
+        const anchorLoc = this.locateInBatch(batch, batch.anchorChar);
+        if (anchorLoc) {
+          const slot = anchorLoc.sentenceIndex - batch.firstIndex;
+          const sentenceEnd = (batch.offsets[slot] || 0) + (batch.spokenLengths[slot] || 0);
+          if (sentenceEnd > batch.anchorChar) ceiling = sentenceEnd;
+        }
+      }
+      if (ceiling !== null) pos = Math.min(pos, ceiling);
+    } else if (this.options.extensionId &&
+               (now - (batch.requestedAt || batch.startedAt)) < this.preparationWindowMs(profile)) {
+      pos = 0;
+    } else {
+      // Unknown/system voices do not inherit Supertonic's measured network delay.
+      const elapsed = Math.max(
+        0,
+        (now - batch.startedAt) / 1000 - (profile.leadInMs || 0) / 1000
+      );
+      if (elapsed <= 0) return null;
+      pos = elapsed * cps;
+    }
+
+    return Math.max(0, Math.min(batch.text.length, pos));
+  }
+
   startEstimator(batch) {
     this.stopEstimator();
     this.estimatorTimer = setInterval(() => {
@@ -1303,94 +1428,36 @@ class PlaybackManager {
         return;
       }
 
-      const now = Date.now();
-      let pos;
-
-      const profile = this.engineProfile();
-      const cps = this.effectiveCharsPerSecond();
-
-      if (batch.anchorTime !== null) {
-        // Ground truth is available: the engine told us exactly where the
-        // voice is. Extrapolate from that anchor, minus the lead-in delay
-        // that opens every utterance (only engines that announce their first
-        // boundary before the voice starts have one).
-        let elapsed = (now - batch.anchorTime) / 1000;
-        if (batch.segmentIndex === 0) {
-          elapsed -= (profile.leadInMs || 0) / 1000;
-        }
-        pos = batch.anchorChar + Math.max(0, elapsed) * cps;
-
-        // The estimate must never leave the sentence the voice is currently
-        // in. An engine that cannot synthesise as fast as it plays goes SILENT
-        // between sentences; without this cap the estimate runs into the next
-        // sentence while the voice is still quiet (measured: 119 characters
-        // ahead at the boundary that followed such a gap).
-        //
-        // The ceiling is the ENGINE's own sentence extent when the engine
-        // reports one (Supertonic sends charIndex + length). Using OUR
-        // sentence boundary instead would pin the estimate to the end of a
-        // sentence the voice had already read past — the engine's sentences
-        // do not have to match ours, and when they do not the estimate would
-        // freeze for the whole sentence. Measured against the real Supertonic
-        // engine: the estimate sat 78 characters behind for 11.6 seconds.
-        let ceiling = null;
-        if (batch.anchorEnd !== null && batch.anchorEnd > batch.anchorChar) {
-          ceiling = batch.anchorEnd;
-        } else {
-          const anchorLoc = this.locateInBatch(batch, batch.anchorChar);
-          if (anchorLoc) {
-            const slot = anchorLoc.sentenceIndex - batch.firstIndex;
-            const sentenceEnd = (batch.offsets[slot] || 0) + (batch.spokenLengths[slot] || 0);
-            if (sentenceEnd > batch.anchorChar) {
-              ceiling = sentenceEnd;
-            }
-          }
-        }
-        if (ceiling !== null) {
-          pos = Math.min(pos, ceiling);
-        }
-      } else if (this.options.extensionId &&
-                 (now - (batch.requestedAt || batch.startedAt)) < this.preparationWindowMs(profile)) {
-        // The engine has accepted the utterance but has not started speaking
-        // yet. Preparing can take a long time — measured: ~10 s for Kokoro on a
-        // CPU-only machine, ~24 s while its model downloads, ~7 s for Supertonic.
-        // Park the highlight at the beginning of the utterance instead of
-        // extrapolating — extrapolating here is what put the highlight seconds
-        // ahead of the voice.
-        pos = 0;
-      } else {
-        // This engine reports no boundaries at all — fall back to a straight
-        // extrapolation from the start of the utterance.
-        const elapsed = Math.max(0, (now - batch.startedAt) / 1000 - (profile.leadInMs || this.leadInMs || 0) / 1000);
-        if (elapsed <= 0) return;
-        pos = elapsed * cps;
-      }
-
-      pos = Math.max(0, Math.min(batch.text.length, pos));
-
+      const pos = this.calculateEstimatedPosition(batch, Date.now());
+      if (pos === null) return;
       const loc = this.locateInBatch(batch, pos);
       if (!loc) return;
       this.setCurrentSentence(loc.sentenceIndex, batch);
 
-      // Work in the SPOKEN text of that sentence (it may start at a resume
-      // offset) — the page adds the resume offset back when it maps the word.
       const slot = loc.sentenceIndex - batch.firstIndex;
       const spoken = (batch.spokenTexts && batch.spokenTexts[slot]) || '';
       const upto = Math.max(0, Math.min(spoken.length, loc.offset));
       const wordStart = spoken.lastIndexOf(' ', upto - 1) + 1;
-      const match = spoken.substring(wordStart).match(/^\S+/);
-      const len = match ? match[0].length : 1;
+      const mapped = mapSpokenPositionToSource(batch.wordAlignmentMaps?.[slot], wordStart);
+      if (!mapped) {
+        this.wordEventsUsable = false;
+        return;
+      }
 
-      // Feed the estimate into the pause/resume bookkeeping too, so pausing
-      // with an engine that reports no word boundaries still resumes near the
-      // right place instead of restarting the sentence.
-      this.lastWordCharIndex = (batch.resumeOffset || 0) + wordStart;
+      // Keep pause/resume offsets in original-page coordinates.
+      const sourceOffset = slot === 0 ? (batch.resumeOffset || 0) : 0;
+      this.lastWordCharIndex = sourceOffset + mapped.charIndex;
       this.sawWordEvents = true;
 
       this.broadcast('TTS_EVENT', {
-        event: { type: 'word', charIndex: wordStart, charLength: len, length: len },
+        event: {
+          type: 'word',
+          charIndex: mapped.charIndex,
+          charLength: mapped.charLength,
+          length: mapped.charLength
+        },
         index: loc.sentenceIndex,
-        aligned: this.wordEventsUsable,
+        aligned: true,
         resumeOffset: 0
       });
     }, ESTIMATOR_INTERVAL_MS);
@@ -1496,7 +1563,7 @@ class PlaybackManager {
     // highlight always use the original. When they changed the text, word
     // events can no longer be mapped onto the original — degrade to
     // sentence-level highlight for that sentence.
-    this.wordEventsUsable = !batch.pronunciationChanged;
+    this.wordEventsUsable = Boolean(batch.wordAlignmentUsable);
 
     console.log(
       `[PlaybackManager] Speaking [${firstIndex + 1}/${this.queue.length}]` +
