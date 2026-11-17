@@ -702,6 +702,7 @@ check(
     'const ownerDetached = Boolean(ownerElement && !document.contains(ownerElement));' in content_js and
     'const activeSentenceRemoved = Boolean(' in content_js and
     'removedText.includes(activeSentenceText)' in content_js and
+    r"replace(/\s+/g, ' '" in content_js and
     'endpointsAttached && !ownerDetached && !activeSentenceRemoved && !textChangedInsideRange' in content_js and
     'activeSentenceRemoved || textChangedInsideRange' in content_js,
 )
