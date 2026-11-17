@@ -5,7 +5,6 @@
 
 import {
   detectAndSelectVoice,
-  safeSpeak,
   stopSpeech,
   isSpeaking,
   waitForTtsApi
@@ -272,9 +271,23 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
+// Full session inspection is intentionally available only to the bundled
+// diagnostics page, never to content scripts or ordinary popup requests.
+function isDiagnosticsPageSender(sender) {
+  if (typeof sender?.url !== 'string') return false;
+  try {
+    const url = new URL(sender.url);
+    return url.protocol === 'chrome-extension:' &&
+      url.host === chrome.runtime.id &&
+      url.pathname === '/test.html';
+  } catch (_) {
+    return false;
+  }
+}
+
 // Message Router
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (!message || !message.action) {
+  if (!message || typeof message.action !== 'string' || message.action.length === 0) {
     return false;
   }
 
@@ -471,7 +484,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'SET_PLAYER_VISIBILITY': {
-      const visible = Boolean(message.visible);
+      if (typeof message.visible !== 'boolean') {
+        sendResponse({ success: false, error: 'visible must be a boolean.' });
+        return false;
+      }
+      const visible = message.visible;
       chrome.storage.local.set({ readAloud_pillVisible: visible }).catch(() => {});
       chrome.tabs.query({}, (tabs) => {
         void chrome.runtime.lastError;
@@ -500,18 +517,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'GET_SESSION_STORAGE': {
+      if (!isDiagnosticsPageSender(sender)) {
+        sendResponse({ success: false, error: 'Session inspection is restricted to the diagnostics page.' });
+        return false;
+      }
       chrome.storage.session.get(null)
         .then((data) => sendResponse({ success: true, data }))
-        .catch((err) => sendResponse({ success: false, error: err.message }));
-      return true;
-    }
-
-    // Direct single utterance test handler from Phase 2
-    case 'SPEAK_TEXT': {
-      safeSpeak(message.text, message.options, (event) => {
-        chrome.runtime.sendMessage({ action: 'TTS_EVENT', event }).catch(() => {});
-      })
-        .then((result) => sendResponse({ success: true, result }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
       return true;
     }
