@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Added — real-engine compatibility and release audit
+
+- Add deterministic coverage for provider selection order, dynamic Piper
+  extension IDs, pinned voices, unknown Chrome TTS providers, system fallback,
+  valid speak options, provider errors, and Chrome API callback failures.
+- Add a real-engine validation matrix for Piper, Kokoro, Supertonic, and
+  Windows/Chrome system voices, including cold/warm startup, spoken/highlight
+  alignment, sentence gaps, pause/resume, provider changes, and long sessions.
+- Update the manual release checklist to test the actual provider priority:
+  Piper, Kokoro, Supertonic, other Chrome TTS providers, then system voices.
+
+### Fixed
+
+- Dynamic Piper installs were grouped under the canonical Piper registry ID
+  but the selected voice was matched against its runtime extension ID. That
+  mismatch caused the active provider to be displayed as SYSTEM. Engine
+  metadata is now resolved canonically for display while the real extension ID
+  is retained for Chrome speech routing.
+- Correct stale comments and manual checks that still described Kokoro as the
+  automatic first choice.
+
 ### Added — accessibility and release readiness
 
 - The floating playback progress controls are keyboard-operable: Arrow keys move
