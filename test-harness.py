@@ -957,6 +957,20 @@ check(
 )
 
 check(
+    'background.js: normal playback entry points reject starts during a diagnostic',
+    "case 'START_READING_TEXT'" in background_js and
+    "case 'START_PLAYBACK'" in background_js and
+    background_js.count('A TTS diagnostic is active. Stop it before starting normal narration.') >= 2,
+)
+
+check(
+    'background.js: diagnostic stop action is restricted and tied to the active request ID',
+    "case 'STOP_TTS_DIAGNOSTIC'" in background_js and
+    'message.requestId !== diagnosticRequestId' in background_js and
+    'stopSpeech();' in background_js,
+)
+
+check(
     'test.html/test.js: diagnostic UI records event timings and requires user-marked audible output',
     'id="btn-mark-audible"' in diagnostics_html and
     'id="engine-diagnostic-log"' in diagnostics_html and
