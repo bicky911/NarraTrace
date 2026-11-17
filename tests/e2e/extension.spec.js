@@ -143,11 +143,11 @@ test('uses Chrome TTS word events and re-anchors highlighting after a live DOM r
   const wordBox = articlePage.locator('#read-aloud-player-host #ra-word-box');
   await expect(wordBox).toHaveClass(/visible/, { timeout: 10000 });
 
-  // Wait until the live word range reaches the first paragraph. The first
-  // extracted block can be the article heading, while this case specifically
-  // verifies paragraph replacement and the observer's owner-element recovery.
+  // Wait until the active sentence Range reaches the first paragraph. The
+  // first extracted block may be the article heading; use the actual sentence
+  // Range because it is the one the MutationObserver must re-anchor.
   await expect.poll(() => articlePage.evaluate(() => {
-    const highlights = window.CSS?.highlights?.get('read-aloud-word');
+    const highlights = window.CSS?.highlights?.get('read-aloud-sentence');
     const range = highlights ? Array.from(highlights)[0] : null;
     const paragraph = document.querySelector('#article-intro');
     return Boolean(range && paragraph && paragraph.contains(range.startContainer));
@@ -164,10 +164,16 @@ test('uses Chrome TTS word events and re-anchors highlighting after a live DOM r
   });
   await expect(wordBox).toHaveClass(/visible/);
 
-  // Replace the exact active paragraph while keeping its source text intact.
+  // Replace the exact block containing the active sentence Range. This
+  // ensures the removed node is the node that currently owns the playback range.
   const replacedBlock = await articlePage.evaluate(() => {
-    const activeBlock = document.querySelector('#article-intro');
-    if (!activeBlock) return null;
+    const highlights = window.CSS?.highlights?.get('read-aloud-sentence');
+    const range = highlights ? Array.from(highlights)[0] : null;
+    const startElement = range && (range.startContainer.nodeType === Node.ELEMENT_NODE
+      ? range.startContainer
+      : range.startContainer.parentElement);
+    const activeBlock = startElement?.closest('p, h1, h2, h3, h4, h5, h6, li, blockquote');
+    if (!activeBlock || activeBlock.id !== 'article-intro') return null;
 
     activeBlock.dataset.e2eActiveBlock = 'true';
     const replacement = activeBlock.cloneNode(true);
