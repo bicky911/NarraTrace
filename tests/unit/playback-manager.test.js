@@ -10,11 +10,12 @@ function createManager() {
 
 function installChromeTts(t, { speaking = false } = {}) {
   const previousChrome = globalThis.chrome;
+  let currentSpeaking = speaking;
   globalThis.chrome = {
     tts: {
       stop() {},
       isSpeaking(callback) {
-        callback(speaking);
+        callback(currentSpeaking);
       }
     }
   };
@@ -26,6 +27,12 @@ function installChromeTts(t, { speaking = false } = {}) {
       globalThis.chrome = previousChrome;
     }
   });
+
+  return {
+    setSpeaking(value) {
+      currentSpeaking = Boolean(value);
+    }
+  };
 }
 
 test("sanitizeQueue accepts strings and sentence objects, dropping malformed entries", () => {
@@ -100,8 +107,8 @@ test("changing pitch resumes at the last confirmed word offset", async (t) => {
   assert.equal(spokenArgs[1], 17);
 });
 
-test("worker recovery does not start overlapping speech after its idle wait times out", async (t) => {
-  installChromeTts(t, { speaking: true });
+test("worker recovery defers an active utterance and advances on a later idle check", async (t) => {
+  const tts = installChromeTts(t, { speaking: true });
   const manager = createManager();
   manager.playbackState = PlaybackState.PLAYING;
   manager.queue = [
@@ -113,19 +120,27 @@ test("worker recovery does not start overlapping speech after its idle wait time
   manager.waitForSpeechIdle = async () => false;
   manager.saveToSession = async () => {};
 
-  let restarted = false;
+  let restartCount = 0;
   manager.speakCurrentSentence = () => {
-    restarted = true;
+    restartCount++;
   };
 
   await manager.recoverAfterWorkerRestart();
 
-  assert.equal(restarted, false);
+  assert.equal(restartCount, 0);
   assert.equal(manager.currentIndex, 0);
   assert.equal(manager.playbackState, PlaybackState.PLAYING);
   assert.equal(manager.isSwitchingSentence, false);
-});
+  assert.equal(manager.recoveryPendingAdvance, true);
 
+  // Simulate the next alarm after the browser-owned utterance has finished.
+  tts.setSpeaking(false);
+  await manager.recoverAfterWorkerRestart();
+
+  assert.equal(manager.currentIndex, 1);
+  assert.equal(restartCount, 1);
+  assert.equal(manager.recoveryPendingAdvance, false);
+});
 test("worker recovery advances after the orphaned utterance becomes idle", async (t) => {
   installChromeTts(t, { speaking: true });
   const manager = createManager();
