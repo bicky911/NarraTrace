@@ -1,6 +1,6 @@
 # NarraTrace testing
 
-NarraTrace has two dependency-free automated test layers.
+NarraTrace has three dependency-free automated test layers.
 
 ## Requirements
 
@@ -11,11 +11,13 @@ No npm packages are installed. package.json only declares the module format, scr
 
 ## Run the tests
 
+JavaScript syntax validation: npm run test:syntax
+
 Focused runtime/unit tests: npm test
 
 Existing source-structure checks: npm run test:static
 
-Both layers: npm run test:all
+All three layers: npm run test:all
 
 ## Coverage
 
