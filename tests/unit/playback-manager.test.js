@@ -12,6 +12,7 @@ function installChromeTts(t, { speaking = false } = {}) {
   const previousChrome = globalThis.chrome;
   let currentSpeaking = speaking;
   globalThis.chrome = {
+    runtime: { lastError: null },
     tts: {
       stop() {},
       isSpeaking(callback) {
