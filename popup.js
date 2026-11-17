@@ -62,11 +62,15 @@ function applyTheme(theme) {
   if (theme === 'light') {
     document.body.classList.add('light');
     themeToggleEl.textContent = '●';
-    themeToggleEl.title = 'Switch to Dark Mode';
+    themeToggleEl.title = 'Switch to dark theme';
+    themeToggleEl.setAttribute('aria-label', 'Switch to dark theme');
+    themeToggleEl.setAttribute('aria-pressed', 'true');
   } else {
     document.body.classList.remove('light');
     themeToggleEl.textContent = '☼';
-    themeToggleEl.title = 'Switch to OP-1 Light Mode';
+    themeToggleEl.title = 'Switch to light theme';
+    themeToggleEl.setAttribute('aria-label', 'Switch to light theme');
+    themeToggleEl.setAttribute('aria-pressed', 'false');
   }
 }
 
@@ -81,7 +85,10 @@ function updateVolumeDisplay(vol) {
  */
 function updatePlayState(state, currentSentence = null, currentIndex = 0, totalSentences = 0) {
   currentPlaybackState = state;
-  ctrlPlayBtn.setAttribute('aria-label', state === 'PLAYING' ? 'Pause reading' : 'Play reading');
+  const playActionLabel = state === 'PLAYING'
+    ? 'Pause reading'
+    : (state === 'PAUSED' ? 'Resume reading' : 'Play reading');
+  ctrlPlayBtn.setAttribute('aria-label', playActionLabel);
 
   if (state === 'PLAYING') {
     ctrlPlayIcon.innerHTML = SVG_PAUSE;
@@ -102,6 +109,7 @@ function updatePlayState(state, currentSentence = null, currentIndex = 0, totalS
       const pct = Math.round(((currentIndex + 1) / totalSentences) * 100);
       progressBarFillEl.style.width = `${pct}%`;
       progressBarFillEl.parentElement?.setAttribute('aria-valuenow', pct);
+      progressBarFillEl.parentElement?.setAttribute('aria-valuetext', `Sentence ${currentIndex + 1} of ${totalSentences}`);
 
       // Estimate remaining time (avg ~18 words/sentence at ~160 WPM * speed)
       const remainingSentences = Math.max(0, totalSentences - (currentIndex + 1));
@@ -124,6 +132,7 @@ function updatePlayState(state, currentSentence = null, currentIndex = 0, totalS
     if (readingEstEl) readingEstEl.style.display = 'none';
     progressBarFillEl.style.width = '0%';
     progressBarFillEl.parentElement?.setAttribute('aria-valuenow', 0);
+    progressBarFillEl.parentElement?.setAttribute('aria-valuetext', 'Not started');
     sentenceBoxEl.classList.add('idle');
     sentenceBoxEl.classList.remove('active');
     sentenceBoxEl.textContent = 'Ready to read this webpage. Press play to start.';
@@ -292,11 +301,9 @@ function updateSpeedDisplay(rate) {
 
   speedChips.forEach(chip => {
     const chipSpeed = parseFloat(chip.dataset.speed);
-    if (Math.abs(chipSpeed - rate) < 0.05) {
-      chip.classList.add('active');
-    } else {
-      chip.classList.remove('active');
-    }
+    const isActive = Math.abs(chipSpeed - rate) < 0.05;
+    chip.classList.toggle('active', isActive);
+    chip.setAttribute('aria-pressed', String(isActive));
   });
 }
 
