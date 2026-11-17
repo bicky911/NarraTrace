@@ -6,19 +6,20 @@ async function openInactiveExtensionPage(context, worker, relativePath) {
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!activeTab) throw new Error('No active page tab to test against.');
 
-    return chrome.tabs.create({
+    await chrome.tabs.create({
       url: chrome.runtime.getURL(pagePath),
       active: false,
       windowId: activeTab.windowId
     });
+    return chrome.runtime.getURL(pagePath);
   }, relativePath);
 
   await expect.poll(
-    () => context.pages().some(page => page.url() === tab.url),
+    () => context.pages().some(page => page.url() === tab),
     { timeout: 10000 }
   ).toBe(true);
 
-  const page = context.pages().find(candidate => candidate.url() === tab.url);
+  const page = context.pages().find(candidate => candidate.url() === tab);
   await page.waitForLoadState('domcontentloaded');
   return page;
 }
