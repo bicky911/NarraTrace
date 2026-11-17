@@ -166,7 +166,7 @@ function stripSemanticNoise(text) {
 function getWordSpans(text) {
   if (typeof text !== 'string') return [];
   const spans = [];
-  const pattern = /[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*/gu;
+  const pattern = /[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu;
   let match;
   while ((match = pattern.exec(text)) !== null) {
     spans.push({
@@ -1589,6 +1589,7 @@ class PlaybackManager {
       offsets: batch.offsets,
       spokenLengths: batch.spokenLengths,
       spokenTexts: batch.spokenTexts,
+      wordAlignmentMaps: batch.wordAlignmentMaps,
       text: batch.text,
       resumeOffset: safeOffset,
       // The moment the request was handed to the engine. The engine's own
