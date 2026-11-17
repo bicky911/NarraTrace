@@ -3859,7 +3859,10 @@
       playBtn.title = 'Pause';
       playBtn.setAttribute('aria-label', 'Pause reading');
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PAUSE;
-      if (rctrlPlayBtn) rctrlPlayBtn.title = 'Pause (Alt+P)';
+      if (rctrlPlayBtn) {
+        rctrlPlayBtn.title = 'Pause (Alt+P)';
+        rctrlPlayBtn.setAttribute('aria-label', 'Pause reading');
+      }
       container.classList.add('is-playing');
       startMutationObserver();
       startHeartbeat();
@@ -3868,7 +3871,10 @@
       playBtn.title = 'Play';
       playBtn.setAttribute('aria-label', 'Play or pause reading');
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PLAY;
-      if (rctrlPlayBtn) rctrlPlayBtn.title = 'Play (Alt+P)';
+      if (rctrlPlayBtn) {
+        rctrlPlayBtn.title = state === 'PAUSED' ? 'Resume (Alt+P)' : 'Play (Alt+P)';
+        rctrlPlayBtn.setAttribute('aria-label', state === 'PAUSED' ? 'Resume reading' : 'Play reading');
+      }
       container.classList.remove('is-playing');
       stopHeartbeat();
       if (state === 'STOPPED' || state === 'IDLE') {
