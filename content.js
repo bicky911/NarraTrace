@@ -854,7 +854,7 @@
     // ownership anchor and remains detached after a framework replacement.
     const ownerElement = item && item.element ? item.element : null;
     const ownerDetached = Boolean(ownerElement && !document.contains(ownerElement));
-    const activeSentenceText = (currentSentenceText || '').replace(/\\s+/g, ' ').trim();
+    const activeSentenceText = (currentSentenceText || '').replace(/\s+/g, ' ').trim();
     // Some extractors anchor every sentence to a broad article container.
     // Detect removal of a descendant block containing the active sentence as
     // well, because the browser may move Range endpoints to the still-attached
@@ -866,7 +866,7 @@
         if (record.type !== 'childList') return false;
         return Array.from(record.removedNodes || []).some(node => {
           const removedText = typeof node.textContent === 'string'
-            ? node.textContent.replace(/\\s+/g, ' ').trim()
+            ? node.textContent.replace(/\s+/g, ' ').trim()
             : '';
           return removedText.includes(activeSentenceText);
         });
