@@ -16,6 +16,8 @@
   page, and excludes tests/docs/build artifacts from the distribution ZIP.
 - CI now validates the release file set, builds the ZIP, and uploads it as an
   artifact with a SHA-256 sidecar.
+- Final automated verification: 33/33 unit tests, 129/129 source checks, and
+  4/4 Chromium browser tests; the release builder validates 15 runtime files.
 
 ### Corrected
 
