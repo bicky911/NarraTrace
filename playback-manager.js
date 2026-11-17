@@ -699,8 +699,8 @@ class PlaybackManager {
 
       // Resolve the voice against the engines that are actually installed.
       // A voice the user picked themselves always wins; otherwise the
-      // highest-priority engine does (Kokoro before Supertonic), which is what
-      // moves a legacy Supertonic preference over to Kokoro.
+      // highest-priority engine does (Piper, then Kokoro, then Supertonic),
+      // which moves legacy unpinned preferences to the current default.
       const report = await detectAndSelectVoice({
         voiceName: this.options.voiceName,
         pinned: this.voicePinned
@@ -748,7 +748,7 @@ class PlaybackManager {
    * it, so at worker start-up the voice list can still be empty (or contain
    * only the built-in Google voices). Chrome announces every change of the
    * voice list through chrome.tts.onVoicesChanged, and this runs again then —
-   * which is how the preferred engine (Kokoro) takes over as soon as it
+   * which is how the preferred engine (Piper) takes over as soon as it
    * appears.
    *
    * A voice the user picked themselves is never touched.
@@ -908,7 +908,7 @@ class PlaybackManager {
         this.voiceStatus = voiceReport.statusMessage;
       }
     } else if (!this.voicePinned) {
-      // An engine extension registers its voices a moment after Chrome starts
+      // A TTS engine extension registers its voices a moment after Chrome starts
       // it, so the list can have been incomplete when this worker woke up.
       // Re-resolve right before the first utterance — this is the moment the
       // voice actually matters.

@@ -316,6 +316,21 @@ check(
     bool(re.search(r'id:\s*PIPER_EXTENSION_ID[\s\S]*?priority:\s*5', se)),
 )
 
+check(
+    'speech-engine.js: dynamic Piper extension IDs resolve to canonical provider groups',
+    bool(re.search(r'getEngineSpec\(v\.extensionId,\s*v\)\?\.id', se)),
+)
+
+check(
+    'speech-engine.js: pinned voice metadata is used to identify dynamic providers',
+    bool(re.search(r'getEngineSpec\(pinned\.extensionId,\s*pinned\)', se)),
+)
+
+check(
+    'speech-engine.js: active provider selection matches the canonical engine ID',
+    bool(re.search(r'const activeEngineId = selectedEngineSpec\?\.id', se)),
+)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 7. Mixed Language Support (Bangla, Hindi, English)
 # ─────────────────────────────────────────────────────────────────────────────

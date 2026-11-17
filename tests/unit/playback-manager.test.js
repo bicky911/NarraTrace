@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { playbackManager, PlaybackState } from "../../playback-manager.js";
-import { KOKORO_EXTENSION_ID, SUPERTONIC_EXTENSION_ID } from "../../speech-engine.js";
+import { KOKORO_EXTENSION_ID, PIPER_EXTENSION_ID, SUPERTONIC_EXTENSION_ID } from "../../speech-engine.js";
 
 const PlaybackManager = playbackManager.constructor;
 
@@ -494,4 +494,45 @@ test("worker recovery advances after the orphaned utterance becomes idle", async
 
   assert.equal(manager.currentIndex, 1);
   assert.equal(restarted, true);
+});
+
+
+test("refreshVoice labels dynamic Piper correctly and preserves its real Chrome extension ID", async (t) => {
+  const previousChrome = globalThis.chrome;
+  const actualPiperExtensionId = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+  const piperVoice = {
+    voiceName: "Piper Amy",
+    lang: "en-US",
+    extensionId: actualPiperExtensionId
+  };
+  globalThis.chrome = {
+    runtime: { lastError: null },
+    tts: {
+      speak() {},
+      getVoices(callback) {
+        callback([piperVoice]);
+      }
+    }
+  };
+  t.after(() => {
+    if (previousChrome === undefined) delete globalThis.chrome;
+    else globalThis.chrome = previousChrome;
+  });
+
+  const manager = createManager();
+  manager.voicePinned = false;
+  manager.savePreferences = async () => {};
+  const messages = [];
+  manager.broadcast = (action, payload) => messages.push({ action, payload });
+
+  const selected = await manager.refreshVoice();
+
+  assert.equal(selected, piperVoice);
+  assert.equal(manager.options.voiceName, "Piper Amy");
+  assert.equal(manager.options.extensionId, actualPiperExtensionId);
+  assert.notEqual(manager.options.extensionId, PIPER_EXTENSION_ID);
+  assert.equal(manager.engineLabel, "Piper");
+  assert.equal(manager.engineBadge, "PIPER");
+  assert.equal(messages[0].action, "VOICE_CHANGED");
+  assert.equal(messages[0].payload.extensionId, actualPiperExtensionId);
 });
