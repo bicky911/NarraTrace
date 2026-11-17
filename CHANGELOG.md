@@ -1,5 +1,28 @@
 # NarraTrace — Changelog
 
+## Unreleased
+
+### Added — accessibility and release readiness
+
+- The floating playback progress controls are keyboard-operable: Arrow keys move
+  by one sentence, Page Up/Down move by ten, and Home/End jump to the beginning
+  or end. Both controls expose sentence position to assistive technology.
+- Focus Reader is exposed as a modal dialog with a managed focus loop and focus
+  restoration when it closes. Theme and playback controls expose their state.
+- The popup exposes its playback/voice status through polite live regions and
+  reports selected speed-chip and theme state accessibly.
+- Add a standard-library release packager that validates Manifest V3 metadata,
+  resolves local module/resource references, includes the license and diagnostics
+  page, and excludes tests/docs/build artifacts from the distribution ZIP.
+- CI now validates the release file set, builds the ZIP, and uploads it as an
+  artifact with a SHA-256 sidecar.
+
+### Corrected
+
+- Refresh README test-count badges and clarify that Playwright is a development
+  dependency only; the extension has no runtime npm dependencies.
+- Add the MIT license file already referenced by the repository's license badge.
+
 Personal-use Chrome MV3 extension that narrates web pages aloud with a local
 neural TTS engine (Kokoro, Supertonic) or the Windows system voices, tracing
 every word on screen as it speaks.
