@@ -169,6 +169,16 @@ test('real-engine diagnostics run through the selected Chrome TTS voice and enfo
   await diagnostics.locator('#btn-run-engine-diagnostic').click();
 
   await expect(diagnostics.locator('#btn-mark-audible')).toBeEnabled({ timeout: 10000 });
+
+  const normalPlaybackBlocked = await diagnostics.evaluate(() =>
+    chrome.runtime.sendMessage({
+      action: 'START_PLAYBACK',
+      sentences: ['Normal narration must wait for the diagnostic to finish.']
+    })
+  );
+  expect(normalPlaybackBlocked.success).toBe(false);
+  expect(normalPlaybackBlocked.error).toContain('A TTS diagnostic is active');
+
   // The fixture is deliberately silent; do not mark it as audible evidence.
   await expect(diagnostics.locator('#engine-diagnostic-status')).toContainText(
     'audible output was not confirmed',
