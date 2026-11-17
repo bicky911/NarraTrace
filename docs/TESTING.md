@@ -1,13 +1,14 @@
 # NarraTrace testing
 
-NarraTrace has three dependency-free automated test layers.
+NarraTrace has four automated verification layers. The Node and Python layers use standard-library tooling; the browser layer uses a pinned development-only Playwright dependency.
 
 ## Requirements
 
 - Node.js 22 or newer
 - Python 3.10 or newer
+- Playwright Chromium for browser integration tests
 
-No npm packages are installed. package.json only declares the module format, scripts, and minimum Node version; the tests use Node's built-in test runner.
+The extension has no runtime npm dependencies. The only npm development dependency is Playwright, used to load the unpacked MV3 extension in Chromium during CI and local end-to-end testing.
 
 ## Run the tests
 
@@ -17,7 +18,11 @@ Focused runtime/unit tests: npm test
 
 Existing source-structure checks: npm run test:static
 
-All three layers: npm run test:all
+All syntax, unit, and source-check layers: npm run test:all
+
+Validate required extension files and imports: npm run package:check
+
+Build a clean release ZIP and SHA-256 sidecar: npm run package:build
 
 ## Browser integration tests
 
@@ -85,6 +90,8 @@ necessary for the stated “read any webpage” behavior.
 The Python harness remains useful for source-level invariants and markup checks. It is not a substitute for running the extension in Chrome.
 
 ## Browser and real-engine verification
+
+The release builder discovers the manifest's entry points, follows local JavaScript imports and HTML/CSS resources, verifies every referenced file exists, includes the diagnostics page and license, and excludes development-only files. The ZIP and SHA-256 sidecar are generated under `dist/`.
 
 The automated tests do not prove that Chrome's TTS providers behave correctly on a particular device, nor do source checks measure page-level CPU cost. Before a release, also follow docs/MANUAL-TEST-CHECKLIST.md with each supported engine. Include the dynamic-page and browser-zoom checks, and record the Chrome version, operating system, engine version, and result when reporting an engine-specific defect.
 
