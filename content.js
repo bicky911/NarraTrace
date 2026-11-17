@@ -848,9 +848,16 @@
       startNode && endNode &&
       document.contains(startNode) && document.contains(endNode)
     );
+    // A live DOM Range may be auto-adjusted to an attached ancestor when its
+    // original text node is removed. In that case endpoint connectivity alone
+    // lies: the element used to build this sentence range is the reliable
+    // ownership anchor and remains detached after a framework replacement.
+    const ownerElement = item && item.element ? item.element : null;
+    const ownerDetached = Boolean(ownerElement && !document.contains(ownerElement));
 
-    // Ignore unrelated page churn. A detached endpoint needs re-anchoring;
-    // character-data changes intersecting the active range need a text check.
+    // Ignore unrelated page churn. A detached endpoint or owner needs
+    // re-anchoring; character-data changes intersecting the range need a
+    // fresh lookup so the highlight cannot drift to stale offsets.
     let textChangedInsideRange = false;
     if (endpointsAttached && range && Array.isArray(records)) {
       for (const record of records) {
@@ -866,8 +873,8 @@
       }
     }
 
-    if (endpointsAttached && !textChangedInsideRange) return;
-    mutationRequiresRemap = mutationRequiresRemap || textChangedInsideRange;
+    if (endpointsAttached && !ownerDetached && !textChangedInsideRange) return;
+    mutationRequiresRemap = mutationRequiresRemap || ownerDetached || textChangedInsideRange;
 
     // Throttle, don't debounce: a page that mutates constantly must still get
     // its repair pass instead of postponing it forever.
