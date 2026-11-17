@@ -45,7 +45,7 @@ npm run test:e2e
 ```
 
 The integration suite verifies content-script injection, popup-to-tab messaging,
-the session-inspection permission boundary, invalid playback-control rejection,
+the session-inspection and real-engine diagnostics permission boundaries, active-playback exclusion in both directions, diagnostic event collection/export, invalid playback-control rejection,
 Chrome TTS word-event delivery and word-capsule rendering, active sentence-range
 recovery after the containing paragraph is replaced, and extraction of a large
 local article.
