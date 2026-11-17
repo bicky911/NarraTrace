@@ -25,38 +25,37 @@ replaced by source-code assertions or unit tests.
 
 ---
 
-## 1 · The engine switched to Kokoro (60 s)
+## 1 · Provider discovery and selection (60 s)
 
 | # | Do this | Expected |
 |---|---------|----------|
-| 1.1 | Click the NarraTrace toolbar icon | The popup badge reads **KOKORO** |
-| 1.2 | Open the voice dropdown | Three groups: `★ Kokoro (local neural)` with 28 voices, `★ Supertonic (network)`, `Windows System Voices` |
-| 1.3 | The selected voice | **Kokoro Heart** |
-| 1.4 | Open a Wikipedia article and press play | It speaks with a Kokoro voice, not the Supertonic one |
+| 1.1 | Click the NarraTrace toolbar icon | The badge matches the selected provider: PIPER, KOKORO, SUPERTONIC, OTHER, or SYSTEM |
+| 1.2 | Open the voice dropdown | Every currently available provider is listed; known providers appear in priority order: Piper, Kokoro, Supertonic |
+| 1.3 | With no voice pinned, enable multiple providers | Piper is selected first; disabling it selects Kokoro, then Supertonic, then system voices |
+| 1.4 | Select a lower-priority provider manually | The explicit voice remains selected while it is available, even when a higher-priority provider is installed |
 
-> If the badge says `SUPERTONIC`, you have pinned a Supertonic voice in an
-> earlier session. That is intentional behaviour — pick any Kokoro voice in the
-> dropdown once and it sticks.
+> Piper may use a dynamic extension ID. Its voice should still appear in the Piper group and show the PIPER badge; NarraTrace must route speech using the real ID supplied by Chrome.
 
 ---
 
-## 2 · The first sentence takes a moment — that is normal (90 s)
+## 2 · Cold start and sentence pacing (90 s)
 
-Kokoro rebuilds its neural model **for every utterance**:
+Record each provider's cold-start and warm-start behavior separately. Do not use one fixed latency threshold for all providers.
 
-| Situation | Wait before you hear sound |
-|-----------|---------------------------|
-| First utterance ever (92 MB model download) | ~25–35 s |
-| Every later utterance | ~10 s (CPU) / ~1–3 s (WebGPU) |
-| A group of 4–12 sentences | one wait for the whole group |
+| Provider | What to observe |
+|-----------|-----------------|
+| Piper | Time from Play to first audible speech, then repeat after the model is warm; check word/sentence events and sentence gaps |
+| Kokoro | Allow model preparation to finish; confirm the highlight stays at the first word until speech begins and that grouping avoids repeated dead air |
+| Supertonic | Confirm its voice is available; the first sentence boundary can arrive before audible speech, so the highlight must not race ahead during the lead-in |
+| Windows / Chrome system voice | Confirm the selected system voice starts and that its available word/sentence events align with the highlight |
 
-- [ ] The pause before the voice starts is **one** pause, not one per sentence.
-- [ ] While the pause happens, the highlight sits still on the first word
-      instead of racing ahead. *(This is the fix for the drifting highlight.)*
-- [ ] If your machine has a working WebGPU, the wait is much shorter. Check
-      `chrome://gpu`.
+- [ ] The first delay is followed by continuous speech, not a pause after every source line.
+- [ ] While the provider prepares audio, the highlight stays parked instead of racing ahead.
+- [ ] Record provider, voice/model, cold-start time, warm-start time, and any noticeable gap between sentences.
+- [ ] Repeat after switching away from the tab, then return and confirm that playback remains synchronized.
 
 ---
+
 
 ## 3 · The highlight stays on the spoken word (90 s)
 
@@ -122,16 +121,19 @@ Kokoro rebuilds its neural model **for every utterance**:
 
 ---
 
-## 7 · Fallback check (30 s)
+## 7 · Provider fallback and pin behavior (45 s)
 
-- [ ] Pick a **Supertonic** voice in the dropdown → the badge changes to
-  `SUPERTONIC` and Supertonic speaks. *(This proves the fallback still works
-  and that a pinned voice is never overridden.)*
-- [ ] Pick a Kokoro voice again → the badge returns to `KOKORO`.
-- [ ] Disable the Kokoro extension in `chrome://extensions` → NarraTrace falls
-  back to Supertonic, or to a Windows system voice if Supertonic is off too.
+- [ ] With no voice pinned, enable Piper, Kokoro, and Supertonic together. The active badge should be PIPER.
+- [ ] Disable Piper while automatic selection is active. The active provider should move to Kokoro, then to Supertonic when Kokoro is also disabled.
+- [ ] Choose Supertonic manually while Piper is available. The explicit choice should remain selected; automatic priority must not override it.
+- [ ] Disable the pinned provider. The voice menu should show the remaining providers. Select an available fallback manually to continue playback.
+- [ ] Re-enable the original provider and confirm its voices reappear in the dropdown.
+- [ ] Disable every provider extension. Confirm a Windows/Chrome system voice can be selected and used.
+
+> A deliberately pinned voice is preserved rather than silently replaced. When that provider is unavailable, select a currently available voice from the dropdown.
 
 ---
+
 
 ## If something is wrong
 
