@@ -45,7 +45,7 @@ npm run test:e2e
 ```
 
 The integration suite verifies content-script injection, popup-to-tab messaging,
-the session-inspection permission boundary, invalid playback-control rejection,
+the session-inspection and real-engine diagnostics permission boundaries, active-playback exclusion in both directions, diagnostic event collection/export, invalid playback-control rejection,
 Chrome TTS word-event delivery and word-capsule rendering, active sentence-range
 recovery after the containing paragraph is replaced, and extraction of a large
 local article.
@@ -55,6 +55,12 @@ usage, and browser task duration in the CI log. Its thresholds are smoke-test
 guardrails, not a cross-machine performance benchmark. A synthetic TTS engine
 proves the browser event pipeline; it does not replace audible tests with the
 real Kokoro, Supertonic, Piper, and system engines.
+
+## Real-device TTS diagnostics
+
+Open the bundled page at `chrome-extension://YOUR_EXTENSION_ID/test.html` in the Chrome profile where the unpacked extension is loaded. The page records browser/provider metadata and the Chrome TTS event timeline, supports a manual first-audio mark, and exports a JSON report without storing the sample text. The report is an actual audible pass only when Chrome returns an `end` event and the tester clicks **I Hear Audio** during speech. See docs/DEVICE-DIAGNOSTICS.md for the exact Windows procedure.
+
+The diagnostic action is restricted to the bundled extension page, validates the voice against Chrome's current voice list, and refuses to overlap active playback. The Playwright fake engine verifies event collection/export and the security guards; it remains silent and cannot verify real audio.
 
 ## Coverage
 

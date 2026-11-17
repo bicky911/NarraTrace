@@ -135,6 +135,19 @@ Record each provider's cold-start and warm-start behavior separately. Do not use
 ---
 
 
+## 8 · Capture a real-engine diagnostic report
+
+- [ ] Open `chrome-extension://YOUR_EXTENSION_ID/test.html` in the same Chrome profile.
+- [ ] Select the provider and exact voice you are validating. Enter its version if known.
+- [ ] Stop normal narration, then click **Run Audible Test**.
+- [ ] Click **I Hear Audio** as soon as the first sound is audible.
+- [ ] Let the sample finish and confirm the report shows **Passed** only when both the audio mark and Chrome `end` event were recorded.
+- [ ] Export the JSON report. It includes event timing/offsets and browser/provider metadata, but not the sample text.
+
+Follow docs/DEVICE-DIAGNOSTICS.md. A CI fake-engine pass is not a substitute for this real audible check.
+
+---
+
 ## If something is wrong
 
 Open `chrome://extensions` → **NarraTrace** → **service worker** → the console

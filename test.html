@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NarraTrace - Phase 3: Background Worker & Queue Test</title>
+  <title>NarraTrace — Device and TTS Diagnostics</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -95,6 +95,12 @@
       background: rgba(99, 102, 241, 0.15);
       color: var(--primary);
       border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+
+    .badge.danger {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+      border: 1px solid rgba(239, 68, 68, 0.3);
     }
 
     .status-text {
@@ -242,6 +248,25 @@
       overflow-y: auto;
       white-space: pre-wrap;
     }
+
+    .diagnostic-log {
+      max-height: 220px;
+      overflow: auto;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .diagnostic-note {
+      margin: 8px 0;
+      color: var(--text-muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
   </style>
 </head>
 <body>
@@ -249,7 +274,7 @@
     <img src="icons/icon48.png" alt="NarraTrace Icon">
     <div>
       <h1>NarraTrace</h1>
-      <p>Phase 3: Background Worker & Sentence Queue</p>
+      <p>Device diagnostics · Chrome TTS provider validation</p>
     </div>
   </header>
 
@@ -278,6 +303,36 @@
       </div>
     </div>
   </div>
+
+  <!-- Real TTS provider diagnostics: actual selected Chrome voice, real audio, no speech text in event telemetry. -->
+  <section class="card" aria-labelledby="engine-diagnostic-title">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <label id="engine-diagnostic-title" style="margin:0;">Real-Engine Diagnostic</label>
+      <span id="engine-diagnostic-badge" class="badge info">Not run</span>
+    </div>
+    <p id="engine-diagnostic-environment" class="diagnostic-note">Collecting browser and extension details…</p>
+    <div class="form-group">
+      <label for="diagnostic-provider-version">Provider version (read from the provider's extension page)</label>
+      <input id="diagnostic-provider-version" type="text" maxlength="80" placeholder="Optional, e.g. 2.0.0"
+        style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;">
+    </div>
+    <div class="form-group">
+      <label for="diagnostic-sample-text">Diagnostic sample (one Chrome TTS utterance; max 500 characters)</label>
+      <textarea id="diagnostic-sample-text" maxlength="500">NarraTrace real engine test. The quick brown fox jumps over the lazy dog. One more sentence checks timing between sentence boundaries.</textarea>
+    </div>
+    <p class="diagnostic-note">
+      This plays audible speech through the selected provider. Stop normal NarraTrace playback first. The event report records timings and character offsets, but does not include the sample text.
+    </p>
+    <div class="btn-group">
+      <button id="btn-run-engine-diagnostic">▶ Run Audible Test</button>
+      <button id="btn-stop-engine-diagnostic" class="danger" disabled>⏹ Stop Test</button>
+      <button id="btn-mark-audible" class="secondary" disabled>I Hear Audio</button>
+      <button id="btn-export-engine-diagnostic" class="secondary" disabled>↓ Export JSON</button>
+      <button id="btn-clear-engine-diagnostic" class="secondary">Clear</button>
+    </div>
+    <div id="engine-diagnostic-status" class="status-text" role="status" aria-live="polite">Select a voice, then run the audible test.</div>
+    <pre id="engine-diagnostic-log" class="storage-box diagnostic-log">No diagnostic events recorded.</pre>
+  </section>
 
   <!-- Multi-Sentence Queue & Playback Card -->
   <div class="card">

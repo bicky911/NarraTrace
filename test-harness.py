@@ -24,6 +24,8 @@ PLAYBACK_JS = os.path.join(os.path.dirname(__file__), 'playback-manager.js')
 SPEECH_JS   = os.path.join(os.path.dirname(__file__), 'speech-engine.js')
 BACKGROUND_JS = os.path.join(os.path.dirname(__file__), 'background.js')
 MANIFEST_JSON = os.path.join(os.path.dirname(__file__), 'manifest.json')
+TEST_HTML = os.path.join(os.path.dirname(__file__), 'test.html')
+TEST_JS = os.path.join(os.path.dirname(__file__), 'test.js')
 PLAYWRIGHT_CONFIG = os.path.join(os.path.dirname(__file__), 'playwright.config.mjs')
 E2E_SPEC = os.path.join(os.path.dirname(__file__), 'tests', 'e2e', 'extension.spec.js')
 E2E_SERVER = os.path.join(os.path.dirname(__file__), 'tests', 'e2e', 'server.mjs')
@@ -763,9 +765,16 @@ check(
     'chrome.runtime.id' in runtime_bg and
     'if (!isDiagnosticsPageSender(sender))' in runtime_bg,
 )
+diagnostic_route_start = runtime_bg.find("case 'RUN_TTS_DIAGNOSTIC'")
+diagnostic_route_end = runtime_bg.find("case 'GET_PAGE_ZOOM'", diagnostic_route_start)
+diagnostic_route = runtime_bg[diagnostic_route_start:diagnostic_route_end]
+
 check(
-    'background.js: direct SPEAK_TEXT diagnostic TTS bypass has been removed',
-    "case 'SPEAK_TEXT'" not in runtime_bg and 'safeSpeak' not in runtime_bg,
+    'background.js: legacy SPEAK_TEXT action is removed and diagnostic speech stays behind its guarded route',
+    "case 'SPEAK_TEXT'" not in runtime_bg and
+    "case 'RUN_TTS_DIAGNOSTIC'" in diagnostic_route and
+    "if (!isDiagnosticsPageSender(sender))" in diagnostic_route and
+    'const result = await safeSpeak(' in diagnostic_route,
 )
 check(
     'background.js: player visibility requires an explicit boolean',
@@ -854,6 +863,10 @@ print('\n── Product Accessibility & Release Readiness ───────�
 popup_html = read(POPUP_HTML)
 popup_js = read(POPUP_JS)
 content_js = read(CONTENT_JS)
+background_js = read(BACKGROUND_JS)
+diagnostics_html = read(TEST_HTML)
+diagnostics_js = read(TEST_JS)
+e2e_spec = read(E2E_SPEC)
 release_script = read(RELEASE_SCRIPT)
 ci_workflow = read(os.path.join(os.path.dirname(__file__), '.github', 'workflows', 'ci.yml'))
 readme_text = read(os.path.join(os.path.dirname(__file__), 'README.md'))
@@ -926,6 +939,66 @@ check(
 check(
     'repository license text agrees with the MIT badge',
     'MIT License' in license_text and 'permission notice' in license_text.lower(),
+)
+
+check(
+    'background.js: real-engine diagnostics are restricted to the bundled diagnostics page',
+    "case 'RUN_TTS_DIAGNOSTIC'" in background_js and
+    "if (!isDiagnosticsPageSender(sender))" in background_js and
+    "TTS diagnostics are restricted to the bundled diagnostics page" in background_js,
+)
+
+check(
+    'background.js: diagnostic voice is verified against Chrome live voice metadata',
+    'const voices = await getAllVoices()' in background_js and
+    'voice.voiceName === voiceName' in background_js and
+    'voice.extensionId === extensionId' in background_js and
+    'await isSpeaking()' in background_js,
+)
+
+check(
+    'background.js: diagnostics refuse to overlap normal playback and require a clean end event',
+    'diagnosticSpeechActive' in background_js and
+    'Stop normal NarraTrace playback before running the diagnostic' in background_js and
+    'success: result?.type === \'end\'' in background_js,
+)
+
+check(
+    'background.js: normal playback entry points reject starts during a diagnostic',
+    "case 'START_READING_TEXT'" in background_js and
+    "case 'START_PLAYBACK'" in background_js and
+    background_js.count('A TTS diagnostic is active. Stop it before starting normal narration.') >= 2,
+)
+
+check(
+    'background.js: diagnostic stop action is restricted and tied to the active request ID',
+    "case 'STOP_TTS_DIAGNOSTIC'" in background_js and
+    'message.requestId !== diagnosticRequestId' in background_js and
+    'stopSpeech();' in background_js,
+)
+
+check(
+    'test.html/test.js: diagnostic UI records event timings and requires user-marked audible output',
+    'id="btn-mark-audible"' in diagnostics_html and
+    'id="engine-diagnostic-log"' in diagnostics_html and
+    'audibleStartMarkedMs' in diagnostics_js and
+    'sampleTextIncluded: false' in diagnostics_js and
+    'btnExportDiagnostic' in diagnostics_js,
+)
+
+check(
+    'diagnostic browser test keeps the silent fixture separate from audible confirmation',
+    'real-engine diagnostics run through the selected Chrome TTS voice' in e2e_spec and
+    'audible output was not confirmed' in e2e_spec and
+    'Stop normal NarraTrace playback' in e2e_spec,
+)
+
+check(
+    'diagnostic report path does not introduce Web Speech API usage',
+    'window.speechSynthesis' not in background_js and
+    'SpeechSynthesisUtterance' not in background_js and
+    'window.speechSynthesis' not in diagnostics_js and
+    'SpeechSynthesisUtterance' not in diagnostics_js,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────

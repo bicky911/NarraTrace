@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added — real-device diagnostic workflow
+
+- Extend the bundled diagnostics page with an isolated real Chrome TTS probe for the selected installed voice.
+- Record the browser/extension environment, provider and voice metadata, event types, elapsed timing, and character offsets; export the report as JSON without including the sample text.
+- Add a manual **I Hear Audio** mark. A diagnostic is only marked Passed when Chrome returns a clean `end` event and the tester confirms audible output while the sample is playing.
+- Restrict the diagnostic route to the bundled extension diagnostics page, validate the selected voice against Chrome's live voice list, and refuse overlap with normal playback or other active Chrome TTS speech.
+- Add browser coverage for extension-page access control, bidirectional playback isolation, event collection, and report export. The silent CI fixture explicitly cannot produce an audible pass.
+
+
 ### Added — real-engine compatibility and release audit
 
 - Add deterministic coverage for provider selection order, dynamic Piper
