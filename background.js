@@ -7,6 +7,7 @@ import {
   detectAndSelectVoice,
   getAllVoices,
   isSpeaking,
+  stopSpeech,
   safeSpeak,
   waitForTtsApi
 } from './speech-engine.js';
@@ -122,6 +123,11 @@ function setupContextMenu() {
 
 // Handle Context Menu click
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (diagnosticSpeechActive && info.menuItemId === 'read-aloud-selection') {
+    console.warn('[Background] Ignoring context-menu playback while a TTS diagnostic is active.');
+    return;
+  }
+
   if (info.menuItemId === 'read-aloud-from-here') {
     if (tab && tab.id) {
       chrome.tabs.sendMessage(tab.id, { action: 'TRIGGER_READ_FROM_HERE' }).catch(() => {});
@@ -233,6 +239,11 @@ initializeWorker();
 chrome.commands.onCommand.addListener(async (command) => {
   console.log('[Background] Command received:', command);
 
+  if (diagnosticSpeechActive) {
+    if (command === 'stop-speech') stopSpeech();
+    return;
+  }
+
   switch (command) {
     case 'toggle-play': {
       const state = playbackManager.getState();
@@ -311,6 +322,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .then((report) => sendResponse({ success: true, data: report }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
       return true;
+    }
+
+    case 'STOP_TTS_DIAGNOSTIC': {
+      if (!isDiagnosticsPageSender(sender)) {
+        sendResponse({ success: false, error: 'TTS diagnostics are restricted to the bundled diagnostics page.' });
+        return false;
+      }
+      if (!diagnosticSpeechActive) {
+        sendResponse({ success: false, error: 'No diagnostic speech request is currently active.' });
+        return false;
+      }
+      stopSpeech();
+      sendResponse({ success: true, requestId: diagnosticRequestId });
+      return false;
     }
 
     case 'RUN_TTS_DIAGNOSTIC': {
@@ -476,6 +501,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'START_READING_TEXT': {
+      if (diagnosticSpeechActive) {
+        sendResponse({ success: false, error: 'A TTS diagnostic is active. Stop it before starting normal narration.' });
+        return false;
+      }
       if (!message.rawText || typeof message.rawText !== 'string' || message.rawText.trim().length === 0) {
         sendResponse({ success: false, error: 'Missing or invalid rawText string.' });
         return true;
@@ -498,6 +527,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'START_PLAYBACK': {
+      if (diagnosticSpeechActive) {
+        sendResponse({ success: false, error: 'A TTS diagnostic is active. Stop it before starting normal narration.' });
+        return false;
+      }
       if (!Array.isArray(message.sentences) || message.sentences.length === 0) {
         sendResponse({ success: false, error: 'Missing or empty sentences array.' });
         return true;
