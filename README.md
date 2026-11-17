@@ -16,8 +16,9 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Manifest: V3](https://img.shields.io/badge/Manifest-V3-orange.svg)
-![Unit Tests: 28 cases](https://img.shields.io/badge/Unit%20Tests-28%20cases-blue.svg)
-![Static Checks: 86](https://img.shields.io/badge/Static%20Checks-86-blue.svg)
+![Unit Tests: 33](https://img.shields.io/badge/Unit%20Tests-33-blue.svg)
+![Static Checks: 118](https://img.shields.io/badge/Static%20Checks-118-blue.svg)
+![Browser Tests: 3](https://img.shields.io/badge/Browser%20Tests-3-blue.svg)
 
 ---
 
@@ -50,7 +51,7 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 
 ## 🧪 Automated Verification Suite
 
-Requirements: Node.js 22+ and Python 3.10+. No npm packages are required.
+Requirements: Node.js 22+ and Python 3.10+. The extension itself has no runtime npm dependencies. Playwright is a development-only dependency used by the Chromium browser suite.
 
 Run the executable unit tests:
 ```bash
@@ -67,13 +68,13 @@ Run both layers:
 npm run test:all
 ```
 
-The Node.js suite exercises tokenizer, voice-routing, queue, pronunciation, pitch-resume, and worker-recovery behavior. The Python harness checks source-level invariants and markup. Neither layer replaces manual testing with real Chrome TTS providers; see `docs/TESTING.md`.
+The Node.js suite exercises tokenizer, voice-routing, queue, pronunciation, pitch-resume, and worker-recovery behavior. The Python harness checks source-level invariants and markup. Run the real-browser integration suite with `npm install`, `npx playwright install chromium`, and `npm run test:e2e`. Validate and build a clean release ZIP with `npm run package:check` and `npm run package:build`. Automated tests do not replace manual audible testing with real Chrome TTS providers; see `docs/TESTING.md`.
 
 ---
 
 ## 📄 Architecture & Rules
 
-* **Plain JavaScript MV3:** Zero bundlers, zero npm dependencies, and no node_modules.
+* **Plain JavaScript MV3:** No bundler and no runtime npm dependencies. Playwright is used only in development/CI; clean release archives omit node_modules, test fixtures, and development files.
 * **No first-party analytics or trackers:** NarraTrace has no application backend. The selected Chrome TTS voice provider receives the text to be spoken; provider extensions may process it locally or remotely. Review each provider's privacy documentation before use.
 * **Accessible (WCAG AA Compliant):** Full keyboard focus rings (`#FF5C00`), ARIA attributes, and high-contrast color palettes.
 * **Legacy internal identifiers:** Invisible plumbing (`readAloud_*` storage keys, `ra-*` element IDs, `--ra-*` CSS tokens) deliberately keeps its pre-rename names so upgrading users keep every saved voice, speed, and theme setting. Only what the user can see is branded NarraTrace.
