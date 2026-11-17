@@ -96,6 +96,98 @@ test('injects the floating player and keeps session diagnostics behind the exten
   expect(invalidRate.success).toBe(false);
 });
 
+test('real-engine diagnostics run through the selected Chrome TTS voice and enforce isolation', async ({
+  extensionContext,
+  extensionWorkers
+}) => {
+  const diagnostics = await openExtensionPage(
+    extensionContext,
+    extensionWorkers.narratraceId,
+    'test.html'
+  );
+  const popup = await openExtensionPage(
+    extensionContext,
+    extensionWorkers.narratraceId,
+    'popup.html'
+  );
+
+  const denied = await popup.evaluate(() => chrome.runtime.sendMessage({
+    action: 'RUN_TTS_DIAGNOSTIC',
+    requestId: 'popup-cannot-run',
+    text: 'This must be rejected.',
+    voiceName: 'NarraTrace Browser Test Voice'
+  }));
+  expect(denied?.success).toBe(false);
+  expect(denied?.error).toContain('restricted');
+
+  await expect.poll(async () => diagnostics.locator('#voice-select option').evaluateAll(
+    (options) => options.some(option => option.value === 'NarraTrace Browser Test Voice')
+  ), { timeout: 15000 }).toBe(true);
+  await diagnostics.locator('#voice-select').selectOption('NarraTrace Browser Test Voice');
+  const selectedVoice = await diagnostics.locator('#voice-select option:checked').evaluate(option => ({
+    voiceName: option.value,
+    extensionId: option.dataset.extensionId || null,
+    lang: option.dataset.lang || null
+  }));
+  expect(selectedVoice.extensionId).toBe(extensionWorkers.fakeTtsEngineId);
+
+  // A real queue owns chrome.tts while it is active. Diagnostics must refuse
+  // to interrupt it or overlap a normal narration session.
+  const startQueue = await diagnostics.evaluate(() =>
+    chrome.runtime.sendMessage({
+      action: 'START_PLAYBACK',
+      sentences: ['Normal playback must not overlap the diagnostic sample.']
+    })
+  );
+  expect(startQueue.success).toBe(true);
+  await expect.poll(async () => diagnostics.evaluate(async () =>
+    (await chrome.runtime.sendMessage({ action: 'GET_PLAYBACK_STATE' })).state.playbackState
+  ), { timeout: 10000 }).toBe('PLAYING');
+
+  const blocked = await diagnostics.evaluate(({ voice }) =>
+    chrome.runtime.sendMessage({
+      action: 'RUN_TTS_DIAGNOSTIC',
+      requestId: 'blocked-during-playback',
+      text: 'This diagnostic must wait.',
+      voiceName: voice.voiceName,
+      extensionId: voice.extensionId,
+      lang: voice.lang,
+      rate: 1
+    }), { voice: selectedVoice });
+  expect(blocked.success).toBe(false);
+  expect(blocked.error).toContain('Stop normal NarraTrace playback');
+
+  await diagnostics.evaluate(() => chrome.runtime.sendMessage({ action: 'STOP_PLAYBACK' }));
+  await expect.poll(async () => diagnostics.evaluate(async () =>
+    (await chrome.runtime.sendMessage({ action: 'GET_PLAYBACK_STATE' })).state.playbackState
+  ), { timeout: 10000 }).toBe('STOPPED');
+
+  await extensionWorkers.fakeTtsEngine.evaluate(() => {
+    globalThis.__NARRATRACE_TEST_DELAY_MS = 90;
+  });
+  await diagnostics.locator('#diagnostic-sample-text').fill('Hello world. One more test.');
+  await diagnostics.locator('#btn-run-engine-diagnostic').click();
+
+  await expect(diagnostics.locator('#btn-mark-audible')).toBeEnabled({ timeout: 10000 });
+  await diagnostics.locator('#btn-mark-audible').click();
+
+  await expect(diagnostics.locator('#engine-diagnostic-status')).toContainText(
+    'Completed: end',
+    { timeout: 15000 }
+  );
+  const eventLog = await diagnostics.locator('#engine-diagnostic-log').textContent();
+  expect(eventLog).toContain('start');
+  expect(eventLog).toContain('word');
+  expect(eventLog).toContain('end');
+  expect(eventLog).not.toContain('Hello world');
+
+  await expect(diagnostics.locator('#btn-export-engine-diagnostic')).toBeEnabled();
+  const downloadPromise = diagnostics.waitForEvent('download');
+  await diagnostics.locator('#btn-export-engine-diagnostic').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^narratrace-tts-diagnostic-\\d+\\.json$/);
+});
+
 test('uses Chrome TTS word events and re-anchors highlighting after a live DOM replacement', async ({
   extensionContext,
   extensionWorkers,
