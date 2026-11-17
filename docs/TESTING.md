@@ -19,6 +19,38 @@ Existing source-structure checks: npm run test:static
 
 All three layers: npm run test:all
 
+## Browser integration tests
+
+Playwright runs the unpacked extension in its own Chromium persistent context.
+The suite uses a local-only article server and a separate silent TTS-engine
+fixture that emits deterministic Chrome word events; it does not produce audio,
+call a speech API, or contact an external website.
+
+Install the pinned browser-test dependency and Chromium once:
+
+```sh
+npm install
+npx playwright install chromium
+```
+
+Run the browser tests:
+
+```sh
+npm run test:e2e
+```
+
+The integration suite verifies content-script injection, popup-to-tab messaging,
+the session-inspection permission boundary, invalid playback-control rejection,
+Chrome TTS word-event delivery and word-capsule rendering, active sentence-range
+recovery after the containing paragraph is replaced, and extraction of a large
+local article.
+
+The large-article test records queue size, extraction latency, JavaScript heap
+usage, and browser task duration in the CI log. Its thresholds are smoke-test
+guardrails, not a cross-machine performance benchmark. A synthetic TTS engine
+proves the browser event pipeline; it does not replace audible tests with the
+real Kokoro, Supertonic, Piper, and system engines.
+
 ## Coverage
 
 The unit suite currently exercises:
@@ -36,7 +68,9 @@ The unit suite currently exercises:
 The Python source harness also guards the content-script runtime: zoom updates are
 event-driven rather than continuously polled, unchanged zoom values do not cause
 repeated style writes, and DOM mutation repair is scheduled only when the active
-highlight range is detached or its text is changed.
+highlight range or its owning block is invalidated, or its text is changed. The
+observer also detects removal of a descendant block containing the active
+sentence when a live Range has been auto-adjusted to an attached ancestor.
 
 The architecture/security checks also cover a narrow playback-options allow-list,
 finite numeric ranges, bounded voice metadata, defensive session restoration,

@@ -22,6 +22,11 @@ PLAYBACK_JS = os.path.join(os.path.dirname(__file__), 'playback-manager.js')
 SPEECH_JS   = os.path.join(os.path.dirname(__file__), 'speech-engine.js')
 BACKGROUND_JS = os.path.join(os.path.dirname(__file__), 'background.js')
 MANIFEST_JSON = os.path.join(os.path.dirname(__file__), 'manifest.json')
+PLAYWRIGHT_CONFIG = os.path.join(os.path.dirname(__file__), 'playwright.config.mjs')
+E2E_SPEC = os.path.join(os.path.dirname(__file__), 'tests', 'e2e', 'extension.spec.js')
+E2E_SERVER = os.path.join(os.path.dirname(__file__), 'tests', 'e2e', 'server.mjs')
+FAKE_TTS_MANIFEST = os.path.join(os.path.dirname(__file__), 'tests', 'e2e', 'fixtures', 'fake-tts-engine', 'manifest.json')
+FAKE_TTS_WORKER = os.path.join(os.path.dirname(__file__), 'tests', 'e2e', 'fixtures', 'fake-tts-engine', 'background.js')
 
 PASS = '\033[92mPASS\033[0m'
 FAIL = '\033[91mFAIL\033[0m'
@@ -153,6 +158,13 @@ check(
 # ─────────────────────────────────────────────────────────────────────────────
 print('\n── popup.js A11y ──────────────────────────────────────────────────')
 popup_js = read(POPUP_JS)
+
+check(
+    'popup.js: supports a validated explicit target tab ID for deterministic popup testing',
+    'requestedTabId !== null && /^' in read(POPUP_JS) and
+    '.test(requestedTabId)' in read(POPUP_JS) and
+    'chrome.tabs.get(tabId)' in read(POPUP_JS),
+)
 
 check(
     'popup.js: updatePlayState sets aria-label on play button dynamically',
@@ -672,8 +684,8 @@ check(
     'function scheduleMutationCheck(records)' in content_js,
 )
 check(
-    'content.js: unrelated mutations are ignored while active range endpoints remain attached',
-    'if (endpointsAttached && !textChangedInsideRange) return;' in content_js,
+    'content.js: unrelated mutations are ignored while active range, owner, and sentence remain attached',
+    'if (endpointsAttached && !ownerDetached && !activeSentenceRemoved && !textChangedInsideRange) return;' in content_js,
 )
 check(
     'content.js: text mutations intersecting the active range trigger a forced remap',
@@ -684,6 +696,15 @@ check(
     'content.js: mutation repair state is reset when observer stops',
     'mutationRequiresRemap = false;' in content_js and
     'mutationObserver.disconnect();' in content_js,
+)
+check(
+    'content.js: DOM repair detects detached owners and removed descendants containing the active sentence',
+    'const ownerDetached = Boolean(ownerElement && !document.contains(ownerElement));' in content_js and
+    'const activeSentenceRemoved = Boolean(' in content_js and
+    'removedText.includes(activeSentenceText)' in content_js and
+    r"replace(/\s+/g, ' '" in content_js and
+    'endpointsAttached && !ownerDetached && !activeSentenceRemoved && !textChangedInsideRange' in content_js and
+    'activeSentenceRemoved || textChangedInsideRange' in content_js,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -746,6 +767,65 @@ check(
     'manifest.json: unused chrome.scripting permission is not requested',
     '"scripting"' not in runtime_manifest and 'chrome.scripting' not in runtime_bg and
     'chrome.scripting' not in content_js and 'chrome.scripting' not in popup_js,
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Browser integration test infrastructure
+# ─────────────────────────────────────────────────────────────────────────────
+print('\n── Browser Integration Test Infrastructure ──────────────────────')
+e2e_config = read(PLAYWRIGHT_CONFIG)
+e2e_spec = read(E2E_SPEC)
+e2e_server = read(E2E_SERVER)
+fake_tts_manifest = read(FAKE_TTS_MANIFEST)
+fake_tts_worker = read(FAKE_TTS_WORKER)
+
+check(
+    'Playwright is pinned and exposes a dedicated test:e2e script',
+    '"@playwright/test": "1.65.1"' in read(os.path.join(os.path.dirname(__file__), 'package.json')) and
+    '"test:e2e": "playwright test --config=playwright.config.mjs"' in read(os.path.join(os.path.dirname(__file__), 'package.json')),
+)
+check(
+    'Playwright launches a persistent Chromium context for extension testing',
+    'launchPersistentContext' in read(os.path.join(os.path.dirname(__file__), 'tests', 'e2e', 'fixtures.js')) and
+    "channel: 'chromium'" in read(os.path.join(os.path.dirname(__file__), 'tests', 'e2e', 'fixtures.js')),
+)
+check(
+    'Browser tests load NarraTrace and a separate fake TTS engine',
+    'fake-tts-engine' in read(os.path.join(os.path.dirname(__file__), 'tests', 'e2e', 'fixtures.js')) and
+    'tts_engine' in fake_tts_manifest,
+)
+check(
+    'Fake TTS engine emits deterministic native word events and supports stop',
+    'chrome.ttsEngine.onSpeak.addListener' in fake_tts_worker and
+    "type: 'word'" in fake_tts_worker and
+    'chrome.ttsEngine.onStop.addListener' in fake_tts_worker,
+)
+check(
+    'Fake TTS engine tokenizes non-whitespace words with a correctly escaped regex',
+    r'matchAll(/\S+/gu)' in fake_tts_worker and r'matchAll(/\\S+/gu)' not in fake_tts_worker,
+)
+check(
+    'Browser integration tests cover live word tracking and active sentence re-anchoring',
+    'ra-word-box' in e2e_spec and
+    'replaceWith(replacement)' in e2e_spec and
+    "highlights?.get('read-aloud-sentence')" in e2e_spec,
+)
+check(
+    'Browser integration tests record large-article performance metrics',
+    "Performance.enable" in e2e_spec and
+    'JSHeapUsedSize' in e2e_spec and
+    '[NARRATRACE_BROWSER_METRICS]' in e2e_spec,
+)
+check(
+    'Browser fixture server is local-only and provides a large-article route',
+    "const HOST = '127.0.0.1'" in e2e_server and
+    "pathname === '/large-article'" in e2e_server,
+)
+check(
+    'CI runs the browser integration suite and installs Playwright Chromium',
+    'browser-integration:' in read(os.path.join(os.path.dirname(__file__), '.github', 'workflows', 'ci.yml')) and
+    'npx playwright install --with-deps chromium' in read(os.path.join(os.path.dirname(__file__), '.github', 'workflows', 'ci.yml')) and
+    'npm run test:e2e' in read(os.path.join(os.path.dirname(__file__), '.github', 'workflows', 'ci.yml')),
 )
 
 # ─────────────────────────────────────────────────────────────────────────────

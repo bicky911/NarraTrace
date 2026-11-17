@@ -848,9 +848,34 @@
       startNode && endNode &&
       document.contains(startNode) && document.contains(endNode)
     );
+    // A live DOM Range may be auto-adjusted to an attached ancestor when its
+    // original text node is removed. In that case endpoint connectivity alone
+    // lies: the element used to build this sentence range is the reliable
+    // ownership anchor and remains detached after a framework replacement.
+    const ownerElement = item && item.element ? item.element : null;
+    const ownerDetached = Boolean(ownerElement && !document.contains(ownerElement));
+    const activeSentenceText = (currentSentenceText || '').replace(/\s+/g, ' ').trim();
+    // Some extractors anchor every sentence to a broad article container.
+    // Detect removal of a descendant block containing the active sentence as
+    // well, because the browser may move Range endpoints to the still-attached
+    // article element before MutationObserver runs.
+    const activeSentenceRemoved = Boolean(
+      activeSentenceText &&
+      Array.isArray(records) &&
+      records.some(record => {
+        if (record.type !== 'childList') return false;
+        return Array.from(record.removedNodes || []).some(node => {
+          const removedText = typeof node.textContent === 'string'
+            ? node.textContent.replace(/\s+/g, ' ').trim()
+            : '';
+          return removedText.includes(activeSentenceText);
+        });
+      })
+    );
 
-    // Ignore unrelated page churn. A detached endpoint needs re-anchoring;
-    // character-data changes intersecting the active range need a text check.
+    // Ignore unrelated page churn. A detached endpoint or a removed owner /
+    // active sentence needs re-anchoring; changed text inside the range needs
+    // a fresh lookup so the highlight cannot drift to stale offsets.
     let textChangedInsideRange = false;
     if (endpointsAttached && range && Array.isArray(records)) {
       for (const record of records) {
@@ -866,8 +891,9 @@
       }
     }
 
-    if (endpointsAttached && !textChangedInsideRange) return;
-    mutationRequiresRemap = mutationRequiresRemap || textChangedInsideRange;
+    if (endpointsAttached && !ownerDetached && !activeSentenceRemoved && !textChangedInsideRange) return;
+    mutationRequiresRemap = mutationRequiresRemap || ownerDetached ||
+      activeSentenceRemoved || textChangedInsideRange;
 
     // Throttle, don't debounce: a page that mutates constantly must still get
     // its repair pass instead of postponing it forever.

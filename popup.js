@@ -37,6 +37,9 @@ const btnTogglePillText  = document.getElementById('btn-toggle-text');
 // State
 let currentPlaybackState = 'IDLE';
 let activeTabId          = null;
+// Optional explicit tab target used by automation and embedded popup tests.
+// Normal toolbar launches omit this parameter and continue using the active tab.
+const requestedTabId     = new URLSearchParams(window.location.search).get('tab');
 let currentTheme         = 'dark';
 let currentSpeed         = 1.0;
 let currentVolume        = 1.0;
@@ -200,14 +203,30 @@ async function loadVoices() {
  * Synchronize with the active tab and existing playback session.
  */
 async function initActiveTabAndState() {
-  // 1. Get Active Tab Info
+  // 1. Get Active Tab Info. An explicit valid tab ID is useful for
+  // controlled automation; ordinary toolbar launches use the active tab.
   try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tabs && tabs.length > 0) {
-      const tab = tabs[0];
+    let tab = null;
+    if (requestedTabId !== null && /^\d+$/.test(requestedTabId)) {
+      const tabId = Number(requestedTabId);
+      if (Number.isSafeInteger(tabId)) {
+        try {
+          tab = await chrome.tabs.get(tabId);
+        } catch (_) {
+          tab = null;
+        }
+      }
+    }
+    if (!tab) {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      tab = tabs && tabs.length > 0 ? tabs[0] : null;
+    }
+    if (tab && Number.isInteger(tab.id)) {
       activeTabId = tab.id;
       tabTitleEl.textContent = (tab.title || tab.url || 'Webpage').toUpperCase();
       tabTitleEl.title = tab.title || '';
+    } else {
+      tabTitleEl.textContent = 'STANDBY';
     }
   } catch (_) {
     tabTitleEl.textContent = 'STANDBY';
