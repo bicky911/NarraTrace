@@ -1,6 +1,6 @@
 # NarraTrace — Narrates the Page. Traces Every Word.
 
-> **Narra**te + **Trace**: NarraTrace narrates any web page aloud with local neural voices — and traces every word on screen as it speaks, so your eyes and ears never lose their place.
+> **Narra**te + **Trace**: NarraTrace narrates any web page aloud through the selected Chrome TTS provider — and traces every word on screen as it speaks, so your eyes and ears never lose their place.
 
 A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized text-to-speech with spring-physics word tracking, Focus Reader mode, and multi-engine speech synthesis. *(Renamed from "Read Aloud" in 1.4.0 — same extension, same settings; existing preferences carry over untouched.)*
 
