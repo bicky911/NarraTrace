@@ -1,9 +1,8 @@
 # NarraTrace 1.4.0 — 5-minute manual test checklist
 
-Everything below was verified automatically in a real Chrome (19/19 engine checks,
-13/13 UI checks). This list is for the two things a headless browser cannot
-judge: **how it actually sounds on your machine** and **how it feels while you
-use it**.
+Run this manual release smoke test after the automated suites. These checks
+require a real Chrome installation and audible speech, so they cannot be
+replaced by source-code assertions or unit tests.
 
 ---
 
@@ -14,15 +13,15 @@ use it**.
 3. **Load unpacked** → select exactly this folder:
 
    ```
-   C:\Users\bicky_local\Desktop\read-aloud
+   C:\path\to\NarraTrace
    ```
 
    *(Not the zip, not a parent folder — the folder that contains `manifest.json`.)*
 4. **Refresh every open tab** (Ctrl+R). A content script that was injected
    before the reload keeps the old code.
 
-> Chrome shows the extension as **NarraTrace · 1.4.0** with the id
-> `hbfbblacfbkjafmkjohjpbojhcfofpnp`.
+> Chrome displays the name and version declared in manifest.json. An unpacked
+> extension's ID can vary by installation location.
 
 ---
 
