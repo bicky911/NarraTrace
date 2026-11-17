@@ -51,7 +51,7 @@ def resolve_reference(reference: str, source_path: str) -> str | None:
 
 
 def manifest_references(manifest: dict) -> set[str]:
-    references = {"manifest.json", "test.html"}
+    references = {"manifest.json", "test.html", "LICENSE"}
     background = manifest.get("background") or {}
     if background.get("service_worker"):
         references.add(background["service_worker"])
