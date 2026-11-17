@@ -6,7 +6,10 @@
  * 2. Runs exclusively in extension background contexts where chrome.tts is available.
  * 3. Voice selection is ENGINE-AGNOSTIC: any TTS engine extension that registers
  *    voices through chrome.tts can drive NarraTrace. The engines listed in
- *    TTS_ENGINES are only a preference order — Kokoro first, Supertonic second —
+ *    TTS_ENGINES are only a preference order — Piper first, Kokoro second,
+ *    then Supertonic — plus a sensible default voice each. Dynamic Piper
+ *    extension IDs are mapped for display while the real ID is preserved for
+ *    chrome.tts.speak().
  *    plus a sensible default voice each. With graceful fallback to Windows
  *    local/system voices and informative status messages.
  * 4. Only passes optional speak() options (voiceName, extensionId, lang) when they contain
@@ -159,7 +162,7 @@ export function getAllVoices() {
  * Selection order:
  *   1. A voice the user explicitly picked (preference.pinned) — always wins, so
  *      a deliberately chosen Supertonic voice is never overridden.
- *   2. Otherwise the highest-priority engine that has voices (Kokoro first),
+ *   2. Otherwise the highest-priority engine that has voices (Piper first),
  *      using that engine's default voice.
  *   3. Otherwise an English Windows system voice, then any system voice, then
  *      any voice at all.
@@ -186,10 +189,10 @@ export async function detectAndSelectVoice(preference = null) {
   const byEngine = new Map();
   for (const v of voices) {
     if (!v.extensionId) continue;
-    // Map Piper voices to PIPER_EXTENSION_ID even if installed unpacked under a local dynamic ID
-    const targetEngineId = (v.voiceName && v.voiceName.startsWith('Piper '))
-      ? PIPER_EXTENSION_ID
-      : v.extensionId;
+    // Resolve aliases (including unpacked Piper installs with a dynamic ID)
+    // to their canonical registry ID for grouping and priority selection. The
+    // voice object itself keeps its real extensionId for chrome.tts.speak().
+    const targetEngineId = getEngineSpec(v.extensionId, v)?.id || v.extensionId;
     if (!byEngine.has(targetEngineId)) byEngine.set(targetEngineId, []);
     byEngine.get(targetEngineId).push(v);
   }
@@ -231,7 +234,7 @@ export async function detectAndSelectVoice(preference = null) {
     const pinned = voices.find(v => v.voiceName === pref.voiceName.trim());
     if (pinned) {
       selectedVoice = pinned;
-      const spec = getEngineSpec(pinned.extensionId);
+      const spec = getEngineSpec(pinned.extensionId, pinned);
       statusMessage = spec
         ? `Using ${spec.label} voice "${pinned.voiceName}".`
         : `Using voice "${pinned.voiceName}".`;
@@ -266,7 +269,14 @@ export async function detectAndSelectVoice(preference = null) {
     }
   }
 
-  const activeEngine = engines.find(e => e.id === (selectedVoice && selectedVoice.extensionId)) || null;
+  // Known providers may advertise voices under a dynamic extension ID. Resolve
+  // the selected voice back to its canonical registry ID before matching the
+  // grouped engine; never replace the real ID stored on selectedVoice.
+  const selectedEngineSpec = selectedVoice
+    ? getEngineSpec(selectedVoice.extensionId, selectedVoice)
+    : null;
+  const activeEngineId = selectedEngineSpec?.id || (selectedVoice?.extensionId || null);
+  const activeEngine = engines.find(e => e.id === activeEngineId) || null;
 
   return {
     selectedVoice,
@@ -277,7 +287,12 @@ export async function detectAndSelectVoice(preference = null) {
     engineVoices: activeEngine ? activeEngine.voices : [],
     engines,
     localSystemVoices,
-    otherVoices: voices.filter(v => v.extensionId && (!activeEngine || v.extensionId !== activeEngine.id)),
+    otherVoices: voices.filter(v => {
+      if (!v.extensionId) return false;
+      const spec = getEngineSpec(v.extensionId, v);
+      const id = spec?.id || v.extensionId;
+      return !activeEngine || id !== activeEngine.id;
+    }),
     allVoices: voices
   };
 }
