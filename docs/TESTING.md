@@ -26,6 +26,7 @@ The unit suite currently exercises:
 - Playback queue sanitation and pronunciation rules
 - Pitch-change resume offsets
 - Service-worker recovery when an orphaned utterance is still active
+- Persistence of deferred recovery state across session save/restore
 
 The Python harness remains useful for source-level invariants and markup checks. It is not a substitute for running the extension in Chrome.
 
