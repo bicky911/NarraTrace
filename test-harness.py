@@ -8,6 +8,7 @@ Tests:
   3. Content.js a11y: icon buttons all have aria-label, focus-visible CSS present
   4. setRate / setVolume offset logic: resumeFrom uses lastWordCharIndex
   5. setCurrentSentence: resumeOffset conditional logic
+  6. Runtime: event-driven zoom tracking and targeted DOM mutation repair
 """
 
 import re
@@ -648,6 +649,10 @@ check(
     'content.js: device-pixel-ratio changes are watched with a resolution media query',
     "window.matchMedia" in content_js and "resolution: ${dpr}dppx" in content_js and
     "addEventListener('change', onChange)" in content_js,
+)
+check(
+    'content.js: display-resolution changes re-query Chrome tab zoom to preserve DPI separation',
+    'watchDevicePixelRatioChanges();\n        initZoomTracking();' in content_js,
 )
 check(
     'content.js: zoom listeners are released on extension context invalidation',
