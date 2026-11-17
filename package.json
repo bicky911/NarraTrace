@@ -8,7 +8,9 @@
     "test:static": "python test-harness.py",
     "test:all": "npm run test:syntax && npm run test && npm run test:static",
     "test:syntax": "node --check background.js && node --check content.js && node --check playback-manager.js && node --check popup.js && node --check readability.js && node --check sentence-tokenizer.js && node --check speech-engine.js && node --check playwright.config.mjs && node --check tests/e2e/server.mjs && node --check tests/e2e/fixtures.js && node --check tests/e2e/extension.spec.js && node --check tests/e2e/fixtures/fake-tts-engine/background.js",
-    "test:e2e": "playwright test --config=playwright.config.mjs"
+    "test:e2e": "playwright test --config=playwright.config.mjs",
+    "package:check": "python build-release.py",
+    "package:build": "python build-release.py --build"
   },
   "engines": {
     "node": ">=22"
