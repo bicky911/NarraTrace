@@ -408,6 +408,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
 
+        // Re-check after the async voice lookup / speaking-state query. A
+        // normal START_PLAYBACK could have arrived while those promises were
+        // pending, and another diagnostics request may have won the race.
+        if (diagnosticSpeechActive) {
+          sendResponse({ success: false, error: 'A diagnostic speech test is already running.' });
+          return;
+        }
+        const latestPlaybackState = playbackManager.getState().playbackState;
+        if (latestPlaybackState === PlaybackState.PLAYING || latestPlaybackState === PlaybackState.PAUSED) {
+          sendResponse({
+            success: false,
+            error: 'Normal NarraTrace playback became active. Stop it before running the diagnostic.'
+          });
+          return;
+        }
+
         diagnosticSpeechActive = true;
         diagnosticRequestId = requestId;
         const startedAt = Date.now();
