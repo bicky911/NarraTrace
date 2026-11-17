@@ -143,6 +143,16 @@ test('uses Chrome TTS word events and re-anchors highlighting after a live DOM r
   const wordBox = articlePage.locator('#read-aloud-player-host #ra-word-box');
   await expect(wordBox).toHaveClass(/visible/, { timeout: 10000 });
 
+  // Wait until the live word range reaches the first paragraph. The first
+  // extracted block can be the article heading, while this case specifically
+  // verifies paragraph replacement and the observer's owner-element recovery.
+  await expect.poll(() => articlePage.evaluate(() => {
+    const highlights = window.CSS?.highlights?.get('read-aloud-word');
+    const range = highlights ? Array.from(highlights)[0] : null;
+    const paragraph = document.querySelector('#article-intro');
+    return Boolean(range && paragraph && paragraph.contains(range.startContainer));
+  }), { timeout: 15000 }).toBe(true);
+
   // Page churn outside the active sentence must not disturb its word capsule.
   await articlePage.evaluate(() => {
     const aside = document.querySelector('#unrelated-updates');
@@ -154,18 +164,9 @@ test('uses Chrome TTS word events and re-anchors highlighting after a live DOM r
   });
   await expect(wordBox).toHaveClass(/visible/);
 
-  // Replace the block that currently contains the active word. The first
-  // extracted item can be a heading, so derive the target from the live Range
-  // instead of assuming that the first paragraph is always sentence zero.
+  // Replace the exact active paragraph while keeping its source text intact.
   const replacedBlock = await articlePage.evaluate(() => {
-    const highlights = window.CSS?.highlights?.get('read-aloud-word');
-    const range = highlights ? Array.from(highlights)[0] : null;
-    if (!range) return null;
-
-    const startElement = range.startContainer.nodeType === Node.ELEMENT_NODE
-      ? range.startContainer
-      : range.startContainer.parentElement;
-    const activeBlock = startElement?.closest('p, h1, h2, h3, h4, h5, h6, li, blockquote');
+    const activeBlock = document.querySelector('#article-intro');
     if (!activeBlock) return null;
 
     activeBlock.dataset.e2eActiveBlock = 'true';
