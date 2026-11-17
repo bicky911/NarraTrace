@@ -792,6 +792,10 @@ check(
     'chrome.ttsEngine.onStop.addListener' in fake_tts_worker,
 )
 check(
+    'Fake TTS engine tokenizes non-whitespace words with a correctly escaped regex',
+    r'matchAll(/\S+/gu)' in fake_tts_worker and r'matchAll(/\\S+/gu)' not in fake_tts_worker,
+)
+check(
     'Browser integration tests cover live DOM replacement and word-range recovery',
     'replaceWith(replacement)' in e2e_spec and
     "highlights?.get('read-aloud-word')" in e2e_spec,
