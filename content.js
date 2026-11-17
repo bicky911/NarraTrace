@@ -200,6 +200,7 @@
     console.log('[ReadAloud] Extension context invalidated (extension was reloaded). Refresh the page to reconnect.');
     if (typeof stopHeartbeat === 'function') stopHeartbeat();
     if (typeof stopMutationObserver === 'function') stopMutationObserver();
+    if (typeof stopZoomTracking === 'function') stopZoomTracking();
     if (typeof clearHighlight === 'function') clearHighlight();
     if (typeof hideHoverPlayBtn === 'function') hideHoverPlayBtn();
     if (typeof hideSelectionTooltip === 'function') hideSelectionTooltip();
@@ -814,15 +815,18 @@
     return true;
   }
 
-  /** Called (throttled) after the page mutated — repair or drop the highlight. */
-  function handleDomMutation() {
+  let mutationRequiresRemap = false;
+
+  /** Called (throttled) after a mutation that can invalidate the active range. */
+  function handleDomMutation(forceRemap = false) {
     if (currentSentenceIndex < 0) return;
     const item = currentSentenceRanges[currentSentenceIndex];
     const startNode = item && item.range ? item.range.startContainer : null;
     const endNode = item && item.range ? item.range.endContainer : null;
 
-    // Still attached? The highlight is still valid — nothing to do.
-    if (startNode && endNode && document.contains(startNode) && document.contains(endNode)) return;
+    // Still attached and untouched? The live Range remains valid.
+    if (!forceRemap && startNode && endNode &&
+        document.contains(startNode) && document.contains(endNode)) return;
 
     if (remapCurrentSentence()) {
       applyHighlight(currentSentenceIndex);
@@ -833,13 +837,46 @@
     }
   }
 
-  function scheduleMutationCheck() {
+  function scheduleMutationCheck(records) {
+    if (currentSentenceIndex < 0) return;
+
+    const item = currentSentenceRanges[currentSentenceIndex];
+    const range = item && item.range;
+    const startNode = range ? range.startContainer : null;
+    const endNode = range ? range.endContainer : null;
+    const endpointsAttached = Boolean(
+      startNode && endNode &&
+      document.contains(startNode) && document.contains(endNode)
+    );
+
+    // Ignore unrelated page churn. A detached endpoint needs re-anchoring;
+    // character-data changes intersecting the active range need a text check.
+    let textChangedInsideRange = false;
+    if (endpointsAttached && range && Array.isArray(records)) {
+      for (const record of records) {
+        if (record.type !== 'characterData') continue;
+        try {
+          if (range.intersectsNode(record.target)) {
+            textChangedInsideRange = true;
+            break;
+          }
+        } catch (_) {
+          // A node may be detached between the observer callback and this test.
+        }
+      }
+    }
+
+    if (endpointsAttached && !textChangedInsideRange) return;
+    mutationRequiresRemap = mutationRequiresRemap || textChangedInsideRange;
+
     // Throttle, don't debounce: a page that mutates constantly must still get
     // its repair pass instead of postponing it forever.
     if (mutationTimer) return;
     mutationTimer = setTimeout(() => {
       mutationTimer = null;
-      handleDomMutation();
+      const forceRemap = mutationRequiresRemap;
+      mutationRequiresRemap = false;
+      handleDomMutation(forceRemap);
     }, 800);
   }
 
@@ -868,6 +905,7 @@
       clearTimeout(mutationTimer);
       mutationTimer = null;
     }
+    mutationRequiresRemap = false;
   }
 
   // -----------------------------------------------------------------
@@ -902,8 +940,12 @@
     return (typeof zoom === 'number' && isFinite(zoom) && zoom > 0) ? zoom : 1;
   }
 
+  let lastAppliedZoom = null;
+
   function updateZoomCompensation() {
     const zoom = currentPageZoom();
+    if (zoom === lastAppliedZoom) return;
+    lastAppliedZoom = zoom;
     if (typeof host !== 'undefined' && host) {
       host.style.setProperty('--ra-page-zoom', String(zoom));
     }
@@ -929,11 +971,65 @@
     });
   }
 
+  // Browser zoom normally emits resize; resolution media queries also
+  // catch device-pixel-ratio changes when moving the window between displays.
+  let zoomMediaQuery = null;
+  let zoomMediaQueryHandler = null;
+
+  function removeZoomMediaQueryListener() {
+    if (zoomMediaQuery && zoomMediaQueryHandler) {
+      if (typeof zoomMediaQuery.removeEventListener === 'function') {
+        zoomMediaQuery.removeEventListener('change', zoomMediaQueryHandler);
+      } else if (typeof zoomMediaQuery.removeListener === 'function') {
+        zoomMediaQuery.removeListener(zoomMediaQueryHandler);
+      }
+    }
+    zoomMediaQuery = null;
+    zoomMediaQueryHandler = null;
+  }
+
+  function watchDevicePixelRatioChanges() {
+    removeZoomMediaQueryListener();
+    if (typeof window.matchMedia !== 'function') return;
+
+    const dpr = (typeof window.devicePixelRatio === 'number' && window.devicePixelRatio > 0)
+      ? window.devicePixelRatio
+      : 1;
+    try {
+      const query = window.matchMedia(`(resolution: ${dpr}dppx)`);
+      const onChange = () => {
+        // A resolution query is tied to the old DPR, so re-arm it after change.
+        watchDevicePixelRatioChanges();
+        updateZoomCompensation();
+      };
+      if (typeof query.addEventListener === 'function') {
+        query.addEventListener('change', onChange);
+      } else if (typeof query.addListener === 'function') {
+        query.addListener(onChange);
+      } else {
+        return;
+      }
+      zoomMediaQuery = query;
+      zoomMediaQueryHandler = onChange;
+    } catch (_) {
+      zoomMediaQuery = null;
+      zoomMediaQueryHandler = null;
+    }
+  }
+
+  function stopZoomTracking() {
+    window.removeEventListener('resize', updateZoomCompensation);
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', updateZoomCompensation);
+    }
+    removeZoomMediaQueryListener();
+  }
+
   window.addEventListener('resize', updateZoomCompensation);
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', updateZoomCompensation);
   }
-  setInterval(updateZoomCompensation, 1200);
+  watchDevicePixelRatioChanges();
 
   // -----------------------------------------------------------------
   // 4. Create Host Element & Shadow DOM Player UI
