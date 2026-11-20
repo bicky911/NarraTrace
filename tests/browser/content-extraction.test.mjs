@@ -37,6 +37,11 @@ const contentFunctions = {
     CONTENT_SOURCE,
     '  function buildRangeIndex(baseRange) {',
     '  function updateWordBoxPosition()'
+  ),
+  locateTextInDocument: extractSource(
+    CONTENT_SOURCE,
+    '  function locateTextInDocument(text) {',
+    '  /**\\n   * Re-anchor the current sentence'
   )
 };
 
@@ -86,6 +91,10 @@ test('Readability extracts structured article content without site chrome', {
     const createSubRangeFromSentence = new Function('document', 'NodeFilter',
       functions.createSubRangeFromSentence + '\nreturn createSubRangeFromSentence;'
     )(document, NodeFilter);
+    const locateTextInDocument = new Function('document', 'NodeFilter',
+      functions.findRangesInElement + '\n' + functions.locateTextInDocument +
+      '\nreturn locateTextInDocument;'
+    )(document, NodeFilter);
 
     const selectedBlocks = getContentElements(document.body);
     const blocksBeforeReferences = selectedBlocks.map(el => ({
@@ -110,6 +119,27 @@ test('Readability extracts structured article content without site chrome', {
     const wordOffset = firstSentence.sentence.indexOf('depths');
     const wordRange = createSubRangeFromSentence(firstSentence, wordOffset, 'depths'.length);
 
+    // Simulate a React/Vue page replacing the paragraph node while narration
+    // is active. The new DOM has the same sentence but different inline nodes
+    // and whitespace so recovery must build a fresh, live Range.
+    const replacement = document.createElement('p');
+    replacement.id = 'mapped-paragraph-after-rerender';
+    replacement.innerHTML =
+      'Researchers measured soil moisture<br><strong>at multiple depths</strong> and recorded plant height at regular intervals. ' +
+      'The sampling protocol remained consistent throughout the growing season.';
+    paragraph.replaceWith(replacement);
+
+    const remappedRange = locateTextInDocument(firstSentence.sentence);
+    const remappedText = remappedRange
+      ? window.ReadAloudTokenizer.normalizeWhitespace(remappedRange.toString())
+      : null;
+    const remappedWordRange = remappedRange
+      ? createSubRangeFromSentence({ range: remappedRange, text: firstSentence.sentence }, wordOffset, 'depths'.length)
+      : null;
+    const missingRange = locateTextInDocument('This sentence is deliberately absent from the mutated article.');
+    const emptyElement = document.createElement('p');
+    const emptyElementRanges = findRangesInElement(emptyElement, ['No text should map here.']);
+
     return {
       title: parsed.title,
       byline: parsed.byline,
@@ -119,7 +149,12 @@ test('Readability extracts structured article content without site chrome', {
       blocksBeforeReferences,
       blocksAfterReferences,
       mappedSentences: mappedSentences.map(({ sentence, normalizedRangeText }) => ({ sentence, normalizedRangeText })),
-      wordRangeText: wordRange ? window.ReadAloudTokenizer.normalizeWhitespace(wordRange.toString()) : null
+      wordRangeText: wordRange ? window.ReadAloudTokenizer.normalizeWhitespace(wordRange.toString()) : null,
+      remappedText,
+      remappedRangeAttached: Boolean(remappedRange && document.contains(remappedRange.startContainer) && document.contains(remappedRange.endContainer)),
+      remappedWordText: remappedWordRange ? window.ReadAloudTokenizer.normalizeWhitespace(remappedWordRange.toString()) : null,
+      missingRangeIsNull: missingRange === null,
+      emptyElementRangeCount: emptyElementRanges.length
     };
   }, contentFunctions);
 
@@ -155,4 +190,14 @@ test('Readability extracts structured article content without site chrome', {
   }
   assert.equal(result.wordRangeText, 'depths',
     'word-level subranges should remain accurate across inline elements and source newlines');
+  assert.equal(result.remappedText, result.mappedSentences[0].sentence,
+    'the sentence should be locatable after its original DOM node is replaced');
+  assert.equal(result.remappedRangeAttached, true,
+    'the remapped sentence range should point only to live DOM nodes');
+  assert.equal(result.remappedWordText, 'depths',
+    'word-level highlighting should continue to map after a dynamic re-render');
+  assert.equal(result.missingRangeIsNull, true,
+    'a sentence that no longer exists should not map to unrelated page text');
+  assert.equal(result.emptyElementRangeCount, 0,
+    'empty content blocks should not produce phantom sentence ranges');
 });
