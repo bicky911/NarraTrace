@@ -301,8 +301,8 @@ test('invalid native word boundaries do not disable estimator fallback', async (
     anchorTime: null,
     anchorEnd: null,
     segmentIndex: 0,
-    requestedAt: Date.now() - 2500,
-    startedAt: Date.now() - 2500,
+    requestedAt: Date.now() - 5000,
+    startedAt: Date.now() - 5000,
     firstBoundaryDelay: null,
     firstBoundaryTime: null
   };
