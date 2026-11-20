@@ -118,6 +118,11 @@ test('Readability extracts structured article content without site chrome', {
     const firstSentence = mappedSentences[0];
     const wordOffset = firstSentence.sentence.indexOf('depths');
     const wordRange = createSubRangeFromSentence(firstSentence, wordOffset, 'depths'.length);
+    // DOM Ranges are live: replacing their source node changes their endpoints.
+    // Capture the original word text before simulating the re-render.
+    const wordRangeTextBeforeMutation = wordRange
+      ? window.ReadAloudTokenizer.normalizeWhitespace(wordRange.toString())
+      : null;
 
     // Simulate a React/Vue page replacing the paragraph node while narration
     // is active. The new DOM has the same sentence but different inline nodes
@@ -149,7 +154,7 @@ test('Readability extracts structured article content without site chrome', {
       blocksBeforeReferences,
       blocksAfterReferences,
       mappedSentences: mappedSentences.map(({ sentence, normalizedRangeText }) => ({ sentence, normalizedRangeText })),
-      wordRangeText: wordRange ? window.ReadAloudTokenizer.normalizeWhitespace(wordRange.toString()) : null,
+      wordRangeText: wordRangeTextBeforeMutation,
       remappedText,
       remappedRangeAttached: Boolean(remappedRange && document.contains(remappedRange.startContainer) && document.contains(remappedRange.endContainer)),
       remappedWordText: remappedWordRange ? window.ReadAloudTokenizer.normalizeWhitespace(remappedWordRange.toString()) : null,
