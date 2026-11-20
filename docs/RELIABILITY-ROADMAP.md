@@ -34,6 +34,7 @@ Establish a trustworthy quality baseline before adding features or performing ri
 
 ## Stage 4: Content extraction
 - [x] Add a structured research-article fixture covering headings, paragraphs, lists, captions, tables, metadata, navigation, sidebars, recommendations, and footer noise.
+- [x] Fix the tokenizer boundary that incorrectly split honorifics from capitalized names.
 - [x] Verify Readability output and its integration with the shared sentence tokenizer.
 - [ ] Build additional fixtures for long articles, dynamic pages, and noisy layouts.
 - [ ] Verify extracted text, sentence ranges, and DOM-highlight mapping.
