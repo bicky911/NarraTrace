@@ -3867,7 +3867,7 @@
     safeStorageSet({ readAloud_readerFontSize: readerFontSize });
   }
 
-  function openReaderView() {
+  function openReaderView(returnFocus = null) {
     if (currentSentenceRanges.length === 0) {
       buildPlaybackQueue();
     }
@@ -3921,7 +3921,7 @@
       readerBodyEl.innerHTML = html;
     }
 
-    readerReturnFocus = shadow.activeElement || readerBtn || playBtn;
+    readerReturnFocus = returnFocus || shadow.activeElement || readerBtn || playBtn;
     isReaderOpen = true;
     readerOverlay.inert = false;
     readerOverlay.setAttribute('aria-hidden', 'false');
@@ -3952,9 +3952,21 @@
     readerOverlay.classList.remove('open');
     readerOverlay.inert = true;
     readerOverlay.setAttribute('aria-hidden', 'true');
-    const returnFocus = readerReturnFocus || readerBtn;
+    const returnFocus = readerReturnFocus;
     readerReturnFocus = null;
-    if (returnFocus && typeof returnFocus.focus === 'function') returnFocus.focus();
+    const fallbackFocus = settingsTriggerBtn || playBtn || readerBtn;
+    const canRestoreFocus = returnFocus &&
+      typeof returnFocus.focus === 'function' &&
+      returnFocus.isConnected &&
+      !returnFocus.closest?.('[inert]');
+
+    if (canRestoreFocus) returnFocus.focus();
+    // A stale or inert opener must not leave keyboard focus on <body> after
+    // the modal reader closes.
+    if (shadow.activeElement !== returnFocus && fallbackFocus &&
+        typeof fallbackFocus.focus === 'function') {
+      fallbackFocus.focus();
+    }
   }
 
   readerOverlay.addEventListener('keydown', (event) => {
@@ -3979,11 +3991,11 @@
     }
   });
 
-  function toggleReaderView() {
+  function toggleReaderView(returnFocus = null) {
     if (isReaderOpen) {
       closeReaderView();
     } else {
-      openReaderView();
+      openReaderView(returnFocus);
     }
   }
 
@@ -4518,7 +4530,9 @@
   if (settingsReaderBtn) {
     settingsReaderBtn.addEventListener('click', () => {
       closeSettings(true);
-      toggleReaderView();
+      // Preserve the intended opener explicitly: closeSettings() makes
+      // its panel inert before Focus Reader takes over.
+      toggleReaderView(settingsTriggerBtn || playBtn);
     });
   }
 
