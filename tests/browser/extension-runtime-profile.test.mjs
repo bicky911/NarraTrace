@@ -20,7 +20,7 @@ function articleHtml(paragraphCount = 240) {
 <head><meta charset="utf-8"><title>NarraTrace runtime profile</title></head>
 <body>
   <main><article>
-    <h1>Annual watershed monitoring baseline</h1>
+    <h1>Annual watershed monitoring baseline across the northern experimental region during spring sampling</h1>
     <p>The following synthetic article is used to profile NarraTrace on a repeatable long document.</p>
     ${paragraphs}
   </article></main>
