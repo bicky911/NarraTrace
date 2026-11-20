@@ -38,6 +38,8 @@ jobs:
         run: node --test tests/sentence-tokenizer.test.mjs
       - name: Run resource lifecycle regression tests
         run: node --test tests/resource-lifecycle.test.mjs
+      - name: Run manifest and privacy contract tests
+        run: node --test tests/manifest-contract.test.mjs
       - name: Run existing Python verification harness
         run: python test-harness.py
 

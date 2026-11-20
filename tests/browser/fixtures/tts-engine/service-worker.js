@@ -21,12 +21,14 @@ chrome.ttsEngine.onSpeak.addListener((utterance, options, sendTtsEvent) => {
   if (typeof utterance === 'string' && utterance.length > 0) {
     sendTtsEvent({ type: 'sentence', charIndex: 0, length: utterance.length });
     const words = [...utterance.matchAll(/\S+/g)];
+    let wordEventsSent = 0;
     if (words.length > 0) {
       sendTtsEvent({
         type: 'word',
         charIndex: words[0].index || 0,
         length: words[0][0].length
       });
+      wordEventsSent++;
 
       // Emit deterministic word-boundary events throughout the utterance so
       // renderer profiling includes actual highlight updates, not only start/end.
@@ -43,6 +45,7 @@ chrome.ttsEngine.onSpeak.addListener((utterance, options, sendTtsEvent) => {
           charIndex: word.index || 0,
           length: word[0].length
         });
+        wordEventsSent++;
       }, Math.max(75, SPEECH_DURATION_MS / Math.max(words.length, 1)));
       activeTimers.add(wordTimer);
     }
@@ -51,7 +54,7 @@ chrome.ttsEngine.onSpeak.addListener((utterance, options, sendTtsEvent) => {
   const timer = setTimeout(() => {
     activeTimers.delete(timer);
     sendTtsEvent({ type: 'end', charIndex: utterance.length });
-    void record({ type: 'end', text: utterance });
+    void record({ type: 'end', text: utterance, wordEventsSent });
   }, SPEECH_DURATION_MS);
   activeTimers.add(timer);
 });

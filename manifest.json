@@ -2,12 +2,10 @@
   "manifest_version": 3,
   "name": "NarraTrace — Narrates & Traces Every Word",
   "version": "1.4.0",
-  "description": "Narrates any page aloud with local neural voices and traces every word on screen as it speaks — eyes and ears, in sync.",
+  "description": "Narrates any page aloud with Chrome TTS voices and traces every word on screen as it speaks.",
   "permissions": [
     "tts",
     "storage",
-    "activeTab",
-    "scripting",
     "alarms",
     "contextMenus"
   ],

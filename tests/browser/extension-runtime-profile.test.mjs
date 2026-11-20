@@ -64,6 +64,18 @@ async function waitForTestVoice(driver, extensionId, timeoutMs = 15000) {
   assert.fail(`Test TTS voice did not register: ${JSON.stringify(last)}`);
 }
 
+async function readEngineEvents(browser, engineId) {
+  const target = await browser.waitForTarget(candidate =>
+    candidate.type() === 'service_worker' &&
+    candidate.url().startsWith(`chrome-extension://${engineId}/`)
+  , { timeout: 10000 });
+  const worker = await target.worker();
+  return worker.evaluate(async () => {
+    const stored = await chrome.storage.local.get('narraTraceTestEvents');
+    return Array.isArray(stored.narraTraceTestEvents) ? stored.narraTraceTestEvents : [];
+  });
+}
+
 async function waitForEngineSpeak(browser, engineId, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   let events = [];
@@ -201,8 +213,14 @@ test('profiles real extension renderer idle versus active playback workload', {
       rendererTaskMs: delta(playbackAfter, playbackBefore, 'TaskDuration'),
       heapDeltaMB: heapDelta(playbackAfter, playbackBefore)
     },
-    testVoiceUtterancesObserved: speakEvents.filter(event => event.type === 'speak').length
+    testVoiceUtterancesObserved: 0,
+    testVoiceWordBoundariesObserved: 0
   };
+  const finalEngineEvents = await readEngineEvents(browser, engineId);
+  report.testVoiceUtterancesObserved = finalEngineEvents.filter(event => event.type === 'speak').length;
+  report.testVoiceWordBoundariesObserved = finalEngineEvents
+    .filter(event => event.type === 'end')
+    .reduce((count, event) => count + (event.wordEventsSent || 0), 0);
   console.log('[NarraTrace renderer idle/playback profile]', JSON.stringify(report));
 
   assert.ok(report.idle.rendererScriptMs !== null, 'Chromium should report idle ScriptDuration');
@@ -210,6 +228,8 @@ test('profiles real extension renderer idle versus active playback workload', {
   assert.ok(report.activePlayback.rendererScriptMs !== null, 'Chromium should report playback ScriptDuration');
   assert.ok(report.activePlayback.rendererTaskMs !== null, 'Chromium should report playback TaskDuration');
   assert.ok(report.testVoiceUtterancesObserved >= 1);
+  assert.ok(report.testVoiceWordBoundariesObserved >= 5,
+    'the active profile should exercise multiple word-highlight updates');
 
   await send(driver, { action: 'STOP_PLAYBACK' });
 });

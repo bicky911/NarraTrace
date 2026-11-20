@@ -57,9 +57,10 @@ Establish a trustworthy quality baseline before adding features or performing ri
 - [ ] Audit remaining event-listener and timer cleanup paths.
 
 ## Stage 6: Release quality
+- [x] Clarify the NarraTrace-to-Chrome-TTS data flow and distinguish core extension behavior from third-party voice-provider processing.
+- [x] Remove unused `activeTab` and `scripting` permissions and add a manifest/privacy regression test.
 - [ ] Accessibility test keyboard navigation, screen readers, reduced motion, and focus restoration.
-- [ ] Audit privacy claims and engine-specific network/local processing behavior.
-- [ ] Review permissions and extension security boundaries.
+- [ ] Complete the remaining extension security-boundary review.
 - [ ] Verify release package, changelog, version, and upgrade behavior.
 
 ## Acceptance criteria
