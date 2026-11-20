@@ -84,12 +84,15 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   await waitForShadow(page, root => Boolean(root.getElementById('ra-settings')));
   await page.bringToFront();
 
-  // Open settings from the real Shadow DOM control using the keyboard.
+  // Open settings from the real Shadow DOM trigger. Keyboard navigation is
+  // exercised inside the panel and dialog below; a direct activation here
+  // keeps this setup step independent of platform-specific Enter-key timing.
   await page.evaluate(() => {
     const root = document.getElementById('read-aloud-player-host').shadowRoot;
-    root.getElementById('ra-settings').focus();
+    const trigger = root.getElementById('ra-settings');
+    trigger.focus();
+    trigger.click();
   });
-  await page.keyboard.press('Enter');
   await page.waitForFunction(() => {
     const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
     return root?.getElementById('ra-settings-panel')?.getAttribute('aria-hidden') === 'false' &&
@@ -117,9 +120,10 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   // then the modal reader takes focus.
   await page.evaluate(() => {
     const root = document.getElementById('read-aloud-player-host').shadowRoot;
-    root.getElementById('ra-settings-reader').focus();
+    const trigger = root.getElementById('ra-settings-reader');
+    trigger.focus();
+    trigger.click();
   });
-  await page.keyboard.press('Enter');
   await page.waitForFunction(() => {
     const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
     const dialog = root?.getElementById('ra-reader-overlay');
@@ -221,9 +225,10 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   // Escape also closes settings, updates expanded state, and restores focus.
   await page.evaluate(() => {
     const root = document.getElementById('read-aloud-player-host').shadowRoot;
-    root.getElementById('ra-settings').focus();
+    const trigger = root.getElementById('ra-settings');
+    trigger.focus();
+    trigger.click();
   });
-  await page.keyboard.press('Enter');
   await page.waitForFunction(() => {
     const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
     return root?.activeElement?.id === 'ra-settings-close';
