@@ -42,12 +42,12 @@ test('broad content-script access is explicit and documented', () => {
     manifest.content_scripts.some(script => script.matches?.includes('<all_urls>')),
     'NarraTrace must inject on the supported web-page URL set'
   );
-  assert.match(readme, /content scripts on pages covered by the manifest's `<all_urls>` match/i);
+  assert.match(privacy, /content scripts on pages matching `<all_urls>`/i);
   assert.match(privacy, /broad website access/i);
 });
 
 test('privacy wording distinguishes NarraTrace from the selected TTS provider', () => {
-  assert.match(readme, /processing location depends on that provider/i);
+  assert.match(readme, /network processing depends on that provider/i);
   assert.match(privacy, /selected TTS provider is a separate component/i);
   assert.match(privacy, /chrome\.storage\.session/);
   assert.match(privacy, /chrome\.storage\.local/);
