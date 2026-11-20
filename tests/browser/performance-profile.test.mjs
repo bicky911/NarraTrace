@@ -21,12 +21,12 @@ const helpers = {
   getContentElements: extractSource(
     CONTENT_SOURCE,
     '  function getContentElements(container) {',
-    '  /**\\n   * Find the best set of article elements'
+    '  /**\n   * Find the best set of article elements'
   ),
   textIndexAndRanges: extractSource(
     CONTENT_SOURCE,
     '  function buildTextIndex(element) {',
-    '  /**\\n   * Build a whitespace-normalised view of a DOM Range'
+    '  /**\n   * Build a whitespace-normalised view of a DOM Range'
   )
 };
 
@@ -70,10 +70,10 @@ test('profiles production extraction and DOM range mapping on a large article', 
 
     const host = document.createElement('div');
     const getContentElements = new Function('host', 'window',
-      functions.getContentElements + '\\nreturn getContentElements;'
+      functions.getContentElements + '\nreturn getContentElements;'
     )(host, window);
     const findRangesInElement = new Function('document', 'NodeFilter',
-      functions.textIndexAndRanges + '\\nreturn findRangesInElement;'
+      functions.textIndexAndRanges + '\nreturn findRangesInElement;'
     )(document, NodeFilter);
 
     const selectionStarted = performance.now();
