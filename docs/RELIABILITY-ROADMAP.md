@@ -38,6 +38,8 @@ Establish a trustworthy quality baseline before adding features or performing ri
 - [x] Retain short structural headings so reference-section cutoff can operate.
 - [x] Verify Readability output and its integration with the shared sentence tokenizer.
 - [x] Test production content-block selection, references cutoff, sentence DOM ranges, and word subranges across inline nodes.
+- [x] Simulate paragraph replacement and verify stale sentence ranges can be relocated without pointing to detached nodes.
+- [x] Verify missing text and empty blocks do not create phantom sentence/word ranges.
 - [ ] Build additional fixtures for long articles, dynamic pages, and noisy layouts.
 - [ ] Add malformed and inaccessible DOM regression cases.
 
