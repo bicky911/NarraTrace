@@ -216,13 +216,21 @@ test('Focus Reader and player controls support keyboard navigation and focus res
 
   // Escape closes the dialog, hides it from AT, and restores focus to its opener.
   await page.keyboard.press('Escape');
-  await page.waitForFunction(() => {
+  await new Promise(resolve => setTimeout(resolve, 100));
+  const afterReaderEscape = await page.evaluate(() => {
     const root = document.getElementById('read-aloud-player-host').shadowRoot;
     const dialog = root.getElementById('ra-reader-overlay');
-    return dialog.inert &&
-      dialog.getAttribute('aria-hidden') === 'true' &&
-      root.activeElement?.id === 'ra-settings';
+    return {
+      isOpen: dialog.classList.contains('open'),
+      inert: dialog.inert,
+      ariaHidden: dialog.getAttribute('aria-hidden'),
+      activeId: root.activeElement?.id
+    };
   });
+  console.log('[NarraTrace accessibility reader Escape]', JSON.stringify(afterReaderEscape));
+  assert.equal(afterReaderEscape.inert, true, 'Escape should make the reader dialog inert');
+  assert.equal(afterReaderEscape.ariaHidden, 'true', 'Escape should hide the reader dialog from assistive technology');
+  assert.equal(afterReaderEscape.activeId, 'ra-settings', 'Escape should restore focus to the settings trigger');
 
   // Escape also closes settings, updates expanded state, and restores focus.
   await page.evaluate(() => {
