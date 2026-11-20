@@ -26,13 +26,16 @@ Establish a trustworthy quality baseline before adding features or performing ri
 - [x] Keep native word events authoritative while the estimator bridges stale or partial boundary streams.
 - [x] Reject malformed native word indices without disabling estimator fallback.
 - [x] De-duplicate repeated synthetic word events within the same word.
+- [x] Add regression coverage for grouped sentence offsets and full-source resume-position mapping.
 - [ ] Normalize TTS word-boundary events across supported engines.
 - [ ] Validate offset handling with partial, missing, and delayed boundary events.
 - [ ] Verify estimator recalibration at sentence boundaries.
 - [ ] Test language/script routing and voice changes mid-session.
 
 ## Stage 4: Content extraction
-- [ ] Build fixtures for long articles, headings, lists, tables, citations, dynamic pages, and noisy layouts.
+- [x] Add a structured research-article fixture covering headings, paragraphs, lists, captions, tables, metadata, navigation, sidebars, recommendations, and footer noise.
+- [x] Verify Readability output and its integration with the shared sentence tokenizer.
+- [ ] Build additional fixtures for long articles, dynamic pages, and noisy layouts.
 - [ ] Verify extracted text, sentence ranges, and DOM-highlight mapping.
 - [ ] Add regression cases for malformed and inaccessible DOM structures.
 

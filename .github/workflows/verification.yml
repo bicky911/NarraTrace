@@ -34,6 +34,8 @@ jobs:
           node-version: "22"
       - name: Run playback transition regression tests
         run: node --test tests/playback-manager.test.mjs
+      - name: Run sentence tokenizer regression tests
+        run: node --test tests/sentence-tokenizer.test.mjs
       - name: Run existing Python verification harness
         run: python test-harness.py
 
@@ -51,5 +53,5 @@ jobs:
           node-version: "22"
       - name: Install pinned browser-test dependency
         run: npm install --prefix tests/browser --no-save --no-package-lock puppeteer@25.17.0
-      - name: Run bounded Chrome service-worker recovery test
-        run: timeout --signal=TERM --kill-after=8s 75s node --test tests/browser/service-worker-recovery.test.mjs
+      - name: Run bounded Chrome content and recovery tests
+        run: timeout --signal=TERM --kill-after=8s 75s node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs
