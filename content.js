@@ -4058,16 +4058,20 @@
         // Figure captions get a much lower floor — short but valuable
         // ("Fig. 3: Yield response to N rate across four sites.")
         const isCaption = tag === 'figcaption';
+        const isHeading = /^h[1-6]$/.test(tag);
 
-        // Raised from 20 → 30 chars: kills short UI labels like "Michelin Guide rating"
-        if (isCaption ? text.length < 10 : text.length < 30) return false;
+        // Keep short headings as structural markers: a heading such as
+        // "References" must reach cutAtReferences() so bibliography content
+        // can be excluded. Captions have their own lower floor; prose blocks
+        // still need enough text to avoid reading UI labels.
+        if (isCaption ? text.length < 10 : (!isHeading && text.length < 30)) return false;
 
         // For non-heading elements (p, li, blockquote): require ≥5 words.
         // UI labels like "Frequently mentioned in reviews" (4 words) are filtered;
         // real sentences like "French cuisine is served at Daniel." (6 words) pass.
         // Headings and captions are exempt — a section title like "Early life"
         // is legitimately short.
-        if (!isCaption && !/^h[1-6]$/.test(tag)) {
+        if (!isCaption && !isHeading) {
           const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
           if (wordCount < 5) return false;
         }

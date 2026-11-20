@@ -33,12 +33,13 @@ Establish a trustworthy quality baseline before adding features or performing ri
 - [ ] Test language/script routing and voice changes mid-session.
 
 ## Stage 4: Content extraction
-- [x] Add a structured research-article fixture covering headings, paragraphs, lists, captions, tables, metadata, navigation, sidebars, recommendations, and footer noise.
+- [x] Add a structured research-article fixture covering headings, paragraphs, lists, captions, tables, metadata, navigation, sidebars, recommendations, footer noise, and references.
 - [x] Fix the tokenizer boundary that incorrectly split honorifics from capitalized names.
+- [x] Retain short structural headings so reference-section cutoff can operate.
 - [x] Verify Readability output and its integration with the shared sentence tokenizer.
+- [x] Test production content-block selection, references cutoff, sentence DOM ranges, and word subranges across inline nodes.
 - [ ] Build additional fixtures for long articles, dynamic pages, and noisy layouts.
-- [ ] Verify extracted text, sentence ranges, and DOM-highlight mapping.
-- [ ] Add regression cases for malformed and inaccessible DOM structures.
+- [ ] Add malformed and inaccessible DOM regression cases.
 
 ## Stage 5: Performance and maintainability
 - [ ] Profile idle CPU, playback CPU, memory, and large-page behavior.
