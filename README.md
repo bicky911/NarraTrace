@@ -55,6 +55,7 @@ NarraTrace uses layered checks. Core regression tests require Node.js 22 or late
 node --test tests/playback-manager.test.mjs
 node --test tests/sentence-tokenizer.test.mjs
 node --test tests/resource-lifecycle.test.mjs
+node --test tests/manifest-contract.test.mjs
 python test-harness.py
 ```
 
@@ -62,7 +63,7 @@ The Chromium integration suite uses Puppeteer and a deterministic test-only TTS 
 
 ```bash
 npm install --prefix tests/browser --no-save --no-package-lock puppeteer@25.17.0
-node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs tests/browser/performance-profile.test.mjs
+node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs tests/browser/accessibility.test.mjs tests/browser/performance-profile.test.mjs
 ```
 
 GitHub Actions runs all four layers on pull requests. The deterministic TTS fixture exercises Chrome's TTS event API but does not measure the audio quality or timing of installed neural voice engines.
