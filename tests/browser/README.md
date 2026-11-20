@@ -9,7 +9,7 @@ Requires Node.js 22 or later and a Chromium/Chrome binary supported by Puppeteer
 From the repository root:
 
 ```bash
-npm install --prefix tests/browser --no-save --no-package-lock puppeteer@24.8.1
+npm install --prefix tests/browser --no-save --no-package-lock puppeteer@25.17.0
 node --test tests/browser/service-worker-recovery.test.mjs
 ```
 
