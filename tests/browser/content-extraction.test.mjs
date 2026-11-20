@@ -41,7 +41,7 @@ const contentFunctions = {
   locateTextInDocument: extractSource(
     CONTENT_SOURCE,
     '  function locateTextInDocument(text) {',
-    '  /**\\n   * Re-anchor the current sentence'
+    '  /**\n   * Re-anchor the current sentence'
   )
 };
 
