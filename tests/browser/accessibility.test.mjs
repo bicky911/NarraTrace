@@ -194,7 +194,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   });
   assert.equal(initialProgress.role, 'slider');
   assert.equal(initialProgress.tabIndex, 0);
-  assert.match(initialProgress.valueText, /Sentence 1 of [2-9][0-9]*/);
+  assert.match(initialProgress.valueText, /Sentence 1 of (?:[2-9]|[1-9][0-9]+)/);
   assert.equal(initialProgress.valueText, initialProgress.pillValueText);
   assert.equal(initialProgress.min, '0');
   assert.equal(initialProgress.max, '100');
