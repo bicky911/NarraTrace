@@ -59,7 +59,9 @@ const PREPARE_BUDGET_RATIO = 0.15;
 const DEFAULT_CHARS_PER_SECOND = 13.5;
 // How often the position estimator runs when the engine gives no word events (~22 fps).
 const ESTIMATOR_INTERVAL_MS = 45;
-// How long to wait for the engine's own word boundaries before estimating.
+// How long to wait after the last valid native word event before the
+// estimator temporarily fills a gap. Native events remain authoritative;
+// this only prevents engines with sparse/partial word events from freezing.
 const ESTIMATOR_GRACE_MS = 700;
 // How long to wait for the engine's first SENTENCE boundary before assuming
 // this engine reports no boundaries at all. Measured against the real engines:
@@ -495,11 +497,14 @@ class PlaybackManager {
     if (this.playbackState !== PlaybackState.PLAYING) return;
     if (this.queue.length === 0) return;
 
+    const runId = this.playbackRunId;
+
     // Hold the keep-alive heartbeat off while we recover, so it cannot start a
     // second recovery chain on top of this one during the awaits below.
     this.isSwitchingSentence = true;
 
     const speaking = await isSpeaking();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
     if (!speaking) {
       console.log('[PlaybackManager] Recovering interrupted playback at sentence #', this.currentIndex + 1);
       this.isSwitchingSentence = false;
@@ -509,7 +514,7 @@ class PlaybackManager {
 
     console.warn('[PlaybackManager] Worker restarted mid-utterance — waiting for it to finish.');
     const wentIdle = await this.waitForSpeechIdle(10000);
-    if (this.playbackState !== PlaybackState.PLAYING) return;
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
     if (wentIdle) {
       // The orphaned utterance completed; its event was lost, so advance here.
       this.currentIndex++;
@@ -518,13 +523,21 @@ class PlaybackManager {
         this.playbackState = PlaybackState.STOPPED;
         this.currentIndex = 0;
         await this.saveToSession();
+        if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.STOPPED) return;
         this.broadcast('PLAYBACK_COMPLETED');
         return;
       }
+    } else {
+      // Do not start a replacement utterance over an orphan that is still
+      // speaking. Stop it first; the current sentence is then replayed cleanly.
+      console.warn('[PlaybackManager] Orphaned utterance did not become idle; stopping it before replay.');
+      await stopSpeechAndWait();
+      if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
     }
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
     this.isSwitchingSentence = false;
-    this.speakCurrentSentence(this.playbackRunId);
+    this.speakCurrentSentence(runId);
   }
 
   /**
@@ -608,13 +621,20 @@ class PlaybackManager {
    *
    * A voice the user picked themselves is never touched.
    */
-  async refreshVoice() {
-    if (this.voicePinned) return null;
+  async refreshVoice(expectedRunId = null) {
+    if (this.voicePinned ||
+        (expectedRunId !== null && expectedRunId !== this.playbackRunId)) return null;
 
     const report = await detectAndSelectVoice({
       voiceName: this.options.voiceName,
       pinned: false
     });
+
+    // A manual voice choice or newer start can supersede automatic detection
+    // while the engine registry is being queried.
+    if (this.voicePinned ||
+        (expectedRunId !== null && expectedRunId !== this.playbackRunId)) return null;
+
     this.allVoices = report.allVoices || [];
     this.engineLabel = report.engineLabel;
     this.engineBadge = report.engineBadge;
@@ -709,11 +729,17 @@ class PlaybackManager {
       this.playbackState === PlaybackState.PAUSED;
 
     // Increment run ID to invalidate any prior speaking loop immediately
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
     this.isSwitchingSentence = true;
     this.awaitingSpeech = false;
     this.consecutiveErrors = 0;
     await stopSpeechAndWait();
+
+    // A newer playback command may have arrived while the browser was
+    // stopping the previous utterance. Never let this stale request install
+    // its queue after a newer run has taken ownership.
+    if (runId !== this.playbackRunId) return false;
 
     this.queue = queue;
     const safeStartIndex = typeof startIndex === 'number' && Number.isFinite(startIndex)
@@ -755,6 +781,7 @@ class PlaybackManager {
         voiceName: this.options.voiceName,
         pinned: this.voicePinned
       });
+      if (runId !== this.playbackRunId) return false;
       if (voiceReport.selectedVoice) {
         this.options.voiceName = voiceReport.selectedVoice.voiceName;
         this.options.extensionId = voiceReport.selectedVoice.extensionId || null;
@@ -769,14 +796,16 @@ class PlaybackManager {
       // Re-resolve right before the first utterance — this is the moment the
       // voice actually matters.
       try {
-        await this.refreshVoice();
+        await this.refreshVoice(runId);
+        if (runId !== this.playbackRunId) return false;
       } catch (err) {
         console.warn('[PlaybackManager] Voice refresh failed:', err && err.message);
       }
     }
 
     await this.saveToSession();
-    this.speakCurrentSentence(this.playbackRunId);
+    if (runId !== this.playbackRunId) return false;
+    this.speakCurrentSentence(runId);
     return true;
   }
 
@@ -1101,14 +1130,33 @@ class PlaybackManager {
     }
 
     if (event.type === 'word') {
-      batch.sawWords = true;
-      const loc = this.locateInBatch(batch, event.charIndex || 0);
+      // A word event without a valid character index cannot be mapped to the
+      // source text. Do not treat it as proof that this engine provides usable
+      // word boundaries; the estimator must remain available as a fallback.
+      if (typeof event.charIndex !== 'number' ||
+          !Number.isFinite(event.charIndex) ||
+          event.charIndex < 0 ||
+          event.charIndex > batch.text.length) return;
+
+      const loc = this.locateInBatch(batch, Math.trunc(event.charIndex));
       if (!loc) return;
+
+      const now = Date.now();
+      const wordLength = (typeof event.length === 'number' && event.length > 0)
+        ? Math.trunc(event.length)
+        : ((typeof event.charLength === 'number' && event.charLength > 0)
+          ? Math.trunc(event.charLength)
+          : 0);
+
+      batch.sawWords = true;
+      batch.lastNativeWordAt = now;
+      batch.lastNativeWordCharIndex = Math.trunc(event.charIndex);
+      batch.lastNativeWordLength = wordLength;
+      batch.lastEstimatedWordStart = null;
 
       this.setCurrentSentence(loc.sentenceIndex, batch);
 
       const rel = loc.offset;
-      const now = Date.now();
       this.noteFirstBoundary(batch, now);
       if (!batch.firstWordAt) {
         batch.firstWordAt = now;
@@ -1120,10 +1168,6 @@ class PlaybackManager {
       // Absolute position inside the full sentence (used by pause/resume).
       this.lastWordCharIndex = (batch.resumeOffset || 0) + rel;
       this.sawWordEvents = true;
-
-      const wordLength = (typeof event.length === 'number' && event.length > 0)
-        ? event.length
-        : ((typeof event.charLength === 'number' && event.charLength > 0) ? event.charLength : 0);
 
       this.broadcast('TTS_EVENT', {
         event: {
@@ -1259,19 +1303,40 @@ class PlaybackManager {
     this.stopEstimator();
     this.estimatorTimer = setInterval(() => {
       if (this.activeBatch !== batch) return;
-      // Native word events are more accurate — hand over to them completely.
-      if (batch.sawWords) {
-        this.stopEstimator();
-        return;
-      }
-
       const now = Date.now();
       let pos;
 
       const profile = this.engineProfile();
       const cps = this.effectiveCharsPerSecond();
 
-      if (batch.anchorTime !== null) {
+      // Prefer native word boundaries, but do not permanently disable the
+      // estimator after one event. Several engines emit sparse or partial
+      // boundaries. After a short silence, estimate from the last valid native
+      // word and cap the estimate at the current sentence/engine boundary.
+      const nativeWordStale = batch.sawWords &&
+        typeof batch.lastNativeWordAt === 'number' &&
+        now - batch.lastNativeWordAt >= ESTIMATOR_GRACE_MS;
+
+      if (batch.sawWords && !nativeWordStale) return;
+
+      if (nativeWordStale) {
+        const nativeAnchor = batch.lastNativeWordCharIndex || 0;
+        const elapsed = Math.max(0, (now - batch.lastNativeWordAt) / 1000);
+        pos = nativeAnchor + elapsed * cps;
+
+        let ceiling = null;
+        if (batch.anchorEnd !== null && batch.anchorEnd > nativeAnchor) {
+          ceiling = batch.anchorEnd;
+        } else {
+          const nativeLoc = this.locateInBatch(batch, nativeAnchor);
+          if (nativeLoc) {
+            const slot = nativeLoc.sentenceIndex - batch.firstIndex;
+            const sentenceEnd = (batch.offsets[slot] || 0) + (batch.spokenLengths[slot] || 0);
+            if (sentenceEnd > nativeAnchor) ceiling = sentenceEnd;
+          }
+        }
+        if (ceiling !== null) pos = Math.min(pos, ceiling);
+      } else if (batch.anchorTime !== null) {
         // Ground truth is available: the engine told us exactly where the
         // voice is. Extrapolate from that anchor, minus the lead-in delay
         // that opens every utterance (only engines that announce their first
@@ -1343,9 +1408,14 @@ class PlaybackManager {
       const match = spoken.substring(wordStart).match(/^\S+/);
       const len = match ? match[0].length : 1;
 
+      // Avoid broadcasting the same estimated word on every 45 ms tick.
+      // Native events remain free to repeat/correct the current word.
+      if (batch.lastEstimatedWordStart === wordStart) return;
+      batch.lastEstimatedWordStart = wordStart;
+
       // Feed the estimate into the pause/resume bookkeeping too, so pausing
-      // with an engine that reports no word boundaries still resumes near the
-      // right place instead of restarting the sentence.
+      // with an engine that has no recent word boundary resumes near the
+      // estimated position instead of rewinding to the previous native word.
       this.lastWordCharIndex = (batch.resumeOffset || 0) + wordStart;
       this.sawWordEvents = true;
 
@@ -1610,14 +1680,18 @@ class PlaybackManager {
       ? spoken
       : 0;
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
     this.isSwitchingSentence = true;
     this.playbackState = PlaybackState.PAUSED;
     this.awaitingSpeech = false;
     this.stopEstimator();
     await stopSpeechAndWait();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PAUSED) return false;
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PAUSED) return false;
     this.broadcast('PLAYBACK_PAUSED');
+    return true;
   }
 
   /**
@@ -1628,27 +1702,34 @@ class PlaybackManager {
       return;
     }
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
     this.playbackState = PlaybackState.PLAYING;
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return false;
     this.broadcast('PLAYBACK_RESUMED');
     const resumeFrom = this.resumeOffset || 0;
-    this.speakCurrentSentence(this.playbackRunId, resumeFrom);
+    this.speakCurrentSentence(runId, resumeFrom);
+    return true;
   }
 
   /**
    * Stop playback and reset to beginning.
    */
   async stop() {
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
     this.isSwitchingSentence = true;
     this.playbackState = PlaybackState.STOPPED;
     this.awaitingSpeech = false;
     this.stopEstimator();
     await stopSpeechAndWait();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.STOPPED) return false;
     this.currentIndex = 0;
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.STOPPED) return false;
     this.broadcast('PLAYBACK_STOPPED');
+    return true;
   }
 
   /**
@@ -1657,18 +1738,20 @@ class PlaybackManager {
   async skipForward() {
     if (this.queue.length === 0) return;
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
     this.isSwitchingSentence = true;
-    await stopSpeechAndWait();
-
     if (this.currentIndex < this.queue.length - 1) {
       this.currentIndex++;
     }
+    await stopSpeechAndWait();
+    if (runId !== this.playbackRunId) return false;
 
     await this.saveToSession();
+    if (runId !== this.playbackRunId) return false;
 
     if (this.playbackState === PlaybackState.PLAYING) {
-      this.speakCurrentSentence(this.playbackRunId);
+      this.speakCurrentSentence(runId);
     } else {
       this.broadcast('SENTENCE_CHANGED', {
         index: this.currentIndex,
@@ -1684,18 +1767,20 @@ class PlaybackManager {
   async skipBackward() {
     if (this.queue.length === 0) return;
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
     this.isSwitchingSentence = true;
-    await stopSpeechAndWait();
-
     if (this.currentIndex > 0) {
       this.currentIndex--;
     }
+    await stopSpeechAndWait();
+    if (runId !== this.playbackRunId) return false;
 
     await this.saveToSession();
+    if (runId !== this.playbackRunId) return false;
 
     if (this.playbackState === PlaybackState.PLAYING) {
-      this.speakCurrentSentence(this.playbackRunId);
+      this.speakCurrentSentence(runId);
     } else {
       this.broadcast('SENTENCE_CHANGED', {
         index: this.currentIndex,
@@ -1711,16 +1796,66 @@ class PlaybackManager {
   async jumpToIndex(index) {
     if (this.queue.length === 0) return;
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
     this.isSwitchingSentence = true;
-    await stopSpeechAndWait();
-
     const targetIndex = Math.max(0, Math.min(index, this.queue.length - 1));
     this.currentIndex = targetIndex;
+    await stopSpeechAndWait();
+    if (runId !== this.playbackRunId) return false;
+
     this.playbackState = PlaybackState.PLAYING;
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return false;
 
-    this.speakCurrentSentence(this.playbackRunId);
+    this.speakCurrentSentence(runId);
+    return true;
+  }
+
+  /**
+   * Persist an option update and, when speaking, restart only the latest
+   * playback run. The strategy preserves the position semantics of each
+   * control: rate/volume keep the last word, pitch keeps the pause offset,
+   * and voice changes restart the current sentence.
+   */
+  async _commitPlaybackOptionChange(resumeStrategy = 'word') {
+    const shouldRestart = this.playbackState === PlaybackState.PLAYING;
+    const runId = shouldRestart
+      ? (this.playbackRunId || 0) + 1
+      : this.playbackRunId;
+
+    if (shouldRestart) {
+      this.playbackRunId = runId;
+      this.isSwitchingSentence = true;
+    }
+
+    await this.savePreferences();
+    if (shouldRestart &&
+        (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING)) return false;
+
+    await this.saveToSession();
+    if (shouldRestart &&
+        (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING)) return false;
+
+    if (!shouldRestart) {
+      this.broadcast('OPTIONS_CHANGED', { options: this.options });
+      return true;
+    }
+
+    let resumeFrom = 0;
+    if (resumeStrategy === 'word') {
+      resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0)
+        ? this.lastWordCharIndex
+        : (this.resumeOffset || 0);
+    } else if (resumeStrategy === 'offset') {
+      resumeFrom = this.resumeOffset || 0;
+    }
+
+    await stopSpeechAndWait();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return false;
+
+    this.speakCurrentSentence(runId, resumeFrom);
+    return true;
   }
 
   /**
@@ -1729,19 +1864,7 @@ class PlaybackManager {
   async setRate(rate) {
     const validRate = Math.max(0.5, Math.min(rate, 3.0));
     this.options.rate = validRate;
-    await this.savePreferences();
-    await this.saveToSession();
-
-    // If currently speaking, restart current sentence with the new rate immediately
-    if (this.playbackState === PlaybackState.PLAYING) {
-      this.playbackRunId = (this.playbackRunId || 0) + 1;
-      this.isSwitchingSentence = true;
-      await stopSpeechAndWait();
-      const resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0) ? this.lastWordCharIndex : (this.resumeOffset || 0);
-      this.speakCurrentSentence(this.playbackRunId, resumeFrom);
-    } else {
-      this.broadcast('OPTIONS_CHANGED', { options: this.options });
-    }
+    return this._commitPlaybackOptionChange('word');
   }
 
   /**
@@ -1750,19 +1873,7 @@ class PlaybackManager {
   async setVolume(volume) {
     const validVolume = Math.max(0.0, Math.min(volume, 1.0));
     this.options.volume = validVolume;
-    await this.savePreferences();
-    await this.saveToSession();
-
-    // If currently speaking, restart current sentence with the new volume immediately
-    if (this.playbackState === PlaybackState.PLAYING) {
-      this.playbackRunId = (this.playbackRunId || 0) + 1;
-      this.isSwitchingSentence = true;
-      await stopSpeechAndWait();
-      const resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0) ? this.lastWordCharIndex : (this.resumeOffset || 0);
-      this.speakCurrentSentence(this.playbackRunId, resumeFrom);
-    } else {
-      this.broadcast('OPTIONS_CHANGED', { options: this.options });
-    }
+    return this._commitPlaybackOptionChange('word');
   }
 
   /**
@@ -1771,17 +1882,7 @@ class PlaybackManager {
   async setPitch(pitch) {
     const validPitch = Math.max(0.5, Math.min(pitch, 2.0));
     this.options.pitch = validPitch;
-    await this.savePreferences();
-    await this.saveToSession();
-
-    if (this.playbackState === PlaybackState.PLAYING) {
-      this.playbackRunId = (this.playbackRunId || 0) + 1;
-      this.isSwitchingSentence = true;
-      await stopSpeechAndWait();
-      this.speakCurrentSentence(this.playbackRunId, this.resumeOffset || 0);
-    } else {
-      this.broadcast('OPTIONS_CHANGED', { options: this.options });
-    }
+    return this._commitPlaybackOptionChange('offset');
   }
 
   // ── Pronunciation overrides ("zea mays = zee-a mays", one per line) ──
@@ -1849,18 +1950,7 @@ class PlaybackManager {
     // deliberate fallback next to Kokoro).
     this.voicePinned = true;
 
-    await this.savePreferences();
-    await this.saveToSession();
-
-    // If currently speaking, restart current sentence with the new voice immediately
-    if (this.playbackState === PlaybackState.PLAYING) {
-      this.playbackRunId = (this.playbackRunId || 0) + 1;
-      this.isSwitchingSentence = true;
-      await stopSpeechAndWait();
-      this.speakCurrentSentence(this.playbackRunId);
-    } else {
-      this.broadcast('OPTIONS_CHANGED', { options: this.options });
-    }
+    return this._commitPlaybackOptionChange('sentence');
   }
 
   /**

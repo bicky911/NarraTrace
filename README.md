@@ -1,6 +1,6 @@
 # NarraTrace — Narrates the Page. Traces Every Word.
 
-> **Narra**te + **Trace**: NarraTrace narrates any web page aloud with local neural voices — and traces every word on screen as it speaks, so your eyes and ears never lose their place.
+> **Narra**te + **Trace**: NarraTrace narrates any web page aloud with voices exposed through Chrome's TTS API — and traces every word on screen as it speaks, so your eyes and ears never lose their place.
 
 A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized text-to-speech with spring-physics word tracking, Focus Reader mode, and multi-engine speech synthesis. *(Renamed from "Read Aloud" in 1.4.0 — same extension, same settings; existing preferences carry over untouched.)*
 
@@ -16,7 +16,7 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Manifest: V3](https://img.shields.io/badge/Manifest-V3-orange.svg)
-![Tests: 86/86 Passing](https://img.shields.io/badge/Tests-86%2F86%20Passing-brightgreen.svg)
+![NarraTrace verification](https://github.com/bicky911/NarraTrace/actions/workflows/verification.yml/badge.svg?branch=reliability%2Fstage-1-baseline)
 
 ---
 
@@ -28,7 +28,7 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 * **Golden Gaze Auto-Scroll:** Friction-damped critically stable viewport tracking that locks the active reading sentence at the natural biomechanical sight line ($38\%$ from viewport top).
 * **Context-Aware Prosody Pauses:** Intelligent clause-boundary cadence detection that inserts natural human breathing pauses at em-dashes, semicolons, colons, ellipses, and lists.
 * **Semantic Noise Stripper:** Cleans citations (`[1]`, `[citation needed]`), academic parentheticals (`(Smith et al., 2024)`), raw URLs, DOIs, and markdown symbols before TTS without mutating DOM highlights.
-* **Multi-Engine Speech Support:** High-priority Piper local neural TTS extension integration, Supertonic, Kokoro, and native Chrome TTS voices.
+* **Multi-Engine Speech Support:** Integrates Piper, Kokoro, Supertonic, and native Chrome TTS voices. Processing location depends on the selected engine and its own implementation.
 * **Multilingual Script Routing:** Auto-detects Bangla (বাংলা), Hindi (हिन्दी), and Latin scripts, routing each to native neural voices.
 * **100% Shadow DOM Encapsulated:** Complete style isolation guarantees the player never clashes with host website styles.
 
@@ -49,21 +49,39 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 
 ## 🧪 Automated Verification Suite
 
-Run the comprehensive test harness:
+NarraTrace uses layered checks. Core regression tests require Node.js 22 or later and Python 3.12:
+
 ```bash
+node --test tests/playback-manager.test.mjs
+node --test tests/sentence-tokenizer.test.mjs
+node --test tests/resource-lifecycle.test.mjs
+node --test tests/manifest-contract.test.mjs
 python test-harness.py
 ```
-Output:
+
+The Chromium integration suite uses Puppeteer and a deterministic test-only TTS engine. It tests Readability extraction, content-block filtering, references cutoff, DOM sentence/word mapping, and Manifest V3 worker recovery:
+
+```bash
+npm install --prefix tests/browser --no-save --no-package-lock puppeteer@25.17.0
+node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs tests/browser/accessibility.test.mjs tests/browser/performance-profile.test.mjs
 ```
-Result: 86/86 checks passed (100%)
-✓ All checks passed — extension is ready.
-```
+
+GitHub Actions runs all four layers on pull requests. The deterministic TTS fixture exercises Chrome's TTS event API but does not measure the audio quality or timing of installed neural voice engines.
 
 ---
 
 ## 📄 Architecture & Rules
 
 * **Plain JavaScript MV3:** Zero bundlers, zero npm dependencies, and no node_modules.
-* **Zero External Analytics or Trackers:** Runs 100% locally on your browser.
+* **No NarraTrace backend, analytics, or trackers:** The extension has no first-party network client. Narration text is passed to the selected Chrome TTS provider; on-device versus network processing depends on that provider.
 * **Accessible (WCAG AA Compliant):** Full keyboard focus rings (`#FF5C00`), ARIA attributes, and high-contrast color palettes.
 * **Legacy internal identifiers:** Invisible plumbing (`readAloud_*` storage keys, `ra-*` element IDs, `--ra-*` CSS tokens) deliberately keeps its pre-rename names so upgrading users keep every saved voice, speed, and theme setting. Only what the user can see is branded NarraTrace.
+
+
+## Privacy and data flow
+
+NarraTrace's content scripts run on pages covered by the manifest's `<all_urls>` match so page extraction, highlighting, and the reader controls work across websites. This is broad website access and is necessary for the current always-available reader design.
+
+The NarraTrace extension itself does not implement an HTTP, WebSocket, or analytics client for sending page text to a NarraTrace-operated server. It passes narration text to Chrome's `chrome.tts` API, which routes it to the selected voice provider. A local neural engine can process text on-device, while another extension or system voice may use a network service. The processing location and retention policy depend on that separate provider, not NarraTrace.
+
+The active sentence queue and playback position are kept in `chrome.storage.session` for recovery. User preferences and interface settings are kept in `chrome.storage.local`. See [the privacy and data-flow notes](docs/PRIVACY-DATA-FLOW.md) for details.

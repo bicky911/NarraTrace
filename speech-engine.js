@@ -64,7 +64,7 @@ export const TTS_ENGINES = [
   {
     id: SUPERTONIC_EXTENSION_ID,
     label: 'Supertonic',
-    fullLabel: 'Supertonic (local neural)',
+    fullLabel: 'Supertonic',
     badge: 'SUPERTONIC',
     defaultVoice: null,
     priority: 20

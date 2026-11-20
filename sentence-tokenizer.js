@@ -24,6 +24,15 @@
   // Words whose trailing dot never ends a sentence while the next token
   // continues it (lowercase word, digit, comma, or opening bracket).
   // Looked up with dots stripped, so "e.g." is checked as "eg".
+  // Honorifics whose period is followed by a capitalized personal or place
+  // name ("Dr. Smith", "Prof. A. Rahman", "St. Louis"). These are not
+  // sentence endings even though the next token begins with an uppercase
+  // letter, unlike "etc. Next result..." where the period does end a sentence.
+  const TITLES_BEFORE_NAME = new Set([
+    'mr', 'mrs', 'ms', 'dr', 'prof', 'gen', 'col', 'maj', 'capt', 'lt',
+    'sgt', 'rev', 'st'
+  ]);
+
   const ABBREVIATIONS = new Set([
     // titles & general
     'mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'vs', 'etc', 'eg', 'ie',
@@ -166,6 +175,14 @@
         const continuesSentence = nextChar !== '' &&
           (/[a-z0-9,]/.test(nextChar) || nextChar === '(' || nextChar === '[');
 
+        // Honorifics are followed by capitalized names ("Dr. Smith") and
+        // place names ("St. Louis"). Treat that uppercase token as a
+        // continuation only for known title abbreviations; ordinary
+        // abbreviations such as "etc. Next" remain sentence boundaries.
+        const continuesTitle = nextChar !== '' &&
+          /[A-Z]/.test(nextChar) &&
+          TITLES_BEFORE_NAME.has(stripped);
+
         if (frag.length === 1 && /[A-Z]/.test(frag)) {
           // Single capital initial ("T. aestivum", "J. Smith", "B., and") —
           // never a sentence end while a word/list continues after it.
@@ -175,7 +192,7 @@
           }
         }
 
-        if (ABBREVIATIONS.has(stripped) && continuesSentence) {
+        if (ABBREVIATIONS.has(stripped) && (continuesSentence || continuesTitle)) {
           i = termEnd;
           continue;
         }
