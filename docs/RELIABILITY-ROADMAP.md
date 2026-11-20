@@ -49,6 +49,7 @@ Establish a trustworthy quality baseline before adding features or performing ri
 - [x] Add resource-lifecycle regression tests for DPR watcher registration, re-arming, cleanup, and legacy listener support.
 - [x] Test MutationObserver start idempotency, mutation throttling, disconnect, timer cancellation, and restart after cleanup.
 - [x] Add a repeatable Chromium large-article baseline for production block selection, sentence DOM mapping, renderer script duration, and heap delta.
+- [x] Record two CI measurements: 41.5 ms / 0.76 MB and 37.4 ms / 0.74 MB for 1,200 paragraphs and 2,401 ranges.
 - [x] Establish a coarse CI guard: 1,200 paragraphs / 2,401 sentence ranges under 1,000 ms and renderer heap delta under 32 MB.
 - [ ] Profile idle CPU and playback CPU on a real extension page.
 - [ ] Refine performance budgets using measurements from representative user hardware.
