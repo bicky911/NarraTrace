@@ -16,7 +16,7 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Manifest: V3](https://img.shields.io/badge/Manifest-V3-orange.svg)
-![Tests: 86/86 Passing](https://img.shields.io/badge/Tests-86%2F86%20Passing-brightgreen.svg)
+![NarraTrace verification](https://github.com/bicky911/NarraTrace/actions/workflows/verification.yml/badge.svg?branch=reliability%2Fstage-1-baseline)
 
 ---
 
@@ -49,15 +49,22 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 
 ## 🧪 Automated Verification Suite
 
-Run the comprehensive test harness:
+NarraTrace uses layered checks. Core regression tests require Node.js 22 or later and Python 3.12:
+
 ```bash
+node --test tests/playback-manager.test.mjs
+node --test tests/sentence-tokenizer.test.mjs
 python test-harness.py
 ```
-Output:
+
+The Chromium integration suite uses Puppeteer and a deterministic test-only TTS engine. It tests Readability extraction, content-block filtering, references cutoff, DOM sentence/word mapping, and Manifest V3 worker recovery:
+
+```bash
+npm install --prefix tests/browser --no-save --no-package-lock puppeteer@25.17.0
+node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs
 ```
-Result: 86/86 checks passed (100%)
-✓ All checks passed — extension is ready.
-```
+
+GitHub Actions runs all four layers on pull requests. The deterministic TTS fixture exercises Chrome's TTS event API but does not measure the audio quality or timing of installed neural voice engines.
 
 ---
 
