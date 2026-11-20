@@ -28,11 +28,14 @@ test('keeps academic abbreviations, decimals, and dotted identifiers intact', ()
 
 test('does not split honorific titles from capitalized names', () => {
   const raw = 'The field report was reviewed by Dr. Smith before publication. Prof. A. Rahman approved the final analysis. The next trial begins in spring.';
-  assert.deepEqual(tokenizer.splitIntoSentences(raw).map(item => item.text), [
-    'The field report was reviewed by Dr. Smith before publication.',
-    'Prof. A. Rahman approved the final analysis.',
-    'The next trial begins in spring.'
-  ]);
+  assert.equal(
+    Array.from(tokenizer.splitIntoSentences(raw), item => item.text).join('\n'),
+    [
+      'The field report was reviewed by Dr. Smith before publication.',
+      'Prof. A. Rahman approved the final analysis.',
+      'The next trial begins in spring.'
+    ].join('\n')
+  );
 });
 
 test('preserves citation phrases and author initials without swallowing sentence boundaries', () => {
