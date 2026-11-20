@@ -166,6 +166,12 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
   const worker = await initialWorker.worker();
   await worker.close();
 
+  // A stopped MV3 worker starts again when the extension receives an event.
+  // Send a benign state query to wake the extension before waiting for its
+  // replacement service-worker target.
+  const wakeResponse = await send(driver, { action: 'GET_PLAYBACK_STATE' });
+  assert.equal(wakeResponse?.success, true, 'a runtime message should wake the terminated service worker');
+
   const restartedWorker = await waitForNarraTraceWorker(browser, narraTrace.id, initialWorker);
   assert.ok(restartedWorker, 'Chrome should start a fresh NarraTrace service worker');
 
