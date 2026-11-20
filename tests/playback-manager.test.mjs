@@ -17,6 +17,8 @@ async function loadPlaybackManager(stopGates, options = {}) {
   let safeSpeakCalls = 0;
   let stopSpeechAndWaitCalls = 0;
   const runtimeMessages = [];
+  const intervalCallbacks = new Map();
+  let nextIntervalId = 0;
   const source = await readFile(new URL('../playback-manager.js', import.meta.url), 'utf8');
 
   // Run the real playback-manager source in an isolated VM, replacing only its
@@ -56,8 +58,12 @@ async function loadPlaybackManager(stopGates, options = {}) {
   const context = {
     chrome,
     console: { log() {}, warn() {}, error() {} },
-    setInterval: () => 1,
-    clearInterval() {},
+    setInterval: callback => {
+      const id = ++nextIntervalId;
+      intervalCallbacks.set(id, callback);
+      return id;
+    },
+    clearInterval: id => intervalCallbacks.delete(id),
     safeSpeak: () => {
       safeSpeakCalls++;
       return new Promise(() => {});
@@ -81,7 +87,8 @@ async function loadPlaybackManager(stopGates, options = {}) {
     manager: context.__playbackManager,
     safeSpeakCallCount: () => safeSpeakCalls,
     stopSpeechAndWaitCallCount: () => stopSpeechAndWaitCalls,
-    runtimeMessages: () => runtimeMessages
+    runtimeMessages: () => runtimeMessages,
+    intervalCallbacks: () => [...intervalCallbacks.values()]
   };
 }
 
@@ -206,4 +213,110 @@ test('overlapping rate changes restart speech only once with the latest option',
   assert.equal(results[1], true, 'the latest option update should own the restart');
   assert.equal(manager.options.rate, 2.0);
   assert.equal(loaded.safeSpeakCallCount(), 1, 'only one replacement utterance should be started');
+});
+
+
+test('sparse native word events are bridged by the estimator after the grace period', async () => {
+  const loaded = await loadPlaybackManager([]);
+  const { manager } = loaded;
+  const spoken = 'One two three four.';
+  manager.queue = [{ index: 0, text: spoken }];
+  manager.currentIndex = 0;
+  manager.playbackState = 'PLAYING';
+  manager.options.rate = 1;
+
+  const batch = {
+    firstIndex: 0,
+    offsets: [0],
+    spokenLengths: [spoken.length],
+    spokenTexts: [spoken],
+    text: spoken,
+    resumeOffset: 0,
+    sawWords: false,
+    sawSentences: false,
+    currentSentence: 0,
+    anchorChar: null,
+    anchorTime: null,
+    anchorEnd: null,
+    segmentIndex: 0,
+    requestedAt: Date.now() - 2000,
+    startedAt: Date.now() - 2000,
+    lastNativeWordAt: null,
+    lastNativeWordCharIndex: null,
+    lastNativeWordLength: 0,
+    lastEstimatedWordStart: null,
+    firstBoundaryDelay: null,
+    firstBoundaryTime: null
+  };
+  manager.activeBatch = batch;
+
+  manager.handleTtsEvent({ type: 'word', charIndex: 0, length: 3 }, batch);
+  assert.equal(batch.sawWords, true);
+  assert.equal(batch.lastNativeWordCharIndex, 0);
+
+  manager.startEstimator(batch);
+  assert.equal(loaded.intervalCallbacks().length, 1);
+  const tick = loaded.intervalCallbacks()[0];
+
+  // The native driver has not reported another boundary for longer than the
+  // configured grace period, so the estimator must move beyond "One".
+  batch.lastNativeWordAt = Date.now() - 900;
+  tick();
+
+  const wordEvents = loaded.runtimeMessages()
+    .filter(message => message.action === 'TTS_EVENT' && message.event?.type === 'word');
+  assert.equal(wordEvents.length, 2, 'one native and one synthetic word event should be emitted');
+  assert.ok(
+    wordEvents[1].event.charIndex > 0,
+    'the synthetic event should advance past the first word'
+  );
+  assert.equal(
+    manager.lastWordCharIndex > 0,
+    true,
+    'pause/resume bookkeeping should follow the estimated position'
+  );
+
+  manager.stopEstimator();
+});
+
+test('invalid native word boundaries do not disable estimator fallback', async () => {
+  const loaded = await loadPlaybackManager([]);
+  const { manager } = loaded;
+  const spoken = 'An invalid index must not freeze highlighting.';
+  manager.queue = [{ index: 0, text: spoken }];
+  manager.currentIndex = 0;
+  manager.playbackState = 'PLAYING';
+
+  const batch = {
+    firstIndex: 0,
+    offsets: [0],
+    spokenLengths: [spoken.length],
+    spokenTexts: [spoken],
+    text: spoken,
+    resumeOffset: 0,
+    sawWords: false,
+    sawSentences: false,
+    currentSentence: 0,
+    anchorChar: null,
+    anchorTime: null,
+    anchorEnd: null,
+    segmentIndex: 0,
+    requestedAt: Date.now() - 2500,
+    startedAt: Date.now() - 2500,
+    firstBoundaryDelay: null,
+    firstBoundaryTime: null
+  };
+  manager.activeBatch = batch;
+
+  manager.handleTtsEvent({ type: 'word', charIndex: Number.NaN, length: 4 }, batch);
+  assert.equal(batch.sawWords, false, 'invalid indices must not mark native word tracking as active');
+
+  manager.startEstimator(batch);
+  const tick = loaded.intervalCallbacks()[0];
+  tick();
+
+  const wordEvents = loaded.runtimeMessages()
+    .filter(message => message.action === 'TTS_EVENT' && message.event?.type === 'word');
+  assert.equal(wordEvents.length, 1, 'the estimator should still supply a word event');
+  manager.stopEstimator();
 });

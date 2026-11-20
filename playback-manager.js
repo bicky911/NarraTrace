@@ -59,7 +59,9 @@ const PREPARE_BUDGET_RATIO = 0.15;
 const DEFAULT_CHARS_PER_SECOND = 13.5;
 // How often the position estimator runs when the engine gives no word events (~22 fps).
 const ESTIMATOR_INTERVAL_MS = 45;
-// How long to wait for the engine's own word boundaries before estimating.
+// How long to wait after the last valid native word event before the
+// estimator temporarily fills a gap. Native events remain authoritative;
+// this only prevents engines with sparse/partial word events from freezing.
 const ESTIMATOR_GRACE_MS = 700;
 // How long to wait for the engine's first SENTENCE boundary before assuming
 // this engine reports no boundaries at all. Measured against the real engines:
@@ -1128,14 +1130,33 @@ class PlaybackManager {
     }
 
     if (event.type === 'word') {
-      batch.sawWords = true;
-      const loc = this.locateInBatch(batch, event.charIndex || 0);
+      // A word event without a valid character index cannot be mapped to the
+      // source text. Do not treat it as proof that this engine provides usable
+      // word boundaries; the estimator must remain available as a fallback.
+      if (typeof event.charIndex !== 'number' ||
+          !Number.isFinite(event.charIndex) ||
+          event.charIndex < 0 ||
+          event.charIndex > batch.text.length) return;
+
+      const loc = this.locateInBatch(batch, Math.trunc(event.charIndex));
       if (!loc) return;
+
+      const now = Date.now();
+      const wordLength = (typeof event.length === 'number' && event.length > 0)
+        ? Math.trunc(event.length)
+        : ((typeof event.charLength === 'number' && event.charLength > 0)
+          ? Math.trunc(event.charLength)
+          : 0);
+
+      batch.sawWords = true;
+      batch.lastNativeWordAt = now;
+      batch.lastNativeWordCharIndex = Math.trunc(event.charIndex);
+      batch.lastNativeWordLength = wordLength;
+      batch.lastEstimatedWordStart = null;
 
       this.setCurrentSentence(loc.sentenceIndex, batch);
 
       const rel = loc.offset;
-      const now = Date.now();
       this.noteFirstBoundary(batch, now);
       if (!batch.firstWordAt) {
         batch.firstWordAt = now;
@@ -1147,10 +1168,6 @@ class PlaybackManager {
       // Absolute position inside the full sentence (used by pause/resume).
       this.lastWordCharIndex = (batch.resumeOffset || 0) + rel;
       this.sawWordEvents = true;
-
-      const wordLength = (typeof event.length === 'number' && event.length > 0)
-        ? event.length
-        : ((typeof event.charLength === 'number' && event.charLength > 0) ? event.charLength : 0);
 
       this.broadcast('TTS_EVENT', {
         event: {
@@ -1286,19 +1303,40 @@ class PlaybackManager {
     this.stopEstimator();
     this.estimatorTimer = setInterval(() => {
       if (this.activeBatch !== batch) return;
-      // Native word events are more accurate — hand over to them completely.
-      if (batch.sawWords) {
-        this.stopEstimator();
-        return;
-      }
-
       const now = Date.now();
       let pos;
 
       const profile = this.engineProfile();
       const cps = this.effectiveCharsPerSecond();
 
-      if (batch.anchorTime !== null) {
+      // Prefer native word boundaries, but do not permanently disable the
+      // estimator after one event. Several engines emit sparse or partial
+      // boundaries. After a short silence, estimate from the last valid native
+      // word and cap the estimate at the current sentence/engine boundary.
+      const nativeWordStale = batch.sawWords &&
+        typeof batch.lastNativeWordAt === 'number' &&
+        now - batch.lastNativeWordAt >= ESTIMATOR_GRACE_MS;
+
+      if (batch.sawWords && !nativeWordStale) return;
+
+      if (nativeWordStale) {
+        const nativeAnchor = batch.lastNativeWordCharIndex || 0;
+        const elapsed = Math.max(0, (now - batch.lastNativeWordAt) / 1000);
+        pos = nativeAnchor + elapsed * cps;
+
+        let ceiling = null;
+        if (batch.anchorEnd !== null && batch.anchorEnd > nativeAnchor) {
+          ceiling = batch.anchorEnd;
+        } else {
+          const nativeLoc = this.locateInBatch(batch, nativeAnchor);
+          if (nativeLoc) {
+            const slot = nativeLoc.sentenceIndex - batch.firstIndex;
+            const sentenceEnd = (batch.offsets[slot] || 0) + (batch.spokenLengths[slot] || 0);
+            if (sentenceEnd > nativeAnchor) ceiling = sentenceEnd;
+          }
+        }
+        if (ceiling !== null) pos = Math.min(pos, ceiling);
+      } else if (batch.anchorTime !== null) {
         // Ground truth is available: the engine told us exactly where the
         // voice is. Extrapolate from that anchor, minus the lead-in delay
         // that opens every utterance (only engines that announce their first
@@ -1370,9 +1408,14 @@ class PlaybackManager {
       const match = spoken.substring(wordStart).match(/^\S+/);
       const len = match ? match[0].length : 1;
 
+      // Avoid broadcasting the same estimated word on every 45 ms tick.
+      // Native events remain free to repeat/correct the current word.
+      if (batch.lastEstimatedWordStart === wordStart) return;
+      batch.lastEstimatedWordStart = wordStart;
+
       // Feed the estimate into the pause/resume bookkeeping too, so pausing
-      // with an engine that reports no word boundaries still resumes near the
-      // right place instead of restarting the sentence.
+      // with an engine that has no recent word boundary resumes near the
+      // estimated position instead of rewinding to the previous native word.
       this.lastWordCharIndex = (batch.resumeOffset || 0) + wordStart;
       this.sawWordEvents = true;
 

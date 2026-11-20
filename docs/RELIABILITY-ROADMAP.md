@@ -23,7 +23,10 @@ Establish a trustworthy quality baseline before adding features or performing ri
 - [ ] Add deterministic mocked Chrome TTS tests.
 
 ## Stage 3: Synchronization
-- [ ] Normalize TTS word-boundary events across engines.
+- [x] Keep native word events authoritative while the estimator bridges stale or partial boundary streams.
+- [x] Reject malformed native word indices without disabling estimator fallback.
+- [x] De-duplicate repeated synthetic word events within the same word.
+- [ ] Normalize TTS word-boundary events across supported engines.
 - [ ] Validate offset handling with partial, missing, and delayed boundary events.
 - [ ] Verify estimator recalibration at sentence boundaries.
 - [ ] Test language/script routing and voice changes mid-session.
