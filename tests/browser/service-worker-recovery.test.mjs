@@ -118,11 +118,13 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
     if (process && process.exitCode === null) process.kill('SIGKILL');
   });
 
+  console.log('[browser-test] Chromium launched with NarraTrace and the fixture TTS engine.');
   const extensions = extensionEntries(await browser.extensions());
   const narraTrace = extensions.find((extension) => extension.name?.includes('NarraTrace — Narrates'));
   const testEngine = extensions.find((extension) => extension.name === 'NarraTrace Deterministic Test TTS');
   assert.ok(narraTrace?.id, 'NarraTrace extension should be installed');
   assert.ok(testEngine?.id, 'deterministic TTS engine should be installed');
+  console.log(`[browser-test] Extensions ready: NarraTrace=${narraTrace.id}, test-engine=${testEngine.id}.`);
 
   const driver = await browser.newPage();
   driver.setDefaultTimeout(10000);
@@ -134,6 +136,7 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
 
   const voices = await send(driver, { action: 'GET_VOICES' });
   assert.equal(voices?.success, true, 'NarraTrace should enumerate Chrome TTS voices');
+  console.log(`[browser-test] Enumerated ${voices.data?.allVoices?.length || 0} voices.`);
   assert.ok(
     voices.data?.allVoices?.some((voice) =>
       voice.voiceName === TEST_VOICE && voice.extensionId === testEngine.id
@@ -150,6 +153,7 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
     options: { voiceName: TEST_VOICE, extensionId: testEngine.id, lang: 'en-US' }
   });
   assert.equal(start?.success, true, 'NarraTrace should start the deterministic TTS session');
+  console.log('[browser-test] Playback session started.');
 
   const firstSpeakEvents = await waitForEngineEvent(
     browser,
@@ -163,6 +167,7 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
   );
 
   // Chrome's documented termination test uses Puppeteer's worker.close().
+  console.log('[browser-test] First utterance reached the deterministic engine.');
   const worker = await initialWorker.worker();
   await worker.close();
 
@@ -174,6 +179,7 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
 
   const restartedWorker = await waitForNarraTraceWorker(browser, narraTrace.id, initialWorker);
   assert.ok(restartedWorker, 'Chrome should start a fresh NarraTrace service worker');
+  console.log('[browser-test] NarraTrace service worker restarted.');
 
   const recoveredEvents = await waitForEngineEvent(
     browser,
@@ -187,6 +193,7 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
     'the second sentence should be submitted exactly once'
   );
 
+  console.log('[browser-test] Second sentence submitted after worker recovery.');
   const recoveredState = await waitForPlaybackState(
     driver,
     (state) => state.currentSentence?.text === SECOND_SENTENCE || state.playbackState === 'STOPPED',
