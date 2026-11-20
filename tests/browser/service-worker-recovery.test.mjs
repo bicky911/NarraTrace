@@ -99,6 +99,7 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
   try {
     browser = await puppeteer.launch({
       headless: true,
+      pipe: true,
       timeout: 20000,
       enableExtensions: [REPOSITORY_ROOT, ENGINE_DIR],
       args: ['--no-sandbox', '--disable-setuid-sandbox']
