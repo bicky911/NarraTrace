@@ -17,11 +17,11 @@ async function record(event) {
 chrome.ttsEngine.onSpeak.addListener((utterance, options, sendTtsEvent) => {
   void record({ type: 'speak', text: utterance });
   sendTtsEvent({ type: 'start', charIndex: 0 });
+  let wordEventsSent = 0;
 
   if (typeof utterance === 'string' && utterance.length > 0) {
     sendTtsEvent({ type: 'sentence', charIndex: 0, length: utterance.length });
     const words = [...utterance.matchAll(/\S+/g)];
-    let wordEventsSent = 0;
     if (words.length > 0) {
       sendTtsEvent({
         type: 'word',
