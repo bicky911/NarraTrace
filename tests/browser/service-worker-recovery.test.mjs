@@ -26,8 +26,26 @@ async function waitForNarraTraceWorker(browser, extensionId, previousTarget = nu
   , { timeout: 15000 });
 }
 
+async function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function send(page, message) {
-  return page.evaluate((payload) => window.narraTraceTest.send(payload), message);
+  return withTimeout(
+    page.evaluate((payload) => window.narraTraceTest.send(payload), message),
+    8000,
+    `Extension message ${message.action}`
+  );
 }
 
 async function readEngineEvents(browser, engineId) {
@@ -71,6 +89,7 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
   try {
     browser = await puppeteer.launch({
       headless: true,
+      timeout: 20000,
       enableExtensions: [REPOSITORY_ROOT, ENGINE_DIR],
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
@@ -79,7 +98,14 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
   }
 
   t.after(async () => {
-    if (browser) await browser.close();
+    if (!browser) return;
+    const process = browser.process();
+    await Promise.race([
+      browser.close().catch(() => {}),
+      new Promise((resolve) => setTimeout(resolve, 5000))
+    ]);
+    // A wedged Chromium process must not hold the whole CI job open.
+    if (process && process.exitCode === null) process.kill('SIGKILL');
   });
 
   const extensions = extensionEntries(await browser.extensions());
@@ -89,7 +115,11 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
   assert.ok(testEngine?.id, 'deterministic TTS engine should be installed');
 
   const driver = await browser.newPage();
-  await driver.goto(`chrome-extension://${narraTrace.id}/tests/browser/driver.html`);
+  driver.setDefaultTimeout(10000);
+  await driver.goto(`chrome-extension://${narraTrace.id}/tests/browser/driver.html`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 10000
+  });
   const initialWorker = await waitForNarraTraceWorker(browser, narraTrace.id);
 
   const voices = await send(driver, { action: 'GET_VOICES' });
