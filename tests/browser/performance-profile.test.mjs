@@ -145,6 +145,19 @@ test('profiles production extraction and DOM range mapping on a large article', 
   assert.ok(profile.sentenceCount >= 2400);
   assert.ok(profile.totalTextChars > 150000);
   assert.equal(profile.excludedSidebar, true);
+
+  // Initial CI guard: observed baseline is ~42 ms on the GitHub Chromium
+  // runner. A 1 s ceiling leaves substantial room for runner variance while
+  // still catching an order-of-magnitude regression in extraction/mapping.
+  const PERFORMANCE_BUDGET_MS = 1000;
+  assert.ok(
+    profile.totalMs < PERFORMANCE_BUDGET_MS,
+    `large-document extraction exceeded the ${PERFORMANCE_BUDGET_MS} ms CI budget (${profile.totalMs.toFixed(1)} ms)`
+  );
+  assert.ok(
+    report.rendererHeapDeltaMB === null || report.rendererHeapDeltaMB < 32,
+    `large-document renderer heap delta exceeded 32 MB (${report.rendererHeapDeltaMB} MB)`
+  );
   assert.ok(profile.firstRangeText?.startsWith('Annual watershed'));
   assert.ok(profile.lastRangeText?.includes('monitoring station'));
 });

@@ -171,8 +171,11 @@ test('DPR watcher supports legacy MediaQueryList listeners', () => {
   assert.equal(state.queries[0].listeners.size, 0);
 });
 
-test('zoom compensation no longer uses a recurring polling interval', () => {
+test('content script has no recurring idle interval besides active-playback heartbeat', () => {
   assert.doesNotMatch(contentSource, /setInterval\(updateZoomCompensation,\s*1200\)/);
+  const intervals = contentSource.match(/\bsetInterval\(/g) || [];
+  assert.equal(intervals.length, 1, 'only the playback heartbeat should remain');
+  assert.match(contentSource, /heartbeatTimer = setInterval\(\(\) => \{[\s\S]{0,350}if \(currentPlaybackState === 'PLAYING'\)[\s\S]{0,250}stopHeartbeat\(\)/);
   assert.match(contentSource, /window\.addEventListener\('pageshow'[\s\S]{0,180}watchDevicePixelRatio\(\)/);
   assert.match(contentSource, /window\.addEventListener\('pagehide'[\s\S]{0,180}stopDevicePixelRatioWatch\(\)/);
 });
