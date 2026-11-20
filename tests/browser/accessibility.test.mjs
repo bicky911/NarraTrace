@@ -228,6 +228,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     };
   });
   console.log('[NarraTrace accessibility reader Escape]', JSON.stringify(afterReaderEscape));
+  assert.equal(afterReaderEscape.isOpen, false, 'Escape should remove the reader open state');
   assert.equal(afterReaderEscape.inert, true, 'Escape should make the reader dialog inert');
   assert.equal(afterReaderEscape.ariaHidden, 'true', 'Escape should hide the reader dialog from assistive technology');
   assert.equal(afterReaderEscape.activeId, 'ra-settings', 'Escape should restore focus to the settings trigger');
