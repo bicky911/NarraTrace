@@ -12,18 +12,23 @@ const FIRST_SENTENCE = 'First sentence survives a worker restart.';
 const SECOND_SENTENCE = 'Second sentence must be reached after recovery.';
 
 function extensionEntries(extensions) {
-  if (extensions instanceof Map) {
-    return [...extensions.entries()].map(([id, extension]) => ({
-      ...extension,
-      id: extension.id || id
+  const toRecord = ([id, extension]) => ({
+    id: extension.id || id,
+    name: extension.name,
+    version: extension.version,
+    path: extension.path
+  });
+  if (extensions instanceof Map) return [...extensions.entries()].map(toRecord);
+  if (Array.isArray(extensions)) {
+    return extensions.map((extension) => ({
+      id: extension.id,
+      name: extension.name,
+      version: extension.version,
+      path: extension.path
     }));
   }
-  if (Array.isArray(extensions)) return extensions;
   if (extensions && typeof extensions.entries === 'function') {
-    return [...extensions.entries()].map(([id, extension]) => ({
-      ...extension,
-      id: extension.id || id
-    }));
+    return [...extensions.entries()].map(toRecord);
   }
   throw new Error('Puppeteer did not return an enumerable extension collection.');
 }
@@ -121,6 +126,9 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
 
   console.log('[browser-test] Chromium launched with NarraTrace and the fixture TTS engine.');
   const extensions = extensionEntries(await browser.extensions());
+  console.log('[browser-test] Installed extensions:', extensions.map((extension) =>
+    `${extension.name || '(unnamed)'} (${extension.id})`
+  ).join(', '));
   const narraTrace = extensions.find((extension) => extension.name?.includes('NarraTrace — Narrates'));
   const testEngine = extensions.find((extension) => extension.name === 'NarraTrace Deterministic Test TTS');
   assert.ok(narraTrace?.id, 'NarraTrace extension should be installed');
