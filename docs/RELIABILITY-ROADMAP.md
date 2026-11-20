@@ -51,8 +51,8 @@ Establish a trustworthy quality baseline before adding features or performing ri
 - [x] Add a repeatable Chromium large-article baseline for production block selection, sentence DOM mapping, renderer script duration, and heap delta.
 - [x] Record two CI measurements: 41.5 ms / 0.76 MB and 37.4 ms / 0.74 MB for 1,200 paragraphs and 2,401 ranges.
 - [x] Establish a coarse CI guard: 1,200 paragraphs / 2,401 sentence ranges under 1,000 ms and renderer heap delta under 32 MB.
-- [ ] Profile idle CPU and playback CPU on a real extension page.
-- [ ] Refine performance budgets using measurements from representative user hardware.
+- [x] Add a real-extension renderer profile comparing idle and active-playback script/task time and heap deltas on a local long article.
+- [ ] Collect repeated profiles on representative user hardware before refining performance budgets.
 - [ ] Modularize only behind test coverage; avoid a rewrite.
 - [ ] Audit remaining event-listener and timer cleanup paths.
 

@@ -20,13 +20,31 @@ chrome.ttsEngine.onSpeak.addListener((utterance, options, sendTtsEvent) => {
 
   if (typeof utterance === 'string' && utterance.length > 0) {
     sendTtsEvent({ type: 'sentence', charIndex: 0, length: utterance.length });
-    const firstWord = utterance.match(/\S+/);
-    if (firstWord) {
+    const words = [...utterance.matchAll(/\S+/g)];
+    if (words.length > 0) {
       sendTtsEvent({
         type: 'word',
-        charIndex: firstWord.index || 0,
-        length: firstWord[0].length
+        charIndex: words[0].index || 0,
+        length: words[0][0].length
       });
+
+      // Emit deterministic word-boundary events throughout the utterance so
+      // renderer profiling includes actual highlight updates, not only start/end.
+      let nextWord = 1;
+      const wordTimer = setInterval(() => {
+        if (nextWord >= words.length) {
+          clearInterval(wordTimer);
+          activeTimers.delete(wordTimer);
+          return;
+        }
+        const word = words[nextWord++];
+        sendTtsEvent({
+          type: 'word',
+          charIndex: word.index || 0,
+          length: word[0].length
+        });
+      }, Math.max(75, SPEECH_DURATION_MS / Math.max(words.length, 1)));
+      activeTimers.add(wordTimer);
     }
   }
 

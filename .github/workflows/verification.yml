@@ -59,3 +59,5 @@ jobs:
         run: timeout --signal=TERM --kill-after=8s 75s node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs
       - name: Run large-page performance baseline
         run: timeout --signal=TERM --kill-after=8s 75s node --test tests/browser/performance-profile.test.mjs
+      - name: Profile extension idle and playback renderer workload
+        run: timeout --signal=TERM --kill-after=8s 75s node --test tests/browser/extension-runtime-profile.test.mjs
