@@ -10,9 +10,12 @@ From the repository root:
 
 ```bash
 npm install --prefix tests/browser --no-save --no-package-lock puppeteer@25.17.0
-node --test tests/browser/service-worker-recovery.test.mjs
+node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs
 ```
 
-The test loads NarraTrace and the fixture extension, starts a two-sentence session, forcibly closes the NarraTrace service-worker target during the first utterance, and checks that the restored queue submits the second sentence exactly once.
+The two browser tests cover:
 
-The browser suite is separate from the deterministic VM tests in `tests/playback-manager.test.mjs`. It should not be interpreted as validation of a user's installed neural TTS engines or their generated audio.
+- **Service-worker recovery:** loads NarraTrace and the deterministic TTS fixture, starts a two-sentence session, forcibly closes the NarraTrace service-worker target during the first utterance, and checks that the restored queue submits the second sentence exactly once.
+- **Content extraction:** parses a structured research article, verifies site chrome is excluded, executes the production content-block selector and references cutoff, and checks sentence and word ranges across nested DOM text nodes.
+
+The browser suite is separate from the deterministic VM tests in `tests/playback-manager.test.mjs` and the tokenizer tests in `tests/sentence-tokenizer.test.mjs`. The TTS fixture exercises Chrome's event API but does not validate the audio quality or latency of a user's installed neural voice engines.
