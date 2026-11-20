@@ -144,6 +144,17 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
     'Chrome should expose the deterministic test voice to NarraTrace'
   );
 
+  // Pin the fixture voice explicitly. PlaybackManager intentionally re-resolves
+  // unpinned automatic preferences on start, so merely passing voiceName in
+  // START_PLAYBACK options is not sufficient for a deterministic engine test.
+  const voice = await send(driver, {
+    action: 'SET_VOICE',
+    voiceName: TEST_VOICE,
+    extensionId: testEngine.id,
+    lang: 'en-US'
+  });
+  assert.equal(voice?.success, true, 'the deterministic test voice should be pinned');
+
   const batch = await send(driver, { action: 'SET_BATCH_SIZE', size: 1 });
   assert.equal(batch?.success, true, 'single-sentence utterances should be enabled');
 
