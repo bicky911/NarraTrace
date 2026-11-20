@@ -2465,9 +2465,13 @@
     button:focus-visible,
     select:focus-visible,
     input:focus-visible,
-    textarea:focus-visible {
+    textarea:focus-visible,
+    .progress-track:focus-visible,
+    .reader-progress-wrap:focus-visible,
+    .speed-badge:focus-visible,
+    .reader-speed-badge:focus-visible {
       outline: 2px solid var(--ra-accent) !important;
-      outline-offset: 2px !important;
+      outline-offset: 3px !important;
     }
 
     /* ── Animated Word Indicator Box (Modern Gliding Capsule) ─────── */
@@ -2668,7 +2672,8 @@
         <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
       </button>
 
-      <span class="speed-badge" id="ra-speed" title="Cycle speed">1.0×</span>
+      <button type="button" class="speed-badge" id="ra-speed" title="Cycle speed"
+        aria-label="Playback speed 1.0 times. Activate to cycle speed.">1.0×</button>
 
       <button class="icon-btn" id="ra-settings" title="Open configuration" aria-label="Open settings">
         <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
@@ -2679,8 +2684,9 @@
       <svg id="ra-collapse-icon" viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>
     </button>
 
-    <div class="progress-track" id="ra-progress-track" title="Click or drag to seek"
-      role="slider" aria-label="Playback progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <div class="progress-track" id="ra-progress-track" title="Seek playback position"
+      role="slider" tabindex="0" aria-label="Playback progress"
+      aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="No sentences loaded">
       <div class="progress-fill" id="ra-progress-fill"></div>
     </div>
   `;
@@ -2718,6 +2724,8 @@
   const settingsPanel = document.createElement('div');
   settingsPanel.className = 'settings-panel';
   settingsPanel.id = 'ra-settings-panel';
+  settingsPanel.inert = true;
+  settingsPanel.setAttribute('aria-hidden', 'true');
   settingsPanel.innerHTML = `
     <div class="settings-header">
       <span class="settings-title">SETTINGS</span>
@@ -2846,10 +2854,17 @@
   const readerOverlay = document.createElement('div');
   readerOverlay.className = 'reader-overlay theme-cream font-sans';
   readerOverlay.id = 'ra-reader-overlay';
+  readerOverlay.setAttribute('role', 'dialog');
+  readerOverlay.setAttribute('aria-modal', 'true');
+  readerOverlay.setAttribute('aria-labelledby', 'ra-reader-title');
+  readerOverlay.setAttribute('aria-hidden', 'true');
+  readerOverlay.tabIndex = -1;
+  readerOverlay.inert = true;
   readerOverlay.innerHTML = `
     <div class="reader-header">
       <div class="reader-header-left">
-        <button class="reader-hdr-btn" id="ra-reader-close" title="Exit Focus Reader (Esc)">
+        <button type="button" class="reader-hdr-btn" id="ra-reader-close"
+          title="Exit Focus Reader (Esc)" aria-label="Exit Focus Reader">
           <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
           <span>EXIT</span>
         </button>
@@ -2893,24 +2908,30 @@
 
     <!-- Floating Reader Bar at bottom -->
     <div class="reader-bar">
-      <button class="reader-ctrl-btn" id="ra-rctrl-prev" title="Previous sentence (Alt+,)">
+      <button type="button" class="reader-ctrl-btn" id="ra-rctrl-prev"
+        title="Previous sentence (Alt+,)" aria-label="Previous sentence">
         <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
       </button>
 
-      <button class="reader-ctrl-btn reader-play-main" id="ra-rctrl-play" title="Play / Pause (Alt+P)">
+      <button type="button" class="reader-ctrl-btn reader-play-main" id="ra-rctrl-play"
+        title="Play / Pause (Alt+P)" aria-label="Play or pause reading">
         <svg id="ra-rctrl-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       </button>
 
-      <button class="reader-ctrl-btn" id="ra-rctrl-next" title="Next sentence (Alt+.)">
+      <button type="button" class="reader-ctrl-btn" id="ra-rctrl-next"
+        title="Next sentence (Alt+.)" aria-label="Next sentence">
         <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
       </button>
 
-      <div class="reader-progress-wrap" id="ra-rprogress-track" title="Click or scrub to seek">
+      <div class="reader-progress-wrap" id="ra-rprogress-track" title="Seek playback position"
+        role="slider" tabindex="0" aria-label="Playback progress"
+        aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="No sentences loaded">
         <div class="reader-progress-fill" id="ra-rprogress-fill"></div>
       </div>
 
       <span class="reader-progress-text" id="ra-rprogress-text">01/00</span>
-      <span class="reader-speed-badge" id="ra-rspeed" title="Cycle speed">1.0×</span>
+      <button type="button" class="reader-speed-badge" id="ra-rspeed" title="Cycle speed"
+        aria-label="Playback speed 1.0 times. Activate to cycle speed.">1.0×</button>
     </div>
   `;
   shadow.appendChild(readerOverlay);
@@ -2926,6 +2947,7 @@
   const collapseBtn = shadow.getElementById('ra-collapse');
 
   // Settings panel element references
+  const settingsTriggerBtn = shadow.getElementById('ra-settings');
   const settingsCloseBtn  = shadow.getElementById('ra-settings-close');
   const voiceSelect       = shadow.getElementById('ra-voice-select');
   const voiceStatusEl     = shadow.getElementById('ra-voice-status');
@@ -2962,6 +2984,13 @@
   const rprogressTextEl    = shadow.getElementById('ra-rprogress-text');
   const rspeedBadge        = shadow.getElementById('ra-rspeed');
 
+  function updateSpeedControlLabels() {
+    const label = `Playback speed ${currentSpeed.toFixed(1)} times. Activate to cycle speed.`;
+    speedBadge?.setAttribute('aria-label', label);
+    rspeedBadge?.setAttribute('aria-label', label);
+  }
+
+  let readerReturnFocus = null;
   let isReaderOpen = false;
   let readerFontSize = 19;
   let currentReaderTheme = 'cream';
@@ -3129,16 +3158,24 @@
   /** Open the settings panel (refresh voice list each time). */
   function openSettings() {
     isSettingsOpen = true;
+    settingsPanel.inert = false;
+    settingsPanel.setAttribute('aria-hidden', 'false');
+    settingsTriggerBtn?.setAttribute('aria-expanded', 'true');
     settingsPanel.classList.add('open');
     positionSettingsPanel();
     requestAnimationFrame(positionSettingsPanel);
     populateVoices();
+    requestAnimationFrame(() => settingsCloseBtn?.focus());
   }
 
-  /** Close the settings panel. */
-  function closeSettings() {
+  /** Close the settings panel and optionally return focus to its trigger. */
+  function closeSettings(restoreFocus = false) {
     isSettingsOpen = false;
     settingsPanel.classList.remove('open');
+    settingsPanel.inert = true;
+    settingsPanel.setAttribute('aria-hidden', 'true');
+    settingsTriggerBtn?.setAttribute('aria-expanded', 'false');
+    if (restoreFocus && settingsTriggerBtn) settingsTriggerBtn.focus();
   }
 
   /**
@@ -3360,12 +3397,13 @@
   // ── Settings Panel Event Wiring ──────────────────────────────────
 
   // Open settings on ⚙ pill button
+  settingsTriggerBtn?.setAttribute('aria-expanded', 'false');
   shadow.getElementById('ra-settings').addEventListener('click', () => {
     if (isSettingsOpen) closeSettings(); else openSettings();
   });
 
   // Close button
-  settingsCloseBtn.addEventListener('click', closeSettings);
+  settingsCloseBtn.addEventListener('click', () => closeSettings(true));
 
   // Close panel when clicking outside.
   //
@@ -3398,6 +3436,7 @@
     currentSpeed = rate;
     speedDisplayEl.textContent = `${rate.toFixed(1)}×`;
     speedBadge.textContent = `${rate.toFixed(1)}x`;
+    updateSpeedControlLabels();
     if (rateSendTimer) clearTimeout(rateSendTimer);
     rateSendTimer = setTimeout(() => {
       safeSendMessage({ action: 'SET_RATE', rate: currentSpeed });
@@ -3609,6 +3648,7 @@
       currentSpeed = prefs.rate;
       speedBadge.textContent = `${currentSpeed.toFixed(1)}x`;
       if (rspeedBadge) rspeedBadge.textContent = `${currentSpeed.toFixed(1)}x`;
+      updateSpeedControlLabels();
       speedRangeEl.value = String(currentSpeed);
       speedDisplayEl.textContent = `${currentSpeed.toFixed(1)}×`;
     }
@@ -3646,13 +3686,48 @@
     if (rprogressTextEl) {
       rprogressTextEl.textContent = `${String(index + 1).padStart(2, '0')}/${String(total).padStart(2, '0')}`;
     }
-    // Keep ARIA slider in sync for screen readers
-    progressTrackEl?.setAttribute('aria-valuenow', pct);
+    // Keep both progress sliders in sync for assistive technology.
+    const current = total > 0 ? Math.max(0, Math.min(total - 1, index)) : -1;
+    const valueText = total > 0 ? `Sentence ${current + 1} of ${total}` : 'No sentences loaded';
+    [progressTrackEl, rprogressTrackEl].forEach(track => {
+      if (!track) return;
+      track.setAttribute('aria-valuenow', pct);
+      track.setAttribute('aria-valuetext', valueText);
+    });
   }
 
   // ── Seekable Progress Bar Interaction ───────────────────────────
   const progressTrackEl = shadow.getElementById('ra-progress-track');
   let isSeekingProgress = false;
+
+  function seekToSentence(index) {
+    const total = currentSentenceRanges.length;
+    if (total <= 0) return;
+    const target = Math.max(0, Math.min(total - 1, Math.trunc(index)));
+    if (target === currentSentenceIndex) return;
+    safeSendMessage({ action: 'JUMP_TO_INDEX', index: target });
+    applyHighlight(target);
+    updateProgressBar(target, total);
+  }
+
+  function handleProgressKeydown(event) {
+    const total = currentSentenceRanges.length;
+    if (total <= 0) return;
+    let target = currentSentenceIndex >= 0 ? currentSentenceIndex : 0;
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowUp': target += 1; break;
+      case 'ArrowLeft':
+      case 'ArrowDown': target -= 1; break;
+      case 'PageDown': target += 10; break;
+      case 'PageUp': target -= 10; break;
+      case 'Home': target = 0; break;
+      case 'End': target = total - 1; break;
+      default: return;
+    }
+    event.preventDefault();
+    seekToSentence(target);
+  }
 
   function seekFromProgressEvent(e) {
     if (!progressTrackEl) return;
@@ -3669,6 +3744,7 @@
   }
 
   if (progressTrackEl) {
+    progressTrackEl.addEventListener('keydown', handleProgressKeydown);
     progressTrackEl.addEventListener('mousedown', (e) => {
       isSeekingProgress = true;
       seekFromProgressEvent(e);
@@ -3845,8 +3921,12 @@
       readerBodyEl.innerHTML = html;
     }
 
+    readerReturnFocus = shadow.activeElement || readerBtn || playBtn;
     isReaderOpen = true;
+    readerOverlay.inert = false;
+    readerOverlay.setAttribute('aria-hidden', 'false');
     readerOverlay.classList.add('open');
+    requestAnimationFrame(() => readerCloseBtn?.focus());
 
     // Sync reader playback controls with current state
     if (rctrlPlayIcon) {
@@ -3867,9 +3947,37 @@
   }
 
   function closeReaderView() {
+    if (!isReaderOpen) return;
     isReaderOpen = false;
     readerOverlay.classList.remove('open');
+    readerOverlay.inert = true;
+    readerOverlay.setAttribute('aria-hidden', 'true');
+    const returnFocus = readerReturnFocus || readerBtn;
+    readerReturnFocus = null;
+    if (returnFocus && typeof returnFocus.focus === 'function') returnFocus.focus();
   }
+
+  readerOverlay.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(readerOverlay.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter(element => !element.closest('[inert]') && element.getClientRects().length > 0);
+    if (focusable.length === 0) {
+      event.preventDefault();
+      readerOverlay.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = shadow.activeElement;
+    if (event.shiftKey && (active === first || !readerOverlay.contains(active))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (active === last || !readerOverlay.contains(active))) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
 
   function toggleReaderView() {
     if (isReaderOpen) {
@@ -4036,11 +4144,13 @@
       speedBadge.textContent = `${currentSpeed.toFixed(1)}x`;
       speedRangeEl.value = String(currentSpeed);
       speedDisplayEl.textContent = `${currentSpeed.toFixed(1)}×`;
+      updateSpeedControlLabels();
       safeSendMessage({ action: 'SET_RATE', rate: currentSpeed });
     });
   }
 
   if (rprogressTrackEl) {
+    rprogressTrackEl.addEventListener('keydown', handleProgressKeydown);
     let isRScrubbing = false;
 
     function handleRScrub(e) {
@@ -4407,7 +4517,7 @@
   const settingsReaderBtn = shadow.getElementById('ra-settings-reader');
   if (settingsReaderBtn) {
     settingsReaderBtn.addEventListener('click', () => {
-      closeSettings();
+      closeSettings(true);
       toggleReaderView();
     });
   }
@@ -4430,6 +4540,7 @@
     // Keep settings slider in sync with pill badge
     speedRangeEl.value = String(currentSpeed);
     speedDisplayEl.textContent = `${currentSpeed.toFixed(1)}×`;
+    updateSpeedControlLabels();
     safeSendMessage({ action: 'SET_RATE', rate: currentSpeed });
   });
 
@@ -5370,15 +5481,20 @@
   // 7c. In-Page Keyboard Shortcuts (Intercepts Alt+Left/Right & Alt+P/X)
   // -----------------------------------------------------------------
   window.addEventListener('keydown', (e) => {
-    // Escape closes focus reader overlay
+    // Escape closes the topmost NarraTrace surface and restores its opener.
     if (e.key === 'Escape' && isReaderOpen) {
       e.preventDefault();
       closeReaderView();
       return;
     }
+    if (e.key === 'Escape' && isSettingsOpen) {
+      e.preventDefault();
+      closeSettings(true);
+      return;
+    }
 
-    // Skip when actively typing inside form inputs or editable content
-    const active = document.activeElement;
+    // Read the composed Shadow DOM active element before routing shortcuts.
+    const active = shadow.activeElement || document.activeElement;
     if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
       return;
     }
