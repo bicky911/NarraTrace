@@ -12,9 +12,19 @@ const FIRST_SENTENCE = 'First sentence survives a worker restart.';
 const SECOND_SENTENCE = 'Second sentence must be reached after recovery.';
 
 function extensionEntries(extensions) {
-  if (extensions instanceof Map) return [...extensions.values()];
+  if (extensions instanceof Map) {
+    return [...extensions.entries()].map(([id, extension]) => ({
+      ...extension,
+      id: extension.id || id
+    }));
+  }
   if (Array.isArray(extensions)) return extensions;
-  if (extensions && typeof extensions.values === 'function') return [...extensions.values()];
+  if (extensions && typeof extensions.entries === 'function') {
+    return [...extensions.entries()].map(([id, extension]) => ({
+      ...extension,
+      id: extension.id || id
+    }));
+  }
   throw new Error('Puppeteer did not return an enumerable extension collection.');
 }
 
