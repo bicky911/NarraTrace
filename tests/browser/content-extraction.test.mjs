@@ -21,17 +21,17 @@ const contentFunctions = {
   getContentElements: extractSource(
     CONTENT_SOURCE,
     '  function getContentElements(container) {',
-    '  /**\\n   * Find the best set of article elements'
+    '  /**\n   * Find the best set of article elements'
   ),
   cutAtReferences: extractSource(
     CONTENT_SOURCE,
     '  function cutAtReferences(elements) {',
-    '  /**\\n   * Build the sentence queue'
+    '  /**\n   * Build the sentence queue'
   ),
   findRangesInElement: extractSource(
     CONTENT_SOURCE,
     '  function buildTextIndex(element) {',
-    '  /**\\n   * Build a whitespace-normalised view of a DOM Range'
+    '  /**\n   * Build a whitespace-normalised view of a DOM Range'
   ),
   createSubRangeFromSentence: extractSource(
     CONTENT_SOURCE,
@@ -75,16 +75,16 @@ test('Readability extracts structured article content without site chrome', {
     // in this real DOM, with their closure dependencies supplied.
     const host = document.createElement('div');
     const getContentElements = new Function('host', 'window',
-      functions.getContentElements + '\\nreturn getContentElements;'
+      functions.getContentElements + '\nreturn getContentElements;'
     )(host, window);
     const cutAtReferences = new Function(
-      functions.cutAtReferences + '\\nreturn cutAtReferences;'
+      functions.cutAtReferences + '\nreturn cutAtReferences;'
     )();
     const findRangesInElement = new Function('document', 'NodeFilter',
-      functions.findRangesInElement + '\\nreturn findRangesInElement;'
+      functions.findRangesInElement + '\nreturn findRangesInElement;'
     )(document, NodeFilter);
     const createSubRangeFromSentence = new Function('document', 'NodeFilter',
-      functions.createSubRangeFromSentence + '\\nreturn createSubRangeFromSentence;'
+      functions.createSubRangeFromSentence + '\nreturn createSubRangeFromSentence;'
     )(document, NodeFilter);
 
     const selectedBlocks = getContentElements(document.body);
