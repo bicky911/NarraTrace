@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   static-verification:
-    name: Existing Python verification harness
+    name: NarraTrace regression suite
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

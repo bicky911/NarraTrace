@@ -265,20 +265,33 @@ check(
     bool(re.search(offset_pattern, pm, re.DOTALL)),
 )
 
-# setRate calls speakCurrentSentence with resumeFrom
-# Match by finding the resumeFrom computation pattern followed shortly by speakCurrentSentence call
-_rate_offset_ok = bool(re.search(
-    r'setRate[\s\S]{0,1200}speakCurrentSentence\(this\.playbackRunId,\s*resumeFrom\)', pm))
+# Option controls delegate to the shared generation-guarded restart helper.
+_option_restart_ok = bool(re.search(
+    r'async _commitPlaybackOptionChange[\s\S]{0,2500}speakCurrentSentence\(runId,\s*resumeFrom\)', pm))
 check(
-    'playback-manager.js: setRate calls speakCurrentSentence(runId, resumeFrom)',
-    _rate_offset_ok,
+    'playback-manager.js: shared option helper restarts with captured runId and resumeFrom',
+    _option_restart_ok,
 )
 
-_vol_offset_ok = bool(re.search(
-    r'setVolume[\s\S]{0,1200}speakCurrentSentence\(this\.playbackRunId,\s*resumeFrom\)', pm))
+_rate_delegates = bool(re.search(
+    r"async setRate\(rate\)[\s\S]{0,350}return this\._commitPlaybackOptionChange\('word'\)", pm))
 check(
-    'playback-manager.js: setVolume calls speakCurrentSentence(runId, resumeFrom)',
-    _vol_offset_ok,
+    'playback-manager.js: setRate delegates to guarded word-preserving restart',
+    _rate_delegates,
+)
+
+_vol_delegates = bool(re.search(
+    r"async setVolume\(volume\)[\s\S]{0,350}return this\._commitPlaybackOptionChange\('word'\)", pm))
+check(
+    'playback-manager.js: setVolume delegates to guarded word-preserving restart',
+    _vol_delegates,
+)
+
+_pitch_delegates = bool(re.search(
+    r"async setPitch\(pitch\)[\s\S]{0,350}return this\._commitPlaybackOptionChange\('offset'\)", pm))
+check(
+    'playback-manager.js: setPitch delegates to guarded offset-preserving restart',
+    _pitch_delegates,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
