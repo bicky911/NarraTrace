@@ -130,7 +130,7 @@ test('Readability extracts structured article content without site chrome', {
     const replacement = document.createElement('p');
     replacement.id = 'mapped-paragraph-after-rerender';
     replacement.innerHTML =
-      'Researchers measured soil moisture<br><strong>at multiple depths</strong> and recorded plant height at regular intervals. ' +
+      'Researchers measured soil moisture<br> <strong>at multiple depths</strong> and recorded plant height at regular intervals. ' +
       'The sampling protocol remained consistent throughout the growing season.';
     paragraph.replaceWith(replacement);
 
