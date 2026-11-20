@@ -12,9 +12,9 @@ assert.ok(start >= 0 && end > start, 'production DPR watcher source should be pr
 const watcherSource = contentSource.slice(start, end).trim();
 
 const observerStartMarker = '  function scheduleMutationCheck() {';
-const observerEndMarker = '  // -----------------------------------------------------------------\\n  // 3c. Website Zoom Counter-Scaling';
+const observerEndMarker = '  let displayScale = 1;';
 const observerStart = contentSource.indexOf(observerStartMarker);
-const observerEnd = contentSource.indexOf(observerEndMarker.replaceAll('\\n', '\\n'), observerStart);
+const observerEnd = contentSource.indexOf(observerEndMarker, observerStart);
 assert.ok(observerStart >= 0 && observerEnd > observerStart, 'production mutation observer source should be present');
 const observerSource = contentSource.slice(observerStart, observerEnd).trim();
 
