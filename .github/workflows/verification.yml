@@ -1,0 +1,25 @@
+name: NarraTrace Verification
+
+on:
+  push:
+    branches: ["main", "reliability/**"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-verification:
+    name: Existing Python verification harness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run verification harness
+        run: python test-harness.py
