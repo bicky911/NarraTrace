@@ -20,7 +20,7 @@ chrome.ttsEngine.onSpeak.addListener((utterance, options, sendTtsEvent) => {
 
   if (typeof utterance === 'string' && utterance.length > 0) {
     sendTtsEvent({ type: 'sentence', charIndex: 0, length: utterance.length });
-    const firstWord = utterance.match(/\\S+/);
+    const firstWord = utterance.match(/\S+/);
     if (firstWord) {
       sendTtsEvent({
         type: 'word',
