@@ -188,3 +188,22 @@ test('worker recovery stops a timed-out orphan before replaying', async () => {
   assert.equal(loaded.stopSpeechAndWaitCallCount(), 1, 'the orphan must be stopped before a new utterance is queued');
   assert.deepEqual(replayedRuns, [manager.playbackRunId]);
 });
+
+
+test('overlapping rate changes restart speech only once with the latest option', async () => {
+  const loaded = await loadPlaybackManager([]);
+  const { manager } = loaded;
+  manager.queue = [{ index: 0, text: 'Change the reading speed safely.' }];
+  manager.currentIndex = 0;
+  manager.tabId = 606;
+  manager.playbackState = 'PLAYING';
+
+  const olderRate = manager.setRate(1.5);
+  const latestRate = manager.setRate(2.0);
+  const results = await Promise.all([olderRate, latestRate]);
+
+  assert.equal(results[0], false, 'the earlier option update should be superseded');
+  assert.equal(results[1], true, 'the latest option update should own the restart');
+  assert.equal(manager.options.rate, 2.0);
+  assert.equal(loaded.safeSpeakCallCount(), 1, 'only one replacement utterance should be started');
+});

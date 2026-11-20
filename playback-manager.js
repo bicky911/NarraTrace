@@ -1770,24 +1770,58 @@ class PlaybackManager {
   }
 
   /**
+   * Persist an option update and, when speaking, restart only the latest
+   * playback run. The strategy preserves the position semantics of each
+   * control: rate/volume keep the last word, pitch keeps the pause offset,
+   * and voice changes restart the current sentence.
+   */
+  async _commitPlaybackOptionChange(resumeStrategy = 'word') {
+    const shouldRestart = this.playbackState === PlaybackState.PLAYING;
+    const runId = shouldRestart
+      ? (this.playbackRunId || 0) + 1
+      : this.playbackRunId;
+
+    if (shouldRestart) {
+      this.playbackRunId = runId;
+      this.isSwitchingSentence = true;
+    }
+
+    await this.savePreferences();
+    if (shouldRestart &&
+        (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING)) return false;
+
+    await this.saveToSession();
+    if (shouldRestart &&
+        (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING)) return false;
+
+    if (!shouldRestart) {
+      this.broadcast('OPTIONS_CHANGED', { options: this.options });
+      return true;
+    }
+
+    let resumeFrom = 0;
+    if (resumeStrategy === 'word') {
+      resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0)
+        ? this.lastWordCharIndex
+        : (this.resumeOffset || 0);
+    } else if (resumeStrategy === 'offset') {
+      resumeFrom = this.resumeOffset || 0;
+    }
+
+    await stopSpeechAndWait();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return false;
+
+    this.speakCurrentSentence(runId, resumeFrom);
+    return true;
+  }
+
+  /**
    * Change playback speed rate.
    */
   async setRate(rate) {
     const validRate = Math.max(0.5, Math.min(rate, 3.0));
     this.options.rate = validRate;
-    await this.savePreferences();
-    await this.saveToSession();
-
-    // If currently speaking, restart current sentence with the new rate immediately
-    if (this.playbackState === PlaybackState.PLAYING) {
-      this.playbackRunId = (this.playbackRunId || 0) + 1;
-      this.isSwitchingSentence = true;
-      await stopSpeechAndWait();
-      const resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0) ? this.lastWordCharIndex : (this.resumeOffset || 0);
-      this.speakCurrentSentence(this.playbackRunId, resumeFrom);
-    } else {
-      this.broadcast('OPTIONS_CHANGED', { options: this.options });
-    }
+    return this._commitPlaybackOptionChange('word');
   }
 
   /**
@@ -1796,19 +1830,7 @@ class PlaybackManager {
   async setVolume(volume) {
     const validVolume = Math.max(0.0, Math.min(volume, 1.0));
     this.options.volume = validVolume;
-    await this.savePreferences();
-    await this.saveToSession();
-
-    // If currently speaking, restart current sentence with the new volume immediately
-    if (this.playbackState === PlaybackState.PLAYING) {
-      this.playbackRunId = (this.playbackRunId || 0) + 1;
-      this.isSwitchingSentence = true;
-      await stopSpeechAndWait();
-      const resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0) ? this.lastWordCharIndex : (this.resumeOffset || 0);
-      this.speakCurrentSentence(this.playbackRunId, resumeFrom);
-    } else {
-      this.broadcast('OPTIONS_CHANGED', { options: this.options });
-    }
+    return this._commitPlaybackOptionChange('word');
   }
 
   /**
@@ -1817,17 +1839,7 @@ class PlaybackManager {
   async setPitch(pitch) {
     const validPitch = Math.max(0.5, Math.min(pitch, 2.0));
     this.options.pitch = validPitch;
-    await this.savePreferences();
-    await this.saveToSession();
-
-    if (this.playbackState === PlaybackState.PLAYING) {
-      this.playbackRunId = (this.playbackRunId || 0) + 1;
-      this.isSwitchingSentence = true;
-      await stopSpeechAndWait();
-      this.speakCurrentSentence(this.playbackRunId, this.resumeOffset || 0);
-    } else {
-      this.broadcast('OPTIONS_CHANGED', { options: this.options });
-    }
+    return this._commitPlaybackOptionChange('offset');
   }
 
   // ── Pronunciation overrides ("zea mays = zee-a mays", one per line) ──
@@ -1895,18 +1907,7 @@ class PlaybackManager {
     // deliberate fallback next to Kokoro).
     this.voicePinned = true;
 
-    await this.savePreferences();
-    await this.saveToSession();
-
-    // If currently speaking, restart current sentence with the new voice immediately
-    if (this.playbackState === PlaybackState.PLAYING) {
-      this.playbackRunId = (this.playbackRunId || 0) + 1;
-      this.isSwitchingSentence = true;
-      await stopSpeechAndWait();
-      this.speakCurrentSentence(this.playbackRunId);
-    } else {
-      this.broadcast('OPTIONS_CHANGED', { options: this.options });
-    }
+    return this._commitPlaybackOptionChange('sentence');
   }
 
   /**
