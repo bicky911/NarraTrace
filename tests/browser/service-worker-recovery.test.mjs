@@ -64,6 +64,24 @@ async function waitForEngineEvent(browser, engineId, predicate, timeoutMs = 2000
   assert.fail(`Timed out waiting for test TTS event. Last events: ${JSON.stringify(lastEvents)}`);
 }
 
+async function waitForTestVoice(page, extensionId, voiceName, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastResponse = null;
+  while (Date.now() < deadline) {
+    lastResponse = await send(page, { action: 'GET_VOICES' });
+    if (lastResponse?.success &&
+        lastResponse.data?.allVoices?.some(voice =>
+          voice.voiceName === voiceName && voice.extensionId === extensionId
+        )) {
+      return lastResponse;
+    }
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  assert.fail(
+    `Chrome did not register the deterministic test voice in time. Last response: ${JSON.stringify(lastResponse)}`
+  );
+}
+
 async function waitForPlaybackState(page, predicate, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
   let lastResponse = null;
@@ -123,15 +141,8 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
   });
   const initialWorker = await waitForNarraTraceWorker(browser, narraTrace.id);
 
-  const voices = await send(driver, { action: 'GET_VOICES' });
-  assert.equal(voices?.success, true, 'NarraTrace should enumerate Chrome TTS voices');
-  console.log(`[browser-test] Enumerated ${voices.data?.allVoices?.length || 0} voices.`);
-  assert.ok(
-    voices.data?.allVoices?.some((voice) =>
-      voice.voiceName === TEST_VOICE && voice.extensionId === testEngine.id
-    ),
-    'Chrome should expose the deterministic test voice to NarraTrace'
-  );
+  const voices = await waitForTestVoice(driver, testEngine.id, TEST_VOICE);
+  console.log(`[browser-test] Deterministic test voice registered (${voices.data.allVoices.length} voices enumerated).`);
 
   // Pin the fixture voice explicitly. PlaybackManager intentionally re-resolves
   // unpinned automatic preferences on start, so merely passing voiceName in
