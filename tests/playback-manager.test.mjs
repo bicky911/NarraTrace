@@ -258,18 +258,32 @@ test('sparse native word events are bridged by the estimator after the grace per
   assert.equal(loaded.intervalCallbacks().length, 1);
   const tick = loaded.intervalCallbacks()[0];
 
+  // The estimator stays silent while native events are still inside the grace
+  // period; native timing is preferred when it is fresh.
+  tick();
+  let wordEvents = loaded.runtimeMessages()
+    .filter(message => message.action === 'TTS_EVENT' && message.event?.type === 'word');
+  assert.equal(wordEvents.length, 1, 'fresh native boundaries must not be duplicated by estimates');
+
   // The native driver has not reported another boundary for longer than the
   // configured grace period, so the estimator must move beyond "One".
   batch.lastNativeWordAt = Date.now() - 900;
   tick();
-
-  const wordEvents = loaded.runtimeMessages()
+  wordEvents = loaded.runtimeMessages()
     .filter(message => message.action === 'TTS_EVENT' && message.event?.type === 'word');
   assert.equal(wordEvents.length, 2, 'one native and one synthetic word event should be emitted');
   assert.ok(
     wordEvents[1].event.charIndex > 0,
     'the synthetic event should advance past the first word'
   );
+
+  // A second tick in the same word must not broadcast another identical
+  // synthetic event.
+  tick();
+  wordEvents = loaded.runtimeMessages()
+    .filter(message => message.action === 'TTS_EVENT' && message.event?.type === 'word');
+  assert.equal(wordEvents.length, 2, 'synthetic word events should be de-duplicated');
+
   assert.equal(
     manager.lastWordCharIndex > 0,
     true,
@@ -319,4 +333,81 @@ test('invalid native word boundaries do not disable estimator fallback', async (
     .filter(message => message.action === 'TTS_EVENT' && message.event?.type === 'word');
   assert.equal(wordEvents.length, 1, 'the estimator should still supply a word event');
   manager.stopEstimator();
+});
+
+
+test('native word offsets map to the correct sentence inside a grouped utterance', async () => {
+  const loaded = await loadPlaybackManager([]);
+  const { manager } = loaded;
+  const first = 'The first sentence.';
+  const second = 'The second sentence is longer.';
+  manager.queue = [{ index: 0, text: first }, { index: 1, text: second }];
+  manager.currentIndex = 0;
+  manager.playbackState = 'PLAYING';
+  manager.wordEventsUsable = true;
+
+  const secondStart = first.length + 1;
+  const batch = {
+    firstIndex: 0,
+    offsets: [0, secondStart],
+    spokenLengths: [first.length, second.length],
+    spokenTexts: [first, second],
+    text: `${first} ${second}`,
+    resumeOffset: 0,
+    sawWords: false,
+    currentSentence: 0,
+    requestedAt: Date.now(),
+    firstBoundaryDelay: null,
+    firstBoundaryTime: null
+  };
+
+  manager.handleTtsEvent({
+    type: 'word',
+    charIndex: secondStart + 4,
+    length: 6
+  }, batch);
+
+  assert.equal(manager.currentIndex, 1, 'the boundary should move ownership to sentence two');
+  const sentenceChange = loaded.runtimeMessages().find(message => message.action === 'SENTENCE_CHANGED');
+  assert.equal(sentenceChange?.index, 1);
+  const wordEvent = loaded.runtimeMessages().find(message =>
+    message.action === 'TTS_EVENT' && message.event?.type === 'word'
+  );
+  assert.equal(wordEvent?.index, 1);
+  assert.equal(wordEvent?.event.charIndex, 4, 'the UI receives an offset relative to sentence two');
+  assert.equal(wordEvent?.event.length, 6);
+});
+
+test('native word offsets preserve the full-source resume position', async () => {
+  const loaded = await loadPlaybackManager([]);
+  const { manager } = loaded;
+  const spokenRemainder = 'remaining words continue from here';
+  const resumeOffset = 17;
+  manager.queue = [{ index: 0, text: `A longer source sentence: ${spokenRemainder}` }];
+  manager.currentIndex = 0;
+  manager.playbackState = 'PLAYING';
+  manager.wordEventsUsable = true;
+
+  const batch = {
+    firstIndex: 0,
+    offsets: [0],
+    spokenLengths: [spokenRemainder.length],
+    spokenTexts: [spokenRemainder],
+    text: spokenRemainder,
+    resumeOffset,
+    sawWords: false,
+    currentSentence: 0,
+    requestedAt: Date.now(),
+    firstBoundaryDelay: null,
+    firstBoundaryTime: null
+  };
+
+  manager.handleTtsEvent({ type: 'word', charIndex: 5, length: 5 }, batch);
+
+  assert.equal(manager.lastWordCharIndex, resumeOffset + 5);
+  const wordEvent = loaded.runtimeMessages().find(message =>
+    message.action === 'TTS_EVENT' && message.event?.type === 'word'
+  );
+  assert.equal(wordEvent?.event.charIndex, 5);
+  assert.equal(wordEvent?.resumeOffset, 0, 'content script applies the offset announced by SENTENCE_CHANGED');
 });
