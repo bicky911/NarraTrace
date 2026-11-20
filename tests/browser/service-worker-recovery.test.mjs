@@ -11,28 +11,6 @@ const TEST_VOICE = 'NarraTrace Test Voice';
 const FIRST_SENTENCE = 'First sentence survives a worker restart.';
 const SECOND_SENTENCE = 'Second sentence must be reached after recovery.';
 
-function extensionEntries(extensions) {
-  const toRecord = ([id, extension]) => ({
-    id: extension.id || id,
-    name: extension.name,
-    version: extension.version,
-    path: extension.path
-  });
-  if (extensions instanceof Map) return [...extensions.entries()].map(toRecord);
-  if (Array.isArray(extensions)) {
-    return extensions.map((extension) => ({
-      id: extension.id,
-      name: extension.name,
-      version: extension.version,
-      path: extension.path
-    }));
-  }
-  if (extensions && typeof extensions.entries === 'function') {
-    return [...extensions.entries()].map(toRecord);
-  }
-  throw new Error('Puppeteer did not return an enumerable extension collection.');
-}
-
 async function waitForNarraTraceWorker(browser, extensionId, previousTarget = null) {
   return browser.waitForTarget((target) =>
     target.type() === 'service_worker' &&
@@ -106,7 +84,7 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
       headless: true,
       pipe: true,
       timeout: 20000,
-      enableExtensions: [REPOSITORY_ROOT, ENGINE_DIR],
+      enableExtensions: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
   } catch (error) {
@@ -125,12 +103,14 @@ test('playback advances after the NarraTrace MV3 worker is forcibly terminated m
   });
 
   console.log('[browser-test] Chromium launched with NarraTrace and the fixture TTS engine.');
-  const extensions = extensionEntries(await browser.extensions());
-  console.log('[browser-test] Installed extensions:', extensions.map((extension) =>
-    `${extension.name || '(unnamed)'} (${extension.id})`
+  const narraTraceId = await browser.installExtension(REPOSITORY_ROOT);
+  const testEngineId = await browser.installExtension(ENGINE_DIR);
+  const extensions = await browser.extensions();
+  const narraTrace = extensions.get(narraTraceId);
+  const testEngine = extensions.get(testEngineId);
+  console.log('[browser-test] Installed extensions:', [...extensions.values()].map((extension) =>
+    `${extension.name} (${extension.id})`
   ).join(', '));
-  const narraTrace = extensions.find((extension) => extension.name?.includes('NarraTrace — Narrates'));
-  const testEngine = extensions.find((extension) => extension.name === 'NarraTrace Deterministic Test TTS');
   assert.ok(narraTrace?.id, 'NarraTrace extension should be installed');
   assert.ok(testEngine?.id, 'deterministic TTS engine should be installed');
   console.log(`[browser-test] Extensions ready: NarraTrace=${narraTrace.id}, test-engine=${testEngine.id}.`);
