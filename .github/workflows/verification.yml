@@ -50,6 +50,6 @@ jobs:
         with:
           node-version: "22"
       - name: Install pinned browser-test dependency
-        run: npm install --prefix tests/browser --no-save --no-package-lock puppeteer@24.8.1
+        run: npm install --prefix tests/browser --no-save --no-package-lock puppeteer@25.17.0
       - name: Run bounded Chrome service-worker recovery test
         run: timeout --signal=TERM --kill-after=8s 75s node --test tests/browser/service-worker-recovery.test.mjs
