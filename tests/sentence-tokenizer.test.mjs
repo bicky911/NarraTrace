@@ -75,7 +75,7 @@ test('oversized chunk offsets point back to original sentence text', () => {
 });
 
 test('returns an empty queue for blank and non-string inputs', () => {
-  assert.deepEqual(tokenizer.splitIntoSentences('   \n\t '), []);
-  assert.deepEqual(tokenizer.splitIntoSentences(null), []);
-  assert.deepEqual(tokenizer.splitIntoChunks(42), []);
+  assert.equal(tokenizer.splitIntoSentences('   \n\t ').length, 0);
+  assert.equal(tokenizer.splitIntoSentences(null).length, 0);
+  assert.equal(tokenizer.splitIntoChunks(42).length, 0);
 });
