@@ -495,11 +495,14 @@ class PlaybackManager {
     if (this.playbackState !== PlaybackState.PLAYING) return;
     if (this.queue.length === 0) return;
 
+    const runId = this.playbackRunId;
+
     // Hold the keep-alive heartbeat off while we recover, so it cannot start a
     // second recovery chain on top of this one during the awaits below.
     this.isSwitchingSentence = true;
 
     const speaking = await isSpeaking();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
     if (!speaking) {
       console.log('[PlaybackManager] Recovering interrupted playback at sentence #', this.currentIndex + 1);
       this.isSwitchingSentence = false;
@@ -509,7 +512,7 @@ class PlaybackManager {
 
     console.warn('[PlaybackManager] Worker restarted mid-utterance — waiting for it to finish.');
     const wentIdle = await this.waitForSpeechIdle(10000);
-    if (this.playbackState !== PlaybackState.PLAYING) return;
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
     if (wentIdle) {
       // The orphaned utterance completed; its event was lost, so advance here.
       this.currentIndex++;
@@ -524,7 +527,7 @@ class PlaybackManager {
     }
     await this.saveToSession();
     this.isSwitchingSentence = false;
-    this.speakCurrentSentence(this.playbackRunId);
+    this.speakCurrentSentence(runId);
   }
 
   /**
@@ -1626,14 +1629,18 @@ class PlaybackManager {
       ? spoken
       : 0;
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
     this.isSwitchingSentence = true;
     this.playbackState = PlaybackState.PAUSED;
     this.awaitingSpeech = false;
     this.stopEstimator();
     await stopSpeechAndWait();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PAUSED) return false;
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PAUSED) return false;
     this.broadcast('PLAYBACK_PAUSED');
+    return true;
   }
 
   /**
@@ -1644,27 +1651,34 @@ class PlaybackManager {
       return;
     }
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
     this.playbackState = PlaybackState.PLAYING;
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return false;
     this.broadcast('PLAYBACK_RESUMED');
     const resumeFrom = this.resumeOffset || 0;
-    this.speakCurrentSentence(this.playbackRunId, resumeFrom);
+    this.speakCurrentSentence(runId, resumeFrom);
+    return true;
   }
 
   /**
    * Stop playback and reset to beginning.
    */
   async stop() {
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
     this.isSwitchingSentence = true;
     this.playbackState = PlaybackState.STOPPED;
     this.awaitingSpeech = false;
     this.stopEstimator();
     await stopSpeechAndWait();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.STOPPED) return false;
     this.currentIndex = 0;
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.STOPPED) return false;
     this.broadcast('PLAYBACK_STOPPED');
+    return true;
   }
 
   /**
@@ -1673,18 +1687,20 @@ class PlaybackManager {
   async skipForward() {
     if (this.queue.length === 0) return;
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
     this.isSwitchingSentence = true;
-    await stopSpeechAndWait();
-
     if (this.currentIndex < this.queue.length - 1) {
       this.currentIndex++;
     }
+    await stopSpeechAndWait();
+    if (runId !== this.playbackRunId) return false;
 
     await this.saveToSession();
+    if (runId !== this.playbackRunId) return false;
 
     if (this.playbackState === PlaybackState.PLAYING) {
-      this.speakCurrentSentence(this.playbackRunId);
+      this.speakCurrentSentence(runId);
     } else {
       this.broadcast('SENTENCE_CHANGED', {
         index: this.currentIndex,
@@ -1700,18 +1716,20 @@ class PlaybackManager {
   async skipBackward() {
     if (this.queue.length === 0) return;
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
     this.isSwitchingSentence = true;
-    await stopSpeechAndWait();
-
     if (this.currentIndex > 0) {
       this.currentIndex--;
     }
+    await stopSpeechAndWait();
+    if (runId !== this.playbackRunId) return false;
 
     await this.saveToSession();
+    if (runId !== this.playbackRunId) return false;
 
     if (this.playbackState === PlaybackState.PLAYING) {
-      this.speakCurrentSentence(this.playbackRunId);
+      this.speakCurrentSentence(runId);
     } else {
       this.broadcast('SENTENCE_CHANGED', {
         index: this.currentIndex,
@@ -1727,16 +1745,20 @@ class PlaybackManager {
   async jumpToIndex(index) {
     if (this.queue.length === 0) return;
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
     this.isSwitchingSentence = true;
-    await stopSpeechAndWait();
-
     const targetIndex = Math.max(0, Math.min(index, this.queue.length - 1));
     this.currentIndex = targetIndex;
+    await stopSpeechAndWait();
+    if (runId !== this.playbackRunId) return false;
+
     this.playbackState = PlaybackState.PLAYING;
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return false;
 
-    this.speakCurrentSentence(this.playbackRunId);
+    this.speakCurrentSentence(runId);
+    return true;
   }
 
   /**

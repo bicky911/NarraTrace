@@ -14,6 +14,7 @@ function deferred() {
 }
 
 async function loadPlaybackManager(stopGates) {
+  let safeSpeakCalls = 0;
   const source = await readFile(new URL('../playback-manager.js', import.meta.url), 'utf8');
 
   // Run the real playback-manager source in an isolated VM, replacing only its
@@ -52,7 +53,10 @@ async function loadPlaybackManager(stopGates) {
     console: { log() {}, warn() {}, error() {} },
     setInterval: () => 1,
     clearInterval() {},
-    safeSpeak: () => new Promise(() => {}),
+    safeSpeak: () => {
+      safeSpeakCalls++;
+      return new Promise(() => {});
+    },
     stopSpeech: async () => undefined,
     stopSpeechAndWait: () => {
       const next = stopGates.shift();
@@ -67,13 +71,16 @@ async function loadPlaybackManager(stopGates) {
   };
 
   vm.runInNewContext(executable, context, { filename: 'playback-manager.js' });
-  return context.__playbackManager;
+  return {
+    manager: context.__playbackManager,
+    safeSpeakCallCount: () => safeSpeakCalls
+  };
 }
 
 test('a superseded start cannot overwrite the newer queue', async () => {
   const olderStop = deferred();
   const newerStop = deferred();
-  const manager = await loadPlaybackManager([olderStop, newerStop]);
+  const { manager } = await loadPlaybackManager([olderStop, newerStop]);
 
   // Both commands start before either stop request completes.
   const olderStart = manager.start(['older request'], 0, 101);
@@ -100,4 +107,36 @@ test('a superseded start cannot overwrite the newer queue', async () => {
     'the older start must not replace the active queue'
   );
   assert.equal(manager.tabId, 202);
+});
+
+
+test('rapid next commands are accumulated but start only one replacement utterance', async () => {
+  const firstStop = deferred();
+  const secondStop = deferred();
+  const loaded = await loadPlaybackManager([firstStop, secondStop]);
+  const { manager } = loaded;
+
+  manager.queue = [
+    { index: 0, text: 'First sentence.' },
+    { index: 1, text: 'Second sentence.' },
+    { index: 2, text: 'Third sentence.' }
+  ];
+  manager.currentIndex = 0;
+  manager.tabId = 303;
+  manager.playbackState = 'PLAYING';
+
+  // The two clicks represent two Next commands. The second stop resolves
+  // first to reproduce reversed async completion.
+  const firstNext = manager.skipForward();
+  const secondNext = manager.skipForward();
+
+  secondStop.resolve(true);
+  await secondNext;
+  assert.equal(manager.currentIndex, 2, 'both Next inputs should be retained');
+  assert.equal(loaded.safeSpeakCallCount(), 1, 'only the latest command should start speech');
+
+  firstStop.resolve(true);
+  await firstNext;
+  assert.equal(manager.currentIndex, 2);
+  assert.equal(loaded.safeSpeakCallCount(), 1, 'the stale command must not start a duplicate utterance');
 });

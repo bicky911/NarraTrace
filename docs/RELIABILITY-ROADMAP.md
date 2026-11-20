@@ -11,9 +11,9 @@ Establish a trustworthy quality baseline before adding features or performing ri
 - [ ] Record baseline results for the current branch and main.
 
 ## Stage 2: Playback reliability
-- [x] Guard queue-start continuations against superseded playback runs.
-- [x] Add a deterministic regression test for overlapping start requests using mocked Chrome/TTS APIs.
-- [ ] Extend race coverage to overlapping pause/stop/skip and option changes.
+- [x] Guard asynchronous start, pause, resume, stop, skip, jump, and worker-recovery continuations against superseded playback runs.
+- [x] Add deterministic mocked Chrome/TTS regression tests for overlapping starts and rapid consecutive skips.
+- [ ] Extend race coverage to rate, volume, pitch, and voice changes.
 - [ ] Define the remaining explicit playback state-transition invariants.
 - [ ] Test rapid play/pause/stop/next/previous and tab-switching sequences.
 - [ ] Verify exactly-once sentence advancement on completion, timeout, and errors.
