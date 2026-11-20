@@ -929,11 +929,69 @@
     });
   }
 
+  // Page zoom and display-density changes update devicePixelRatio. A
+  // resolution media query is re-armed after each change so zoom/display
+  // changes are event-driven instead of waking every 1.2 s while idle.
+  let _devicePixelRatioMedia = null;
+  let _devicePixelRatioChangeHandler = null;
+
+  function stopDevicePixelRatioWatch() {
+    const media = _devicePixelRatioMedia;
+    const handler = _devicePixelRatioChangeHandler;
+    if (media && handler) {
+      if (typeof media.removeEventListener === 'function') {
+        media.removeEventListener('change', handler);
+      } else if (typeof media.removeListener === 'function') {
+        media.removeListener(handler);
+      }
+    }
+    _devicePixelRatioMedia = null;
+    _devicePixelRatioChangeHandler = null;
+  }
+
+  function watchDevicePixelRatio() {
+    stopDevicePixelRatioWatch();
+    if (typeof window.matchMedia !== 'function') return false;
+
+    const dpr = (typeof window.devicePixelRatio === 'number' && window.devicePixelRatio > 0)
+      ? window.devicePixelRatio
+      : 1;
+
+    try {
+      const media = window.matchMedia(`(resolution: ${dpr}dppx)`);
+      const handler = () => {
+        // The old query is now stale; observe the current DPR before updating.
+        watchDevicePixelRatio();
+        updateZoomCompensation();
+      };
+      if (typeof media.addEventListener === 'function') {
+        media.addEventListener('change', handler);
+      } else if (typeof media.addListener === 'function') {
+        // Legacy MediaQueryList support for older embedded Chromium versions.
+        media.addListener(handler);
+      } else {
+        return false;
+      }
+      _devicePixelRatioMedia = media;
+      _devicePixelRatioChangeHandler = handler;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   window.addEventListener('resize', updateZoomCompensation);
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', updateZoomCompensation);
   }
-  setInterval(updateZoomCompensation, 1200);
+  watchDevicePixelRatio();
+
+  // A page restored from the back-forward cache needs its resolution watcher
+  // re-armed because pagehide disconnects the previous MediaQueryList listener.
+  window.addEventListener('pageshow', () => {
+    watchDevicePixelRatio();
+    updateZoomCompensation();
+  }, { passive: true });
 
   // -----------------------------------------------------------------
   // 4. Create Host Element & Shadow DOM Player UI
@@ -5302,6 +5360,7 @@
   window.addEventListener('pagehide', () => {
     stopHeartbeat();
     stopMutationObserver();
+    stopDevicePixelRatioWatch();
     clearHighlight();
     hideHoverPlayBtn();
     hideSelectionTooltip();

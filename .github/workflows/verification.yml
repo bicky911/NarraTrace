@@ -36,6 +36,8 @@ jobs:
         run: node --test tests/playback-manager.test.mjs
       - name: Run sentence tokenizer regression tests
         run: node --test tests/sentence-tokenizer.test.mjs
+      - name: Run resource lifecycle regression tests
+        run: node --test tests/resource-lifecycle.test.mjs
       - name: Run existing Python verification harness
         run: python test-harness.py
 

@@ -44,10 +44,13 @@ Establish a trustworthy quality baseline before adding features or performing ri
 - [ ] Add malformed and inaccessible DOM regression cases.
 
 ## Stage 5: Performance and maintainability
+- [x] Remove always-on 1.2 s zoom-compensation polling; react to viewport and resolution changes instead.
+- [x] Re-arm the device-pixel-ratio watcher on BFCache restore and disconnect it on pagehide.
+- [x] Add resource-lifecycle regression tests for DPR watcher registration, re-arming, cleanup, and legacy listener support.
 - [ ] Profile idle CPU, playback CPU, memory, and large-page behavior.
 - [ ] Establish performance budgets before optimizing.
 - [ ] Modularize only behind test coverage; avoid a rewrite.
-- [ ] Check resource cleanup and event-listener lifecycle.
+- [ ] Check remaining event-listener and timer cleanup paths.
 
 ## Stage 6: Release quality
 - [ ] Accessibility test keyboard navigation, screen readers, reduced motion, and focus restoration.
