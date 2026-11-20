@@ -18,7 +18,7 @@ async function loadPlaybackManager(stopGates) {
 
   // Run the real playback-manager source in an isolated VM, replacing only its
   // speech-engine import/export boundary with deterministic Chrome/TTS mocks.
-  const importPattern = /^import\\s*\\{[\\s\\S]*?\\}\\s*from\\s*['"]\\.\\/speech-engine\\.js['"];\\s*/m;
+  const importPattern = /^import\s*\{[\s\S]*?\}\s*from\s*['"]\.\/speech-engine\.js['"];\s*/m;
   assert.match(source, importPattern, 'expected one speech-engine import');
   let executable = source.replace(importPattern, '');
   executable = executable.replace('export const PlaybackState =', 'const PlaybackState =');
