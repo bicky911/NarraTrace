@@ -160,7 +160,9 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   // Tab and Shift+Tab must remain inside the reader dialog.
   const first = dialog.focusableIds[0];
   const last = dialog.focusableIds[dialog.focusableIds.length - 1];
-  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.down('Shift');
+  await page.keyboard.press('Tab');
+  await page.keyboard.up('Shift');
   await page.waitForFunction(expected => {
     const root = document.getElementById('read-aloud-player-host').shadowRoot;
     return root.activeElement?.id === expected;
