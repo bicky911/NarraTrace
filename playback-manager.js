@@ -521,11 +521,19 @@ class PlaybackManager {
         this.playbackState = PlaybackState.STOPPED;
         this.currentIndex = 0;
         await this.saveToSession();
+        if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.STOPPED) return;
         this.broadcast('PLAYBACK_COMPLETED');
         return;
       }
+    } else {
+      // Do not start a replacement utterance over an orphan that is still
+      // speaking. Stop it first; the current sentence is then replayed cleanly.
+      console.warn('[PlaybackManager] Orphaned utterance did not become idle; stopping it before replay.');
+      await stopSpeechAndWait();
+      if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
     }
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
     this.isSwitchingSentence = false;
     this.speakCurrentSentence(runId);
   }

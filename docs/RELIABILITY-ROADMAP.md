@@ -12,7 +12,8 @@ Establish a trustworthy quality baseline before adding features or performing ri
 
 ## Stage 2: Playback reliability
 - [x] Guard asynchronous start, pause, resume, stop, skip, jump, and worker-recovery continuations against superseded playback runs.
-- [x] Add deterministic mocked Chrome/TTS regression tests for overlapping starts and rapid consecutive skips.
+- [x] Add deterministic mocked Chrome/TTS regression tests for overlapping starts, rapid skips, pause/resume, and worker-recovery timeout.
+- [x] Stop a timed-out orphaned utterance before worker-recovery replay to prevent overlapping speech.
 - [ ] Extend race coverage to rate, volume, pitch, and voice changes.
 - [ ] Define the remaining explicit playback state-transition invariants.
 - [ ] Test rapid play/pause/stop/next/previous and tab-switching sequences.

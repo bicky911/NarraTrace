@@ -13,8 +13,10 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-async function loadPlaybackManager(stopGates) {
+async function loadPlaybackManager(stopGates, options = {}) {
   let safeSpeakCalls = 0;
+  let stopSpeechAndWaitCalls = 0;
+  const runtimeMessages = [];
   const source = await readFile(new URL('../playback-manager.js', import.meta.url), 'utf8');
 
   // Run the real playback-manager source in an isolated VM, replacing only its
@@ -44,7 +46,10 @@ async function loadPlaybackManager(stopGates) {
       sendMessage: () => Promise.resolve(undefined)
     },
     runtime: {
-      sendMessage: () => Promise.resolve(undefined)
+      sendMessage: message => {
+        runtimeMessages.push(message);
+        return Promise.resolve(undefined);
+      }
     }
   };
 
@@ -59,12 +64,13 @@ async function loadPlaybackManager(stopGates) {
     },
     stopSpeech: async () => undefined,
     stopSpeechAndWait: () => {
+      stopSpeechAndWaitCalls++;
       const next = stopGates.shift();
       return next ? next.promise : Promise.resolve(true);
     },
     pauseSpeech: async () => undefined,
     resumeSpeech: async () => undefined,
-    isSpeaking: async () => false,
+    isSpeaking: options.isSpeaking || (async () => false),
     detectAndSelectVoice: async () => ({ allVoices: [], selectedVoice: null }),
     detectScript: () => 'en',
     findBestVoiceForLang: () => null
@@ -73,7 +79,9 @@ async function loadPlaybackManager(stopGates) {
   vm.runInNewContext(executable, context, { filename: 'playback-manager.js' });
   return {
     manager: context.__playbackManager,
-    safeSpeakCallCount: () => safeSpeakCalls
+    safeSpeakCallCount: () => safeSpeakCalls,
+    stopSpeechAndWaitCallCount: () => stopSpeechAndWaitCalls,
+    runtimeMessages: () => runtimeMessages
   };
 }
 
@@ -139,4 +147,44 @@ test('rapid next commands are accumulated but start only one replacement utteran
   await firstNext;
   assert.equal(manager.currentIndex, 2);
   assert.equal(loaded.safeSpeakCallCount(), 1, 'the stale command must not start a duplicate utterance');
+});
+
+
+test('a delayed pause cannot overwrite a later resume', async () => {
+  const pauseStop = deferred();
+  const loaded = await loadPlaybackManager([pauseStop]);
+  const { manager } = loaded;
+  manager.queue = [{ index: 0, text: 'Resume this sentence.' }];
+  manager.currentIndex = 0;
+  manager.tabId = 404;
+  manager.playbackState = 'PLAYING';
+
+  const pausing = manager.pause();
+  assert.equal(manager.playbackState, 'PAUSED');
+  assert.equal(await manager.resume(), true);
+  assert.equal(manager.playbackState, 'PLAYING');
+  assert.equal(loaded.safeSpeakCallCount(), 1);
+
+  pauseStop.resolve(true);
+  assert.equal(await pausing, false, 'the old pause must be discarded');
+  assert.equal(manager.playbackState, 'PLAYING');
+  assert.equal(loaded.runtimeMessages().some(message => message.action === 'PLAYBACK_PAUSED'), false);
+});
+
+test('worker recovery stops a timed-out orphan before replaying', async () => {
+  const loaded = await loadPlaybackManager([], { isSpeaking: async () => true });
+  const { manager } = loaded;
+  manager.queue = [{ index: 0, text: 'Recover this sentence.' }];
+  manager.currentIndex = 0;
+  manager.tabId = 505;
+  manager.playbackState = 'PLAYING';
+  manager.waitForSpeechIdle = async () => false;
+
+  const replayedRuns = [];
+  manager.speakCurrentSentence = runId => replayedRuns.push(runId);
+
+  await manager.recoverAfterWorkerRestart();
+
+  assert.equal(loaded.stopSpeechAndWaitCallCount(), 1, 'the orphan must be stopped before a new utterance is queued');
+  assert.deepEqual(replayedRuns, [manager.playbackRunId]);
 });
