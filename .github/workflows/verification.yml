@@ -1,11 +1,17 @@
 name: NarraTrace Verification
 
 on:
+  # Feature/reliability branches are verified through their pull requests.
+  # Only main pushes need a separate push-triggered run.
   push:
-    branches: ["main", "reliability/**"]
+    branches: ["main"]
   pull_request:
     branches: ["main"]
   workflow_dispatch:
+
+concurrency:
+  group: narratrace-verification-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
