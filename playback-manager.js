@@ -608,13 +608,20 @@ class PlaybackManager {
    *
    * A voice the user picked themselves is never touched.
    */
-  async refreshVoice() {
-    if (this.voicePinned) return null;
+  async refreshVoice(expectedRunId = null) {
+    if (this.voicePinned ||
+        (expectedRunId !== null && expectedRunId !== this.playbackRunId)) return null;
 
     const report = await detectAndSelectVoice({
       voiceName: this.options.voiceName,
       pinned: false
     });
+
+    // A manual voice choice or newer start can supersede automatic detection
+    // while the engine registry is being queried.
+    if (this.voicePinned ||
+        (expectedRunId !== null && expectedRunId !== this.playbackRunId)) return null;
+
     this.allVoices = report.allVoices || [];
     this.engineLabel = report.engineLabel;
     this.engineBadge = report.engineBadge;
@@ -709,11 +716,17 @@ class PlaybackManager {
       this.playbackState === PlaybackState.PAUSED;
 
     // Increment run ID to invalidate any prior speaking loop immediately
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
     this.isSwitchingSentence = true;
     this.awaitingSpeech = false;
     this.consecutiveErrors = 0;
     await stopSpeechAndWait();
+
+    // A newer playback command may have arrived while the browser was
+    // stopping the previous utterance. Never let this stale request install
+    // its queue after a newer run has taken ownership.
+    if (runId !== this.playbackRunId) return false;
 
     this.queue = queue;
     const safeStartIndex = typeof startIndex === 'number' && Number.isFinite(startIndex)
@@ -755,6 +768,7 @@ class PlaybackManager {
         voiceName: this.options.voiceName,
         pinned: this.voicePinned
       });
+      if (runId !== this.playbackRunId) return false;
       if (voiceReport.selectedVoice) {
         this.options.voiceName = voiceReport.selectedVoice.voiceName;
         this.options.extensionId = voiceReport.selectedVoice.extensionId || null;
@@ -769,14 +783,16 @@ class PlaybackManager {
       // Re-resolve right before the first utterance — this is the moment the
       // voice actually matters.
       try {
-        await this.refreshVoice();
+        await this.refreshVoice(runId);
+        if (runId !== this.playbackRunId) return false;
       } catch (err) {
         console.warn('[PlaybackManager] Voice refresh failed:', err && err.message);
       }
     }
 
     await this.saveToSession();
-    this.speakCurrentSentence(this.playbackRunId);
+    if (runId !== this.playbackRunId) return false;
+    this.speakCurrentSentence(runId);
     return true;
   }
 
