@@ -108,14 +108,24 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
   assert.equal(deniedSessionInspection?.success, false);
   assert.match(deniedSessionInspection?.error || '', /restricted to the bundled diagnostics page/i);
 
-  // Wait for the deterministic Chrome TTS provider to register, then select
-  // the exact voice that the diagnostic will validate against getVoices().
+  // Chrome may install a ttsEngine provider after the diagnostics page's
+  // initial GET_VOICES request. Poll the background voice report first, then
+  // reload the page so its normal UI hydration sees the registered provider.
+  await diagnostics.waitForFunction(async (voiceName, extensionId) => {
+    const response = await chrome.runtime.sendMessage({ action: 'GET_VOICES' });
+    const engines = response?.success ? (response.data?.engines || []) : [];
+    return engines.some(engine => (engine.voices || []).some(voice =>
+      voice.voiceName === voiceName && voice.extensionId === extensionId
+    ));
+  }, { timeout: 20000, polling: 250 }, TEST_VOICE, testEngineId);
+  await diagnostics.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
+  await diagnostics.waitForSelector('#btn-run-engine-diagnostic', { timeout: 10000 });
   await diagnostics.waitForFunction((voiceName, extensionId) => {
     const select = document.getElementById('voice-select');
     return Array.from(select?.options || []).some(option =>
       option.value === voiceName && option.dataset.extensionId === extensionId
     );
-  }, { timeout: 20000, polling: 100 }, TEST_VOICE, testEngineId);
+  }, { timeout: 10000, polling: 100 }, TEST_VOICE, testEngineId);
   await diagnostics.select('#voice-select', TEST_VOICE);
   console.log('[diagnostics-test] Test voice selected');
 
