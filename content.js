@@ -4468,21 +4468,26 @@
 
   function updatePlayState(state) {
     currentPlaybackState = state;
+    const playActionLabel = state === 'PLAYING'
+      ? 'Pause reading'
+      : state === 'PAUSED' ? 'Resume reading' : 'Play reading';
+
+    playBtn.title = playActionLabel;
+    playBtn.setAttribute('aria-label', playActionLabel);
+    if (rctrlPlayBtn) {
+      rctrlPlayBtn.title = state === 'PLAYING' ? 'Pause (Alt+P)' : state === 'PAUSED' ? 'Resume (Alt+P)' : 'Play (Alt+P)';
+      rctrlPlayBtn.setAttribute('aria-label', playActionLabel);
+    }
+
     if (state === 'PLAYING') {
       playIcon.innerHTML = SVG_PAUSE;
-      playBtn.title = 'Pause';
-      playBtn.setAttribute('aria-label', 'Pause reading');
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PAUSE;
-      if (rctrlPlayBtn) rctrlPlayBtn.title = 'Pause (Alt+P)';
       container.classList.add('is-playing');
       startMutationObserver();
       startHeartbeat();
     } else {
       playIcon.innerHTML = SVG_PLAY;
-      playBtn.title = 'Play';
-      playBtn.setAttribute('aria-label', 'Play or pause reading');
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PLAY;
-      if (rctrlPlayBtn) rctrlPlayBtn.title = 'Play (Alt+P)';
       container.classList.remove('is-playing');
       stopHeartbeat();
       if (state === 'STOPPED' || state === 'IDLE') {
