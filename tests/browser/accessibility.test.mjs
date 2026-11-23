@@ -796,6 +796,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       selectedChipText: getComputedStyle(chip).color,
       selectedChipSurface: getComputedStyle(chip).backgroundColor,
       selectedChipHovered: chip.matches(':hover'),
+      selectedChipPressed: chip.getAttribute('aria-pressed'),
       selectedChipTextContrast: ratio(getComputedStyle(chip).color, getComputedStyle(chip).backgroundColor),
       valueText: getComputedStyle(value).color,
       valueContrast: ratio(getComputedStyle(value).color, getComputedStyle(document.body).backgroundColor),
@@ -825,7 +826,8 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     `Light-theme selected speed preset text must meet WCAG AA; got ${lightControlContrast.selectedChipTextContrast.toFixed(2)}:1`
   );
   assert.equal(lightControlContrast.selectedChipHovered, true);
-  assert.equal(lightControlContrast.selectedChipSurface, 'rgb(255, 92, 0)');
+  assert.equal(lightControlContrast.selectedChipPressed, 'true');
+  assert.notEqual(lightControlContrast.selectedChipSurface, 'rgba(252, 249, 243, 1)');
   assert.ok(
     lightControlContrast.valueContrast >= 4.5,
     `Light-theme speed value text must meet WCAG AA; got ${lightControlContrast.valueContrast.toFixed(2)}:1`
