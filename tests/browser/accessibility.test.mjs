@@ -126,14 +126,66 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       expanded: root.getElementById('ra-settings').getAttribute('aria-expanded'),
       hidden: panel.getAttribute('aria-hidden'),
       inert: panel.inert,
-      activeId: root.activeElement?.id
+      activeId: root.activeElement?.id,
+      role: panel.getAttribute('role'),
+      labelledBy: panel.getAttribute('aria-labelledby'),
+      titleText: root.getElementById('ra-settings-title')?.textContent,
+      voiceStatusRole: root.getElementById('ra-voice-status')?.getAttribute('role'),
+      voiceStatusLive: root.getElementById('ra-voice-status')?.getAttribute('aria-live'),
+      statusToastRole: root.getElementById('ra-status-toast')?.getAttribute('role'),
+      statusToastLive: root.getElementById('ra-status-toast')?.getAttribute('aria-live'),
+      resumeGroupRole: root.getElementById('ra-resume-toast')?.getAttribute('role'),
+      resumeTextRole: root.getElementById('ra-resume-text')?.getAttribute('role'),
+      resumeTextLive: root.getElementById('ra-resume-text')?.getAttribute('aria-live'),
+      resumeCloseName: root.getElementById('ra-resume-close')?.getAttribute('aria-label'),
+      themeGroup: root.querySelector('.theme-row[aria-label="Player theme"]')?.getAttribute('role'),
+      themeGroupName: root.querySelector('.theme-row[aria-label="Player theme"]')?.getAttribute('aria-label'),
+      themePressed: Array.from(root.querySelectorAll('.theme-btn[data-theme]'), button => button.getAttribute('aria-pressed')),
+      highlightGroup: root.querySelector('.theme-row[aria-label="Word highlight color"]')?.getAttribute('role'),
+      highlightGroupName: root.querySelector('.theme-row[aria-label="Word highlight color"]')?.getAttribute('aria-label'),
+      highlightPressed: Array.from(root.querySelectorAll('.color-swatch[data-color]'), button => button.getAttribute('aria-pressed'))
     };
   });
   assert.deepEqual(settingsOpen, {
     expanded: 'true',
     hidden: 'false',
     inert: false,
-    activeId: 'ra-settings-close'
+    activeId: 'ra-settings-close',
+    role: 'dialog',
+    labelledBy: 'ra-settings-title',
+    titleText: 'SETTINGS',
+    voiceStatusRole: 'status',
+    voiceStatusLive: 'polite',
+    statusToastRole: 'status',
+    statusToastLive: 'polite',
+    resumeGroupRole: 'group',
+    resumeTextRole: 'status',
+    resumeTextLive: 'polite',
+    resumeCloseName: 'Dismiss resume prompt',
+    themeGroup: 'group',
+    themeGroupName: 'Player theme',
+    themePressed: ['true', 'false'],
+    highlightGroup: 'group',
+    highlightGroupName: 'Word highlight color',
+    highlightPressed: ['true', 'false', 'false', 'false']
+  });
+
+  // Selected theme and highlight colors must be exposed as toggle states,
+  // not only as visual CSS classes.
+  await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    root.querySelector('.theme-btn[data-theme="light"]').click();
+    root.querySelector('.color-swatch[data-color="green"]').click();
+  });
+  await page.waitForFunction(() => {
+    const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
+    return root?.querySelector('.theme-btn[data-theme="light"]')?.getAttribute('aria-pressed') === 'true' &&
+      root?.querySelector('.color-swatch[data-color="green"]')?.getAttribute('aria-pressed') === 'true';
+  });
+  await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    root.querySelector('.theme-btn[data-theme="te"]').click();
+    root.querySelector('.color-swatch[data-color="orange"]').click();
   });
 
   // Activate Focus Reader from Settings. The settings popover closes first,
