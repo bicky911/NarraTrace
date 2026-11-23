@@ -46,7 +46,6 @@ export const TTS_ENGINES = [
     priority: 5
   },
   {
-  {
     id: SUPERTONIC_EXTENSION_ID,
     label: 'Supertonic',
     fullLabel: 'Supertonic',
