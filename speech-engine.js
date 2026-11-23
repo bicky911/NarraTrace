@@ -6,15 +6,14 @@
  * 2. Runs exclusively in extension background contexts where chrome.tts is available.
  * 3. Voice selection is ENGINE-AGNOSTIC: any TTS engine extension that registers
  *    voices through chrome.tts can drive NarraTrace. The engines listed in
- *    TTS_ENGINES are only a preference order — Kokoro first, Supertonic second —
- *    plus a sensible default voice each. With graceful fallback to Windows
- *    local/system voices and informative status messages.
+ *    TTS_ENGINES define NarraTrace's maintained provider profiles (Piper first,
+ *    Supertonic second). Other Chrome TTS providers remain discoverable through
+ *    the generic engine path, with fallback to local/system voices.
  * 4. Only passes optional speak() options (voiceName, extensionId, lang) when they contain
  *    non-empty strings to prevent Windows Chrome silent TTS failures.
  */
 
 export const PIPER_EXTENSION_ID = 'ppnfahcipommelgaapjalhooaeeblmeg';
-export const KOKORO_EXTENSION_ID = 'mefecoigjodlohjacogkbbfpnifhfocb';
 export const SUPERTONIC_EXTENSION_ID = 'mdoplmghlkjcnegkdhocjbjcncocbdhk';
 
 /**
@@ -32,13 +31,6 @@ export const SUPERTONIC_EXTENSION_ID = 'mdoplmghlkjcnegkdhocjbjcncocbdhk';
  *             synthesis (<200 ms). Emits start/sentence/end with exact character offsets
  *             and lengths.
  *
- *   Kokoro    28 en-US voices, always advertised. Emits start/sentence/end but
- *             NO word events. Its 'sentence' event carries the exact character
- *             offset of the sentence inside the spoken text. It rebuilds its
- *             ONNX model and its offscreen document for EVERY utterance, which
- *             costs ~10 s per utterance on a CPU-only machine (much less with
- *             WebGPU). Ignores `pitch`.
- *
  *   Supertonic  Advertises its voices only while its host tab is open. Emits
  *             start/sentence/end, no word events. 'sentence' events carry exact
  *             character offsets. Announces the first sentence boundary together
@@ -54,13 +46,6 @@ export const TTS_ENGINES = [
     priority: 5
   },
   {
-    id: KOKORO_EXTENSION_ID,
-    label: 'Kokoro',
-    fullLabel: 'Kokoro (local neural)',
-    badge: 'KOKORO',
-    defaultVoice: 'Kokoro Heart',
-    priority: 10
-  },
   {
     id: SUPERTONIC_EXTENSION_ID,
     label: 'Supertonic',
@@ -159,8 +144,9 @@ export function getAllVoices() {
  * Selection order:
  *   1. A voice the user explicitly picked (preference.pinned) — always wins, so
  *      a deliberately chosen Supertonic voice is never overridden.
- *   2. Otherwise the highest-priority engine that has voices (Kokoro first),
- *      using that engine's default voice.
+ *   2. Otherwise the highest-priority maintained provider profile wins,
+ *      using that engine's default voice. Piper is preferred, then Supertonic;
+ *      other Chrome TTS providers remain available as generic choices.
  *   3. Otherwise an English Windows system voice, then any system voice, then
  *      any voice at all.
  *
@@ -323,9 +309,9 @@ export function safeSpeak(text, options = {}, onEvent = null) {
     // first word is audible, and that preparation must not eat the speaking
     // budget. Measured against the real engines:
     //
-    //   Kokoro    rebuilds its ONNX model per utterance: ~10 s on a CPU-only
-    //             machine, ~24 s the very first time (92 MB model download).
-    //   Supertonic  ~3.2 s of network round-trip before the voice starts.
+    //   Supertonic can announce its first sentence boundary before audible
+    //   playback begins; its provider-specific lead-in is handled by the
+    //   playback synchronizer. Other engines use their observed TTS events.
     //
     // So the speaking budget only starts once the engine has actually
     // produced a boundary; until then a separate, much longer preparation
