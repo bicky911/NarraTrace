@@ -88,6 +88,48 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     timeout: 10000
   });
 
+  // The popup exposes its visual toggle states to assistive technology.
+  await popup.waitForFunction(() => document.body.classList.contains('is-hydrated'));
+  const initialPopupState = await popup.evaluate(() => ({
+    playPressed: document.getElementById('ctrl-play')?.getAttribute('aria-pressed'),
+    speedGroupLabel: document.querySelector('.speed-chips')?.getAttribute('aria-label'),
+    speedPressed: Array.from(document.querySelectorAll('.speed-chips .chip'), button => button.getAttribute('aria-pressed')),
+    themeLabel: document.getElementById('theme-toggle')?.getAttribute('aria-label'),
+    pillPressed: document.getElementById('btn-toggle-pill')?.getAttribute('aria-pressed'),
+    pillLabel: document.getElementById('btn-toggle-pill')?.getAttribute('aria-label')
+  }));
+  assert.deepEqual(initialPopupState, {
+    playPressed: 'false',
+    speedGroupLabel: 'Playback speed presets',
+    speedPressed: ['true', 'false', 'false', 'false'],
+    themeLabel: 'Switch to light theme',
+    pillPressed: 'true',
+    pillLabel: 'Hide floating player'
+  });
+
+  await popup.click('.speed-chips button[data-speed="1.5"]');
+  await popup.waitForFunction(() => document.querySelector('.speed-chips button[data-speed="1.5"]')?.getAttribute('aria-pressed') === 'true');
+  await popup.click('#theme-toggle');
+  await popup.waitForFunction(() => document.getElementById('theme-toggle')?.getAttribute('aria-label') === 'Switch to dark theme');
+  await popup.click('#btn-toggle-pill');
+  await popup.waitForFunction(() => document.getElementById('btn-toggle-pill')?.getAttribute('aria-pressed') === 'false');
+  const toggledPopupState = await popup.evaluate(() => ({
+    speedPressed: document.querySelector('.speed-chips button[data-speed="1.5"]')?.getAttribute('aria-pressed'),
+    themeLabel: document.getElementById('theme-toggle')?.getAttribute('aria-label'),
+    pillPressed: document.getElementById('btn-toggle-pill')?.getAttribute('aria-pressed'),
+    pillLabel: document.getElementById('btn-toggle-pill')?.getAttribute('aria-label')
+  }));
+  assert.deepEqual(toggledPopupState, {
+    speedPressed: 'true',
+    themeLabel: 'Switch to dark theme',
+    pillPressed: 'false',
+    pillLabel: 'Show floating player'
+  });
+  // Restore defaults so the remainder of this integration test is isolated.
+  await popup.click('.speed-chips button[data-speed="1.0"]');
+  await popup.click('#theme-toggle');
+  await popup.click('#btn-toggle-pill');
+
   // Only the bundled diagnostics page may inspect the session or start a
   // diagnostic utterance. The popup must be rejected at the background boundary.
   const deniedDiagnostic = await send(popup, {
