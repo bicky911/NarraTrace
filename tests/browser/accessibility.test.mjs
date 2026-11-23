@@ -223,6 +223,59 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     return Array.from(root.querySelectorAll('.reader-th-btn'), button => button.getAttribute('aria-pressed'));
   });
   assert.deepEqual(selectedThemeState, ['false', 'false', 'true', 'false']);
+
+  // Every reading palette must preserve WCAG AA contrast for body copy and
+  // the active word treatment. The visual system must never trade readability
+  // for an atmospheric color treatment.
+  const paletteContrast = await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    const overlay = root.getElementById('ra-reader-overlay');
+    const body = root.getElementById('ra-reader-body');
+    const sampleSentence = document.createElement('span');
+    sampleSentence.className = 'reader-sentence active-sentence';
+    const sampleWord = document.createElement('span');
+    sampleWord.className = 'reader-word-active';
+    sampleWord.textContent = 'highlight';
+    sampleSentence.appendChild(sampleWord);
+    body.appendChild(sampleSentence);
+
+    const parse = (value) => {
+      const values = value.match(/[\\d.]+/g)?.map(Number) || [];
+      return values.slice(0, 3).map(channel => channel / 255);
+    };
+    const luminance = (color) => {
+      const channels = parse(color).map(value =>
+        value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4)
+      );
+      return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+    };
+    const ratio = (foreground, background) => {
+      const a = luminance(foreground);
+      const b = luminance(background);
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    };
+
+    const measurements = ['cream', 'dark', 'sepia', 'oled'].map(theme => {
+      root.querySelector(`.reader-th-btn[data-rtheme="${theme}"]`).click();
+      const bodyColor = getComputedStyle(body).color;
+      const surfaceColor = getComputedStyle(overlay).backgroundColor;
+      const wordColor = getComputedStyle(sampleWord).color;
+      const wordBackground = getComputedStyle(sampleWord).backgroundColor;
+      return {
+        theme,
+        bodyContrast: ratio(bodyColor, surfaceColor),
+        wordContrast: ratio(wordColor, wordBackground)
+      };
+    });
+
+    sampleSentence.remove();
+    root.querySelector('.reader-th-btn[data-rtheme="cream"]').click();
+    return measurements;
+  });
+  for (const palette of paletteContrast) {
+    assert.ok(palette.bodyContrast >= 4.5, `${palette.theme} body text must meet WCAG AA contrast`);
+    assert.ok(palette.wordContrast >= 4.5, `${palette.theme} highlighted word must meet WCAG AA contrast`);
+  }
   await page.evaluate(() => {
     const root = document.getElementById('read-aloud-player-host').shadowRoot;
     root.querySelector('.reader-th-btn[data-rtheme="cream"]').click();
