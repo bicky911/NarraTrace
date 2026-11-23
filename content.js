@@ -3954,19 +3954,38 @@
     readerOverlay.setAttribute('aria-hidden', 'true');
     const returnFocus = readerReturnFocus;
     readerReturnFocus = null;
-    const fallbackFocus = settingsTriggerBtn || playBtn || readerBtn;
-    const canRestoreFocus = returnFocus &&
-      typeof returnFocus.focus === 'function' &&
-      returnFocus.isConnected &&
-      !returnFocus.closest?.('[inert]');
 
-    if (canRestoreFocus) returnFocus.focus();
-    // A stale or inert opener must not leave keyboard focus on <body> after
-    // the modal reader closes.
-    if (shadow.activeElement !== returnFocus && fallbackFocus &&
-        typeof fallbackFocus.focus === 'function') {
-      fallbackFocus.focus();
+    // The docked player may auto-tuck while Focus Reader is open. In its
+    // beaded state CSS hides the entire pill-body (including the opener), so
+    // calling focus() on a connected button silently does nothing. Reveal the
+    // player before restoring focus; untuck() also cancels a pending tuck.
+    if (returnFocus && container.contains(returnFocus) &&
+        container.classList.contains('beaded')) {
+      untuck();
     }
+
+    const canReceiveFocus = (element) => {
+      if (!element || typeof element.focus !== 'function' ||
+          !element.isConnected || element.closest?.('[inert]') ||
+          element.matches?.(':disabled')) {
+        return false;
+      }
+      const style = window.getComputedStyle(element);
+      return style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        element.getClientRects().length > 0;
+    };
+
+    // Prefer the actual opener, then use visible player controls as a safe
+    // fallback. A connected-but-hidden element is not a valid focus target.
+    const focusTarget = [
+      returnFocus,
+      settingsTriggerBtn,
+      playBtn,
+      readerBtn
+    ].find(canReceiveFocus);
+
+    if (focusTarget) focusTarget.focus({ preventScroll: true });
   }
 
   readerOverlay.addEventListener('keydown', (event) => {
