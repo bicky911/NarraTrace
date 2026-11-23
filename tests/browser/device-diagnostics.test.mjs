@@ -253,6 +253,12 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     );
   }, { timeout: 20000, polling: 100 }, ERROR_TEST_VOICE, errorEngineId);
   await diagnostics.select('#voice-select', ERROR_TEST_VOICE);
+  const selectedErrorVoice = await diagnostics.$eval('#voice-select option:checked', option => ({
+    voiceName: option.value,
+    extensionId: option.dataset.extensionId || null
+  }));
+  assert.equal(selectedErrorVoice.voiceName, ERROR_TEST_VOICE);
+  assert.equal(selectedErrorVoice.extensionId, errorEngineId);
 
   const ERROR_SAMPLE = 'PRIVATE-ERROR-ECHO-SAMPLE-DO-NOT-EXPORT';
   await withTimeout(diagnostics.evaluate((value) => {
@@ -261,6 +267,12 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     element.dispatchEvent(new Event('input', { bubbles: true }));
     document.getElementById('btn-run-engine-diagnostic').click();
   }, ERROR_SAMPLE), 8000, 'Start provider error privacy test');
+
+  await diagnostics.waitForFunction(() =>
+    document.getElementById('btn-stop-engine-diagnostic')?.disabled === false,
+    { timeout: 10000, polling: 100 }
+  );
+  console.log('[diagnostics-test] Error-provider request accepted');
 
   await diagnostics.waitForFunction(() => {
     const run = document.getElementById('btn-run-engine-diagnostic');
