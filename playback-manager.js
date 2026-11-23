@@ -229,8 +229,9 @@ class PlaybackManager {
     // watchdog remainder re-queue. Absolute char index into the FULL sentence.
     this.lastWordCharIndex = 0;
     this.sawWordEvents = false;
-    // False when pronunciation overrides rewrote the sentence: word events
-    // then index the rewritten text and can no longer be mapped reliably.
+    // False when speech-only cleanup, prosody, or pronunciation overrides
+    // change character positions: TTS word offsets then cannot be mapped
+    // reliably back to the original source sentence.
     this.wordEventsUsable = true;
     this.resumeOffset = 0;
     // Service-worker activity and recovery alarm are owned by active playback.
@@ -1553,10 +1554,10 @@ class PlaybackManager {
       this.sawWordEvents = false;
     }
 
-    // Pronunciation overrides rewrite the SPOKEN text only; the queue and
-    // highlight always use the original. When they changed the text, word
-    // events can no longer be mapped onto the original — degrade to
-    // sentence-level highlight for that sentence.
+    // Speech-only cleanup, prosody, and pronunciation overrides may rewrite
+    // the spoken text while the queue and DOM highlight retain the original.
+    // When character positions changed, degrade to sentence-level highlighting
+    // rather than mapping TTS offsets onto the wrong source word.
     this.wordEventsUsable = !batch.pronunciationChanged;
 
     console.log(
