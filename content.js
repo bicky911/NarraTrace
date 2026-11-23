@@ -3544,14 +3544,14 @@
 
       <div class="reader-header-right">
         <!-- Font Size Stepper -->
-        <div class="reader-tool-group">
-          <button class="reader-tool-btn" id="ra-font-dec" title="Decrease font size">A-</button>
+        <div class="reader-tool-group" role="group" aria-label="Reading text size">
+          <button type="button" class="reader-tool-btn" id="ra-font-dec" title="Decrease font size" aria-label="Decrease reading text size">A-</button>
           <span class="reader-tool-val" id="ra-font-size-val">20px</span>
-          <button class="reader-tool-btn" id="ra-font-inc" title="Increase font size">A+</button>
+          <button type="button" class="reader-tool-btn" id="ra-font-inc" title="Increase font size" aria-label="Increase reading text size">A+</button>
         </div>
 
         <!-- Font Family Selector -->
-        <select class="reader-select" id="ra-reader-font" title="Select typography font">
+        <select class="reader-select" id="ra-reader-font" title="Select typography font" aria-label="Reading font">
           <option value="sans">Sans-Serif</option>
           <option value="serif">Serif (Editorial)</option>
           <option value="mono">Monospace</option>
@@ -3559,7 +3559,7 @@
         </select>
 
         <!-- Theme Finish -->
-        <div class="reader-theme-group">
+        <div class="reader-theme-group" role="group" aria-label="Reading color theme">
           <button type="button" class="reader-th-btn active" data-rtheme="cream" title="Warm paper theme" aria-label="Warm paper theme" aria-pressed="true" style="background:#F3EEE6; color:#302925;">Aa</button>
           <button type="button" class="reader-th-btn" data-rtheme="dark" title="Soft charcoal theme" aria-label="Soft charcoal theme" aria-pressed="false" style="background:#1C1A1D; color:#F0EAE4; border-color:#40383D;">Aa</button>
           <button type="button" class="reader-th-btn" data-rtheme="sepia" title="Sepia paper theme" aria-label="Sepia paper theme" aria-pressed="false" style="background:#EDE2CF; color:#49382D;">Aa</button>
