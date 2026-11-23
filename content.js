@@ -2956,7 +2956,7 @@
     .reader-overlay.theme-sepia {
       --r-bg: #EDE2CF;
       --r-text: #49382D;
-      --r-meta: #786653;
+      --r-meta: #75604B;
       --r-hdr-bg: rgba(237, 226, 207, 0.95);
       --r-hdr-border: rgba(92, 67, 46, 0.15);
       --r-sentence-bg: rgba(153, 82, 49, 0.09);
