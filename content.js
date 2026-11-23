@@ -4015,8 +4015,19 @@
       readerBtn
     ].find(canReceiveFocus);
 
-    if (focusTarget) focusTarget.focus({ preventScroll: true });
-    container.classList.remove('focus-restoring');
+    if (focusTarget) {
+      focusTarget.focus({ preventScroll: true });
+      // Keep the temporary reveal active through the browser's next layout/focus
+      // cycle. Removing it synchronously can hide the control before Chromium
+      // commits focus, particularly in mini/beaded player states.
+      requestAnimationFrame(() => {
+        if (!container.contains(shadow.activeElement)) {
+          container.classList.remove('focus-restoring');
+        }
+      });
+    } else {
+      container.classList.remove('focus-restoring');
+    }
   }
 
   readerOverlay.addEventListener('keydown', (event) => {
