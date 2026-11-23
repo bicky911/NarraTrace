@@ -73,7 +73,10 @@ function applyTheme(theme) {
 
 function updateVolumeDisplay(vol) {
   currentVolume = typeof vol === 'number' ? Math.max(0, Math.min(1, vol)) : 1.0;
-  if (volumeSliderEl) volumeSliderEl.value = String(currentVolume);
+  if (volumeSliderEl) {
+    volumeSliderEl.value = String(currentVolume);
+    volumeSliderEl.setAttribute('aria-valuetext', `${Math.round(currentVolume * 100)} percent volume`);
+  }
   if (volumeDisplayEl) volumeDisplayEl.textContent = `${Math.round(currentVolume * 100)}%`;
 }
 
@@ -323,6 +326,7 @@ async function initActiveTabAndState() {
 
 function updateSpeedDisplay(rate) {
   speedSliderEl.value = String(rate);
+  speedSliderEl.setAttribute('aria-valuetext', `${rate.toFixed(1)} times playback speed`);
   speedDisplayEl.textContent = `${rate.toFixed(1)}×`;
 
   speedChips.forEach(chip => {
