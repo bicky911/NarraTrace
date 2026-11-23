@@ -473,6 +473,10 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       .map(label => label.textContent.trim()).join(' ');
     return {
       voiceLabel: labelFor('popup-voice-select'),
+      voiceDescribedBy: document.getElementById('popup-voice-select').getAttribute('aria-describedby'),
+      voiceStatusRole: document.getElementById('voice-substatus').getAttribute('role'),
+      voiceStatusLive: document.getElementById('voice-substatus').getAttribute('aria-live'),
+      voiceStatusAtomic: document.getElementById('voice-substatus').getAttribute('aria-atomic'),
       speedLabel: labelFor('popup-speed-slider'),
       volumeLabel: labelFor('popup-volume-slider'),
       speedValueText: document.getElementById('popup-speed-slider').getAttribute('aria-valuetext'),
@@ -483,6 +487,10 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     };
   });
   assert.equal(popupControlSemantics.voiceLabel, 'VOICE ENGINE');
+  assert.equal(popupControlSemantics.voiceDescribedBy, 'voice-substatus');
+  assert.equal(popupControlSemantics.voiceStatusRole, 'status');
+  assert.equal(popupControlSemantics.voiceStatusLive, 'polite');
+  assert.equal(popupControlSemantics.voiceStatusAtomic, 'true');
   assert.equal(popupControlSemantics.speedLabel, 'PLAYBACK SPEED');
   assert.equal(popupControlSemantics.volumeLabel, 'VOLUME');
   assert.equal(popupControlSemantics.speedValueText, '1.0 times playback speed');
