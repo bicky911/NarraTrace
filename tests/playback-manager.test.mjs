@@ -389,6 +389,34 @@ test('invalid native word boundaries do not disable estimator fallback', async (
 });
 
 
+test('speech cleanup falls back to sentence-level highlighting when source offsets change', async () => {
+  const { manager } = await loadPlaybackManager([]);
+  const original = 'The result is reported [12] at https://example.com.';
+  manager.queue = [{ index: 0, text: original }];
+  manager.batchSize = 1;
+
+  const batch = manager.buildBatch(0, 0);
+
+  assert.equal(batch.pronunciationChanged, true,
+    'removed citations and URLs invalidate direct speech-to-source word offsets');
+  assert.equal(manager.queue[0].text, original,
+    'the original source sentence must remain unchanged');
+});
+
+test('prosody edits fall back to sentence-level highlighting while unchanged text stays aligned', async () => {
+  const { manager } = await loadPlaybackManager([]);
+  manager.queue = [{ index: 0, text: 'The first clause — the second clause.' }];
+  manager.batchSize = 1;
+  const prosodyBatch = manager.buildBatch(0, 0);
+  assert.equal(prosodyBatch.pronunciationChanged, true,
+    'inserted prosody pauses can change character offsets');
+
+  manager.queue = [{ index: 0, text: 'The first clause and the second clause.' }];
+  const unchangedBatch = manager.buildBatch(0, 0);
+  assert.equal(unchangedBatch.pronunciationChanged, false,
+    'unchanged spoken text keeps exact word-offset highlighting');
+});
+
 test('native word offsets map to the correct sentence inside a grouped utterance', async () => {
   const loaded = await loadPlaybackManager([]);
   const { manager } = loaded;
