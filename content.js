@@ -4473,18 +4473,22 @@
       playBtn.title = 'Pause';
       playBtn.setAttribute('aria-label', 'Pause reading');
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PAUSE;
-      if (rctrlPlayBtn) rctrlPlayBtn.title = 'Pause (Alt+P)';
+      if (rctrlPlayBtn) {
+        rctrlPlayBtn.title = 'Pause (Alt+P)';
         rctrlPlayBtn.setAttribute('aria-label', 'Pause reading');
+      }
       container.classList.add('is-playing');
       startMutationObserver();
       startHeartbeat();
     } else {
       playIcon.innerHTML = SVG_PLAY;
       playBtn.title = 'Play';
-      playBtn.setAttribute('aria-label', 'Play or pause reading');
+      playBtn.setAttribute('aria-label', 'Play reading');
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PLAY;
-      if (rctrlPlayBtn) rctrlPlayBtn.title = 'Play (Alt+P)';
+      if (rctrlPlayBtn) {
+        rctrlPlayBtn.title = 'Play (Alt+P)';
         rctrlPlayBtn.setAttribute('aria-label', 'Play reading');
+      }
       container.classList.remove('is-playing');
       stopHeartbeat();
       if (state === 'STOPPED' || state === 'IDLE') {
