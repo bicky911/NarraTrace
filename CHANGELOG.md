@@ -9,6 +9,10 @@
 - Keep other Chrome TTS extensions discoverable through the generic provider path; provider-specific behavior is not assumed or release-gated.
 - Remove obsolete provider-specific tuning from the current target implementation; maintain dedicated profiles only where NarraTrace has verified provider behavior.
 - Fix keyboard focus restoration when the floating player is auto-tucked or using mini layout.
+- Establish a calmer editorial visual system across the popup, floating player, and Focus Reader, with responsive compact layouts and reduced-motion support.
+- Add accessible names and state announcements for playback controls, voice selection, theme/highlight choices, speed and volume controls, and sentence progress.
+- Enforce WCAG AA contrast for the popup's ready/warning status badges and Focus Reader body, metadata, and active-word treatments across all four reading palettes.
+- Expand Chromium regression coverage for 320px reader layout, keyboard focus behavior, live status regions, and playback-state transitions.
 - Add deterministic Chromium regression coverage for Focus Reader and Settings focus restoration.
 
 Personal-use Chrome MV3 extension that narrates web pages aloud through
