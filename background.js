@@ -38,25 +38,9 @@ console.log('[Background] NarraTrace service worker active.');
 //   __readAloud.playbackManager.setBatchSize(1)
 globalThis.__readAloud = { playbackManager, PlaybackState };
 
-// ── Keep-alive alarm ─────────────────────────────────────────────────
-// Chrome clamps periodInMinutes to a 0.5 minute (30s) minimum, and when no
-// delayInMinutes is given it uses periodInMinutes as the initial delay too.
-// Re-creating the alarm on every worker start therefore pushes its next fire
-// further out each time — and the worker restarts on every event it handles.
-// Follow Chrome's own sample: look first, create only when it is missing, so
-// the schedule survives worker restarts.
-async function ensureKeepAliveAlarm() {
-  try {
-    const existing = await chrome.alarms.get('readAloudKeepAlive');
-    if (!existing) {
-      await chrome.alarms.create('readAloudKeepAlive', { periodInMinutes: 0.5 });
-      console.log('[Background] Keep-alive alarm created (every 30s).');
-    }
-  } catch (err) {
-    console.warn('[Background] Could not ensure keep-alive alarm:', err?.message || err);
-  }
-}
-ensureKeepAliveAlarm();
+// The recovery alarm is created and cleared by PlaybackManager only while
+// narration is active. An unconditional repeating alarm would wake an idle
+// service worker every 30 seconds for no useful work.
 
 // ── Tab lifecycle guards ────────────────────────────────────────────
 // If the tab that initiated playback is closed, stop playback so audio
