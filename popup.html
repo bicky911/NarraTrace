@@ -961,6 +961,23 @@
       outline-offset: 3px !important;
     }
 
+    /* Give the remaining light-theme controls the same paper/ink treatment. */
+    body.light button.ctrl-btn:not(.play-main),
+    body.light button.icon-toggle,
+    body.light button.footer-btn {
+      background: #FCF9F3;
+      border-color: #8C8A82;
+      color: #302925;
+    }
+
+    body.light button.ctrl-btn:not(.play-main):hover,
+    body.light button.icon-toggle:hover,
+    body.light button.footer-btn:hover {
+      background: #F3EEE6;
+      border-color: #A94D32;
+      color: #302925;
+    }
+
   </style>
 </head>
 <body>
