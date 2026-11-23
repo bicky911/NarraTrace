@@ -1,4 +1,6 @@
-const SPEECH_DURATION_MS = 4500;
+// Long enough for the diagnostic page to receive its acknowledgement and
+// exercise overlap guards before the synthetic utterance reaches `end`.
+const SPEECH_DURATION_MS = 12000;
 const activeTimers = new Set();
 
 async function record(event) {
