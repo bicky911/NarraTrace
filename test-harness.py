@@ -295,7 +295,7 @@ check(
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 6. speech-engine.js — Engine Registry (Piper, Kokoro, Supertonic)
+# 6. speech-engine.js — Maintained Engine Profiles (Piper, Supertonic)
 # ─────────────────────────────────────────────────────────────────────────────
 print('\n── speech-engine.js Engine Registry ───────────────────────────────')
 se = read(SPEECH_JS)
@@ -308,6 +308,16 @@ check(
 check(
     'speech-engine.js: Piper is registered in TTS_ENGINES with highest priority (priority: 5)',
     bool(re.search(r'id:\s*PIPER_EXTENSION_ID[\s\S]*?priority:\s*5', se)),
+)
+
+check(
+    'speech-engine.js: Kokoro-specific integration is not in the maintained registry',
+    'KOKORO_EXTENSION_ID' not in se and 'Kokoro Heart' not in se,
+)
+
+check(
+    'speech-engine.js: Supertonic remains a maintained provider profile',
+    'SUPERTONIC_EXTENSION_ID' in se and bool(re.search(r'id:\\s*SUPERTONIC_EXTENSION_ID[\\s\\S]*?priority:\\s*20', se)),
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
