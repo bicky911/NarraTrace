@@ -900,6 +900,61 @@
       }
     }
 
+
+    /* Light mode: keep control boundaries, range tracks, and focus visible. */
+    body.light input[type="range"] {
+      background: #8C8A82;
+    }
+
+    body.light input[type="range"]::-webkit-slider-thumb {
+      background: #A94D32;
+      border-color: #F5F4F0;
+    }
+
+    body.light select.voice-select {
+      background: #FCF9F3;
+      border-color: #8C8A82;
+      color: #1A1A1A;
+    }
+
+    body.light select.voice-select:hover,
+    body.light select.voice-select:focus {
+      border-color: #A94D32;
+    }
+
+    body.light select.voice-select option {
+      background: #FCF9F3;
+      color: #1A1A1A;
+    }
+
+    body.light button.chip {
+      background: #FCF9F3;
+      border-color: #8C8A82;
+      color: #686862;
+    }
+
+    body.light button.chip:hover {
+      background: #F3EEE6;
+      border-color: #A94D32;
+      color: #302925;
+    }
+
+    body.light button.chip.active {
+      color: #1A1A1A;
+    }
+
+    body.light .progress-counter,
+    body.light .form-val {
+      color: #A94D32;
+    }
+
+    body.light button:focus-visible,
+    body.light select:focus-visible,
+    body.light input:focus-visible {
+      outline: 3px solid #A94D32 !important;
+      outline-offset: 3px !important;
+    }
+
   </style>
 </head>
 <body>
