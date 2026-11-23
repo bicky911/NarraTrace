@@ -48,6 +48,11 @@ Reliability, user-visible synchronization, privacy, accessibility, and repeatabl
 
 ## Stage 6: Accessibility, security, and release
 - [x] Add Focus Reader dialog semantics, keyboard focus trapping, Escape behavior, focus restoration, and slider announcements to automated Chromium checks.
+- [x] Verify accessible playback action names and pressed state across play, pause, resume, and stop.
+- [x] Expose voice status as a polite live region and announce popup speed, volume, and sentence-progress values.
+- [x] Verify settings groups, theme/highlight selection state, and paragraph/selection playback control names.
+- [x] Enforce WCAG AA contrast for popup status badges and Focus Reader body, metadata, and active-word text across all four palettes.
+- [x] Test Focus Reader header and playback-bar containment at a 320 × 740 viewport.
 - [x] Test focus restoration in mini/tucked player conditions.
 - [x] Add diagnostic privacy sanitization and access-control tests.
 - [x] Remove unused manifest permissions and test the privacy/permission contract.
