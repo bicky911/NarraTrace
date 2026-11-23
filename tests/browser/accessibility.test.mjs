@@ -816,6 +816,12 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       valueText: getComputedStyle(value).color,
       valueSurface: getComputedStyle(value).backgroundColor,
       valueContrast: ratio(getComputedStyle(value).color, getComputedStyle(value).backgroundColor),
+      previousControlTextContrast: ratio(getComputedStyle(document.getElementById('ctrl-prev')).color, getComputedStyle(document.getElementById('ctrl-prev')).backgroundColor),
+      previousControlBorderContrast: ratio(getComputedStyle(document.getElementById('ctrl-prev')).borderTopColor, getComputedStyle(document.getElementById('ctrl-prev')).backgroundColor),
+      themeControlTextContrast: ratio(getComputedStyle(document.getElementById('theme-toggle')).color, getComputedStyle(document.getElementById('theme-toggle')).backgroundColor),
+      themeControlBorderContrast: ratio(getComputedStyle(document.getElementById('theme-toggle')).borderTopColor, getComputedStyle(document.getElementById('theme-toggle')).backgroundColor),
+      footerControlTextContrast: ratio(getComputedStyle(document.getElementById('btn-toggle-pill')).color, getComputedStyle(document.getElementById('btn-toggle-pill')).backgroundColor),
+      footerControlBorderContrast: ratio(getComputedStyle(document.getElementById('btn-toggle-pill')).borderTopColor, getComputedStyle(document.getElementById('btn-toggle-pill')).backgroundColor),
       focusOutline: getComputedStyle(speed).outlineColor,
       focusOutlineContrast: ratio(getComputedStyle(speed).outlineColor, getComputedStyle(document.body).backgroundColor),
       focusedControl: document.activeElement?.id
@@ -849,6 +855,17 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     `Light-theme speed value text must meet WCAG AA; got ${lightControlContrast.valueContrast.toFixed(2)}:1 (${lightControlContrast.valueText} on ${lightControlContrast.valueSurface})`
   );
   assert.equal(lightControlContrast.focusedControl, 'popup-speed-slider');
+  for (const [name, value] of [
+    ['previous playback control text', lightControlContrast.previousControlTextContrast],
+    ['theme toggle icon', lightControlContrast.themeControlTextContrast],
+    ['floating-player toggle text', lightControlContrast.footerControlTextContrast],
+    ['previous playback control boundary', lightControlContrast.previousControlBorderContrast],
+    ['theme toggle boundary', lightControlContrast.themeControlBorderContrast],
+    ['floating-player toggle boundary', lightControlContrast.footerControlBorderContrast]
+  ]) {
+    const minimum = name.includes('boundary') ? 3 : 4.5;
+    assert.ok(value >= minimum, `Light-theme ${name} must meet ${minimum}:1 contrast; got ${value.toFixed(2)}:1`);
+  }
   assert.ok(
     lightControlContrast.focusOutlineContrast >= 3,
     `Light-theme focus indicator must meet 3:1 non-text contrast; got ${lightControlContrast.focusOutlineContrast.toFixed(2)}:1`
