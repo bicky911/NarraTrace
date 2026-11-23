@@ -4,6 +4,60 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const contentSource = await readFile(new URL('../content.js', import.meta.url), 'utf8');
+
+const gazeStartMarker = '  const GAZE_ANCHOR';
+const gazeEndMarker = '  // Per-property spring state';
+const gazeStart = contentSource.indexOf(gazeStartMarker);
+const gazeEnd = contentSource.indexOf(gazeEndMarker, gazeStart);
+assert.ok(gazeStart >= 0 && gazeEnd > gazeStart, 'production Golden Gaze source should be present');
+const gazeSource = contentSource.slice(gazeStart, gazeEnd).trim();
+
+function createGoldenGaze() {
+  const frames = new Map();
+  const timers = new Map();
+  const cancelledFrames = [];
+  let nextFrameId = 0;
+  let nextTimerId = 0;
+  const windowMock = {
+    innerWidth: 1200,
+    scrollY: 0,
+    scrollTo(_x, y) { this.scrollY = y; }
+  };
+  const context = {
+    window: windowMock,
+    requestAnimationFrame(callback) {
+      const id = ++nextFrameId;
+      frames.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame(id) {
+      cancelledFrames.push(id);
+      frames.delete(id);
+    },
+    setTimeout(callback, delay) {
+      const id = ++nextTimerId;
+      timers.set(id, { callback, delay });
+      return id;
+    },
+    clearTimeout(id) {
+      timers.delete(id);
+    },
+    Date,
+    console
+  };
+
+  vm.runInNewContext(`
+${gazeSource}
+globalThis.__gazeApi = {
+  gazeScrollTo,
+  gazeCancelScroll,
+  gazeYieldToUser,
+  get state() { return { target: _gazeTarget, rafId: _gazeRafId, resumeAt: _gazeResumeAt, resumeTimer: _gazeResumeTimer }; }
+};`, context, { filename: 'content.js#golden-gaze' });
+
+  return { api: context.__gazeApi, frames, timers, cancelledFrames, window: windowMock };
+}
+
 const startMarker = '  let _devicePixelRatioMedia = null;';
 const endMarker = "  window.addEventListener('resize', updateZoomCompensation);";
 const start = contentSource.indexOf(startMarker);
@@ -232,4 +286,57 @@ test('playback state transitions own mutation observer lifetime', () => {
   assert.match(contentSource, /if \(state === 'STOPPED' \|\| state === 'IDLE'\) \{[\s\S]{0,120}stopMutationObserver\(\)/);
   assert.match(contentSource, /if \(state === 'PLAYING'\) \{[\s\S]{0,500}startMutationObserver\(\)/);
   assert.match(contentSource, /window\.addEventListener\('pagehide'[\s\S]{0,180}stopMutationObserver\(\)/);
+});
+
+
+test('Golden Gaze yields immediately to wheel input and resumes the latest target after a quiet period', () => {
+  const state = createGoldenGaze();
+  state.api.gazeScrollTo(250, null);
+  assert.equal(state.frames.size, 1, 'automatic scroll should schedule one animation frame');
+
+  state.api.gazeYieldToUser({ type: 'wheel', deltaX: 0, deltaY: 80 });
+  assert.equal(state.frames.size, 0, 'manual input should cancel the active animation frame');
+  assert.equal(state.api.state.target, null);
+  assert.equal(state.cancelledFrames.length, 1);
+
+  state.api.gazeScrollTo(420, null);
+  assert.equal(state.frames.size, 0, 'automatic scroll must remain yielded');
+  assert.equal(state.timers.size, 1, 'one quiet-period timer should be scheduled');
+  const [timerId, timer] = [...state.timers.entries()][0];
+  assert.equal(timer.delay, 1200);
+
+  timer.callback();
+  state.timers.delete(timerId);
+  assert.equal(state.frames.size, 1, 'automatic scroll resumes after the quiet period');
+  const [frameId, frame] = [...state.frames.entries()][0];
+  state.frames.delete(frameId);
+  frame(16);
+  assert.ok(state.window.scrollY > 0 && state.window.scrollY < 420,
+    'resumed scrolling should interpolate from the user\'s current position');
+  state.api.gazeCancelScroll();
+});
+
+test('Golden Gaze detects scrollbar pointer input but ignores ordinary pointer clicks and text-field keys', () => {
+  const state = createGoldenGaze();
+  state.api.gazeYieldToUser({ type: 'pointerdown', button: 0, clientX: 600 });
+  assert.equal(state.api.state.resumeAt, 0, 'ordinary page clicks should not pause automatic scrolling');
+
+  state.api.gazeYieldToUser({ type: 'pointerdown', button: 0, clientX: 1190 });
+  assert.ok(state.api.state.resumeAt > 0, 'a pointer near the viewport edge should yield to scrollbar control');
+
+  state.api.gazeCancelScroll();
+  state.api.gazeYieldToUser({
+    type: 'keydown',
+    key: 'PageDown',
+    target: { isContentEditable: false, closest: () => null }
+  });
+  assert.ok(state.api.state.resumeAt > 0, 'document scroll keys should yield');
+
+  state.api.gazeCancelScroll();
+  state.api.gazeYieldToUser({
+    type: 'keydown',
+    key: 'ArrowDown',
+    target: { isContentEditable: false, closest: () => ({ tagName: 'INPUT' }) }
+  });
+  assert.equal(state.api.state.resumeAt, 0, 'typing and form controls must not trigger scroll yielding');
 });
