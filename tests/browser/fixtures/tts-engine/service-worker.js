@@ -23,6 +23,14 @@ chrome.ttsEngine.onSpeak.addListener((utterance, options, sendTtsEvent) => {
     ? Math.max(100, globalThis.__NARRATRACE_TEST_DELAY_MS)
     : SPEECH_DURATION_MS;
   void record({ type: 'speak', text: utterance });
+
+  // Adversarial privacy fixture: simulate a provider that echoes the entire
+  // utterance inside its error string. NarraTrace must redact it in the report.
+  if (globalThis.__NARRATRACE_TEST_ECHO_ERROR === true) {
+    sendTtsEvent({ type: 'error', errorMessage: utterance });
+    return;
+  }
+
   sendTtsEvent({ type: 'start', charIndex: 0 });
   let wordEventsSent = 0;
 
