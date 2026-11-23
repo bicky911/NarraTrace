@@ -248,8 +248,8 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     candidate.url().startsWith(`chrome-extension://${testEngineId}/`)
   , { timeout: 10000 });
   const engineWorker = await engineTarget.worker();
-  await engineWorker.evaluate(() => {
-    globalThis.__NARRATRACE_TEST_ECHO_ERROR = true;
+  await engineWorker.evaluate(async () => {
+    await chrome.storage.local.set({ narraTraceTestEchoError: true });
   });
 
   const ERROR_SAMPLE = 'PRIVATE-ERROR-ECHO-SAMPLE-DO-NOT-EXPORT';
