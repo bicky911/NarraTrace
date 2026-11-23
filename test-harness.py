@@ -671,6 +671,12 @@ check(
     'text.length > 500' in bg and 'rate < 0.5' in bg and 'rate > 2.0' in bg,
 )
 check(
+    'background.js: provider error strings are redacted before diagnostic export',
+    'event.errorMessage.slice(0, 500)' not in bg and
+    'The selected TTS provider returned an error.' in bg and
+    'The selected TTS provider could not complete the diagnostic request.' in bg,
+)
+check(
     'background.js: session inspection is restricted to diagnostics page',
     "case 'GET_SESSION_STORAGE'" in bg and "Session inspection is restricted" in bg,
 )
