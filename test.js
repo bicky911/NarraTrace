@@ -506,6 +506,7 @@ chrome.runtime.onMessage.addListener((message) => {
         requestMatches: message.requestId === activeDiagnosticRequestId
       }));
       if (!diagnosticReport || message.requestId !== activeDiagnosticRequestId) break;
+      console.info('[NarraTrace diagnostics] Completion guard accepted');
       if (diagnosticTimeoutId) clearTimeout(diagnosticTimeoutId);
       diagnosticTimeoutId = null;
       activeDiagnosticRequestId = null;
@@ -519,11 +520,26 @@ chrome.runtime.onMessage.addListener((message) => {
           ? 'Chrome returned an end event, but audible output was not manually confirmed.'
           : null);
       diagnosticReport.test.completedAt = new Date().toISOString();
+      console.info('[NarraTrace diagnostics] Report finalized ' + JSON.stringify({
+        resultType: diagnosticReport.resultType,
+        success: diagnosticReport.success,
+        audibleWasMarked,
+        hasRunButton: Boolean(btnRunDiagnostic),
+        hasExportButton: Boolean(btnExportDiagnostic),
+        hasClearButton: Boolean(btnClearDiagnostic)
+      }));
       btnRunDiagnostic.disabled = false;
       btnStopDiagnostic.disabled = true;
       btnMarkAudible.disabled = true;
       btnClearDiagnostic.disabled = false;
       btnExportDiagnostic.disabled = false;
+      console.info('[NarraTrace diagnostics] Buttons updated ' + JSON.stringify({
+        runDisabled: btnRunDiagnostic.disabled,
+        stopDisabled: btnStopDiagnostic.disabled,
+        markDisabled: btnMarkAudible.disabled,
+        clearDisabled: btnClearDiagnostic.disabled,
+        exportDisabled: btnExportDiagnostic.disabled
+      }));
       setDiagnosticStatus(
         diagnosticReport.success
           ? `Passed: ${diagnosticReport.resultType} after ${diagnosticReport.durationMs} ms; first audible output marked at approximately ${diagnosticReport.test.audibleStartMarkedMs} ms.`
@@ -532,6 +548,14 @@ chrome.runtime.onMessage.addListener((message) => {
             : `Diagnostic did not complete cleanly: ${diagnosticReport.error || diagnosticReport.resultType}.`),
         diagnosticReport.success ? 'success' : (message.success === true ? 'warning' : 'danger')
       );
+      console.info('[NarraTrace diagnostics] Status updated ' + diagnosticStatusEl.textContent);
+      window.__NARRATRACE_DIAGNOSTIC_STATE = {
+        report: diagnosticReport,
+        activeRequestId: activeDiagnosticRequestId,
+        runDisabled: btnRunDiagnostic.disabled,
+        stopDisabled: btnStopDiagnostic.disabled,
+        exportDisabled: btnExportDiagnostic.disabled
+      };
       break;
     }
     case 'SENTENCE_CHANGED': {
