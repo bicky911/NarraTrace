@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 async function loadSpeechEngine(voices, options = {}) {
   const source = await readFile(new URL('../speech-engine.js', import.meta.url), 'utf8');
-  const executable = source.replace(/\\bexport\\s+/g, '') + `
+  const executable = source.replace(/\bexport\s+/g, '') + `
 globalThis.__speechEngine = {
   PIPER_EXTENSION_ID,
   SUPERTONIC_EXTENSION_ID,
