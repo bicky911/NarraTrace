@@ -118,6 +118,7 @@
     }
     _gazeTarget = null;
     _gazeVel    = 0;
+    _gazeResumeAt = 0;
   }
 
   /**
