@@ -4480,7 +4480,7 @@
       rctrlPlayBtn.setAttribute('aria-pressed', String(isPlaying));
     }
 
-    if (isPlaying) {
+    if (state === 'PLAYING') {
       playIcon.innerHTML = SVG_PAUSE;
       playBtn.title = 'Pause';
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PAUSE;
