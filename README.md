@@ -14,7 +14,8 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 * **Icon:** a white **N** struck through by the signal-orange trace diagonal (`#FF5C00` on near-black `#0F0F0F`) — the path of the voice cutting across the letter, ending in the tracking dot.
 * **Voice of the brand:** controls and menus say what NarraTrace does — *"NarraTrace: narrate selection"*, *"NarraTrace: narrate from here"* — never a generic "read".
 
-![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+**Distribution license:** Not yet selected; no redistribution license is published in this repository.
+
 ![Manifest: V3](https://img.shields.io/badge/Manifest-V3-orange.svg)
 ![NarraTrace verification](https://github.com/bicky911/NarraTrace/actions/workflows/verification.yml/badge.svg?branch=reliability%2Fstage-1-baseline)
 
