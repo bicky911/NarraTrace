@@ -13,6 +13,10 @@ import {
 } from './speech-engine.js';
 
 import { playbackManager, PlaybackState } from './playback-manager.js';
+import {
+  sanitizeTtsDiagnosticEvent,
+  DIAGNOSTIC_REQUEST_ERROR
+} from './tts-diagnostic-privacy.js';
 
 // Side-effect import: sentence-tokenizer.js is a dual-loadable classic/ESM
 // script that defines globalThis.ReadAloudTokenizer — the SAME file the
@@ -452,17 +456,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 action: 'TTS_DIAGNOSTIC_EVENT',
                 requestId,
                 elapsedMs: Date.now() - startedAt,
-                event: {
-                  type: event.type,
-                  charIndex: Number.isFinite(event.charIndex) ? event.charIndex : null,
-                  length: Number.isFinite(event.length) ? event.length : null,
-                  charLength: Number.isFinite(event.charLength) ? event.charLength : null,
-                  // Provider error strings are untrusted and may echo the
-                  // utterance. Export only a generic error class, never raw text.
-                  errorMessage: event.type === 'error'
-                    ? 'The selected TTS provider returned an error.'
-                    : null
-                }
+                event: sanitizeTtsDiagnosticEvent(event)
               }).catch(() => {});
             }
           );
@@ -482,7 +476,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             resultType: 'error',
             // Do not put provider-supplied error text into the diagnostic
             // report; some engines may echo the sample in their error string.
-            error: 'The selected TTS provider could not complete the diagnostic request.',
+            error: DIAGNOSTIC_REQUEST_ERROR,
             durationMs: Date.now() - startedAt
           }).catch(() => {});
         } finally {
