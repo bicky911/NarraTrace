@@ -160,5 +160,5 @@ test('a completed utterance clears its watchdog and ignores duplicate terminal e
   assert.equal(result.type, 'end');
   assert.equal(loaded.timers.size, 0);
   speak.options.onEvent({ type: 'word', charIndex: 0, length: 1 });
-  assert.deepEqual(events.map(event => event.type), ['start']);
+  assert.deepEqual(events.map(event => event.type), ['start', 'end']);
 });
