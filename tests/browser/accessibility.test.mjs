@@ -299,6 +299,35 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   assert.ok(narrowReader.barLeft >= 0, 'reader controls should not clip beyond the left edge on narrow screens');
   assert.ok(narrowReader.barRight <= narrowReader.viewport, 'reader controls should remain inside narrow screens');
   assert.equal(narrowReader.readerVisible, true);
+
+  // Stress the compact phone breakpoint rather than testing only a 390px
+  // viewport. The bottom transport and header controls must remain reachable
+  // without horizontal clipping at the common 320px CSS viewport width.
+  await page.setViewport({ width: 320, height: 740 });
+  const compactReader = await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    const bar = root.querySelector('.reader-bar');
+    const header = root.querySelector('.reader-header');
+    const headerRight = root.querySelector('.reader-header-right');
+    const rect = element => {
+      const box = element.getBoundingClientRect();
+      return { left: Math.round(box.left), right: Math.round(box.right) };
+    };
+    return {
+      viewport: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      bar: rect(bar),
+      header: rect(header),
+      headerRight: rect(headerRight)
+    };
+  });
+  assert.ok(compactReader.bar.left >= 0, 'reader transport must not clip on a 320px viewport');
+  assert.ok(compactReader.bar.right <= compactReader.viewport, 'reader transport must fit inside a 320px viewport');
+  assert.ok(compactReader.headerRight.left >= 0 && compactReader.headerRight.right <= compactReader.viewport,
+    'reader header controls must remain inside a 320px viewport');
+  assert.ok(compactReader.documentWidth <= compactReader.viewport,
+    'Focus Reader must not introduce horizontal document scrolling at 320px');
+
   await page.setViewport({ width: 800, height: 600 });
 
 
