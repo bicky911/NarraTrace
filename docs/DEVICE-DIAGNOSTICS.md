@@ -4,7 +4,7 @@
 
 The bundled `test.html` page sends one short sample through the exact Chrome TTS voice selected in its voice dropdown. Use it to measure provider startup, event behavior, offsets, completion, and errors on the Windows/Chrome installation that will run NarraTrace.
 
-NarraTrace's maintained provider profiles are **Piper and Supertonic**. The page can also test other installed Chrome TTS providers and system voices when Chrome exposes them. It does not require Kokoro.
+NarraTrace's maintained provider profiles are **Piper and Supertonic**. The page can also test other installed Chrome TTS providers and system voices when Chrome exposes them.
 
 ## What the report contains
 
