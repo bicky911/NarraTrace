@@ -506,7 +506,7 @@
 </head>
 <body>
   <!-- Header -->
-  <div class="header">
+  <header class="header">
     <div class="header-left">
       <img src="icons/icon48.png" alt="NarraTrace" class="header-logo">
       <div class="header-brand">
@@ -515,14 +515,15 @@
       </div>
     </div>
     <div class="header-right">
-      <span id="engine-badge" class="engine-badge">
+      <span id="engine-badge" class="engine-badge" role="status" aria-live="polite" aria-atomic="true">
         <span id="status-dot" class="status-dot"></span>
         <span id="badge-text">ENGINE</span>
       </span>
-      <button class="icon-toggle" id="theme-toggle" title="Toggle OP-1 Light / Dark mode" aria-label="Toggle light or dark theme">☼</button>
+      <button type="button" class="icon-toggle" id="theme-toggle" title="Switch to light theme" aria-label="Switch to light theme" aria-pressed="false">☼</button>
     </div>
-  </div>
+  </header>
 
+  <main id="main-content">
   <!-- Main Machine Card -->
   <div class="card">
     <div class="tab-info-row">
@@ -531,16 +532,16 @@
       <span class="progress-counter" id="progress-counter" style="display: none;">SEN 00/00</span>
     </div>
 
-    <div class="sentence-box idle" id="sentence-box">
+    <div class="sentence-box idle" id="sentence-box" role="status" aria-live="polite" aria-atomic="true">
       Ready — NarraTrace will narrate this page and trace every word. Press play.
     </div>
 
-    <div class="progress-bar-wrap" role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <div class="progress-bar-wrap" role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Not started">
       <div class="progress-bar-fill" id="progress-bar-fill"></div>
     </div>
 
     <!-- Playback Controls -->
-    <div class="controls-row">
+    <div class="controls-row" role="group" aria-label="Playback controls">
       <button class="ctrl-btn" id="ctrl-prev" title="Previous sentence (Alt+,)" aria-label="Previous sentence">
         <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
       </button>
@@ -569,7 +570,7 @@
       <select class="voice-select" id="popup-voice-select">
         <option value="">Scanning local voices…</option>
       </select>
-      <div class="voice-substatus" id="voice-substatus">Scanning local voices…</div>
+      <div class="voice-substatus" id="voice-substatus" role="status" aria-live="polite" aria-atomic="true">Scanning local voices…</div>
     </div>
 
     <!-- Speed -->
@@ -579,13 +580,13 @@
         <span class="form-val" id="popup-speed-display">1.0×</span>
       </div>
       <div class="speed-slider-wrap">
-        <input type="range" id="popup-speed-slider" min="0.5" max="3.0" step="0.1" value="1.0">
+        <input type="range" id="popup-speed-slider" min="0.5" max="3.0" step="0.1" value="1.0" aria-describedby="popup-speed-display">
       </div>
       <div class="speed-chips">
-        <button class="chip active" data-speed="1.0">1.0×</button>
-        <button class="chip" data-speed="1.2">1.2×</button>
-        <button class="chip" data-speed="1.5">1.5×</button>
-        <button class="chip" data-speed="2.0">2.0×</button>
+        <button type="button" class="chip active" data-speed="1.0" aria-pressed="true">1.0×</button>
+        <button type="button" class="chip" data-speed="1.2" aria-pressed="false">1.2×</button>
+        <button type="button" class="chip" data-speed="1.5" aria-pressed="false">1.5×</button>
+        <button type="button" class="chip" data-speed="2.0" aria-pressed="false">2.0×</button>
       </div>
     </div>
 
@@ -596,7 +597,7 @@
         <span class="form-val" id="popup-volume-display">100%</span>
       </div>
       <div class="speed-slider-wrap">
-        <input type="range" id="popup-volume-slider" min="0" max="1" step="0.05" value="1.0">
+        <input type="range" id="popup-volume-slider" min="0" max="1" step="0.05" value="1.0" aria-describedby="popup-volume-display">
       </div>
     </div>
   </div>
@@ -609,6 +610,7 @@
     </button>
   </div>
 
+  </main>
   <script src="popup.js" type="module"></script>
 </body>
 </html>
