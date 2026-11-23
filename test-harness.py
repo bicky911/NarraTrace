@@ -160,6 +160,22 @@ check(
     'popup.js: updatePlayState updates aria-valuenow on progress bar',
     'aria-valuenow' in popup_js,
 )
+check(
+    'popup.js: preferences and live playback state settle before popup reveal',
+    'function chromeCallbackPromise' in popup_js and
+    'Promise.allSettled' in popup_js and
+    "classList.add('is-hydrated')" in popup_js,
+)
+check(
+    'popup.html: first render stays hidden without removing layout until hydrated',
+    'visibility: hidden' in popup_html and 'body.is-hydrated' in popup_html and 'visibility: visible' in popup_html,
+)
+check(
+    'popup.html: reduced-motion preference disables nonessential motion',
+    '@media (prefers-reduced-motion: reduce)' in popup_html and
+    'transition-duration: 0.01ms' in popup_html and
+    'animation-duration: 0.01ms' in popup_html,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. content.js — Shadow DOM A11y
