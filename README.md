@@ -29,6 +29,7 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 * **Context-Aware Prosody Pauses:** Intelligent clause-boundary cadence detection that inserts natural human breathing pauses at em-dashes, semicolons, colons, ellipses, and lists.
 * **Semantic Noise Stripper:** Cleans citations (`[1]`, `[citation needed]`), academic parentheticals (`(Smith et al., 2024)`), raw URLs, DOIs, and markdown symbols before TTS without mutating DOM highlights.
 * **Multi-Engine Speech Support:** Maintained provider profiles for Piper and Supertonic, plus generic compatibility with other Chrome TTS extensions and native system voices. Processing location depends on the selected provider and its own implementation.
+* **Real-Engine Diagnostics:** A bundled Chrome TTS diagnostic page records provider events and timings, requires a manual first-audio confirmation for a Passed result, and exports a report without including the sample text.
 * **Multilingual Script Routing:** Auto-detects Bangla (বাংলা), Hindi (हिन्दी), and Latin scripts, routing each to native neural voices.
 * **100% Shadow DOM Encapsulated:** Complete style isolation guarantees the player never clashes with host website styles.
 
@@ -85,3 +86,5 @@ NarraTrace's content scripts run on pages covered by the manifest's `<all_urls>`
 The NarraTrace extension itself does not implement an HTTP, WebSocket, or analytics client for sending page text to a NarraTrace-operated server. It passes narration text to Chrome's `chrome.tts` API, which routes it to the selected voice provider. A local neural engine can process text on-device, while another extension or system voice may use a network service. The processing location and retention policy depend on that separate provider, not NarraTrace.
 
 The active sentence queue and playback position are kept in `chrome.storage.session` for recovery. User preferences and interface settings are kept in `chrome.storage.local`. See [the privacy and data-flow notes](docs/PRIVACY-DATA-FLOW.md) for details.
+
+Real-provider checks are performed from the bundled [device diagnostics page](docs/DEVICE-DIAGNOSTICS.md). Reports include browser/provider metadata and TTS event offsets, not the sample text or audio.
