@@ -240,4 +240,43 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
   assert.equal(result.report?.success, false, 'silent CI output must not be reported as an audible pass');
   assert.equal(result.report?.test?.audibleStartMarkedMs, null, 'the test must not invent a human audible mark');
   console.log('[diagnostics-test] Report privacy and audibility assertions passed');
+
+  // Adversarial failure case: a provider error deliberately echoes the sample.
+  // The exported report and event log must still remain text-free.
+  const engineTarget = await browser.waitForTarget(candidate =>
+    candidate.type() === 'service_worker' &&
+    candidate.url().startsWith(`chrome-extension://${testEngineId}/`)
+  , { timeout: 10000 });
+  const engineWorker = await engineTarget.worker();
+  await engineWorker.evaluate(() => {
+    globalThis.__NARRATRACE_TEST_ECHO_ERROR = true;
+  });
+
+  const ERROR_SAMPLE = 'PRIVATE-ERROR-ECHO-SAMPLE-DO-NOT-EXPORT';
+  await withTimeout(diagnostics.evaluate((value) => {
+    const element = document.getElementById('diagnostic-sample-text');
+    element.value = value;
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('btn-run-engine-diagnostic').click();
+  }, ERROR_SAMPLE), 8000, 'Start provider error privacy test');
+
+  await diagnostics.waitForFunction(() => {
+    const run = document.getElementById('btn-run-engine-diagnostic');
+    const stop = document.getElementById('btn-stop-engine-diagnostic');
+    const exportButton = document.getElementById('btn-export-engine-diagnostic');
+    return run?.disabled === false && stop?.disabled === true && exportButton?.disabled === false;
+  }, { timeout: 15000, polling: 100 });
+
+  const errorResult = await diagnostics.evaluate(() => ({
+    log: document.getElementById('engine-diagnostic-log')?.textContent || '',
+    report: window.__NARRATRACE_DIAGNOSTIC_STATE?.report || null
+  }));
+  assert.equal(errorResult.report?.resultType, 'error');
+  assert.equal(errorResult.report?.error, 'The selected TTS provider could not complete the diagnostic request.');
+  assert.ok(errorResult.report?.events?.some(entry =>
+    entry.event?.errorMessage === 'The selected TTS provider returned an error.'
+  ));
+  assert.equal(errorResult.log.includes(ERROR_SAMPLE), false);
+  assert.equal(JSON.stringify(errorResult.report).includes(ERROR_SAMPLE), false);
+  console.log('[diagnostics-test] Provider error text was redacted from report');
 });
