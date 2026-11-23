@@ -508,24 +508,22 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   const popupWorker = await popupWorkerTarget.worker();
   const dispatchPlaybackState = async (action) => {
     await popupWorker.evaluate(async ({ action, targetUrl }) => {
-      const expected = new URL(targetUrl);
       const tabs = await chrome.tabs.query({});
-      const targetTab = tabs.find(tab => {
-        if (typeof tab.url !== 'string') return false;
+      const deliveredTo = [];
+      for (const tab of tabs) {
+        if (typeof tab.id !== 'number') continue;
         try {
-          const candidate = new URL(tab.url);
-          return candidate.origin === expected.origin && candidate.pathname === expected.pathname;
+          await chrome.tabs.sendMessage(tab.id, { action });
+          deliveredTo.push(tab.id);
         } catch {
-          return false;
+          // Tabs without a NarraTrace content script are expected here.
         }
-      });
-      if (!targetTab || typeof targetTab.id !== 'number') {
-        const available = tabs.map(tab => ({ id: tab.id, url: tab.url || '(URL hidden)' }));
-        throw new Error(`No injected NarraTrace content-script tab found for ${targetUrl}; tabs: ${JSON.stringify(available)}`);
+      }
+      if (deliveredTo.length === 0) {
+        throw new Error(`No NarraTrace content script received ${action}; available tab IDs: ${tabs.map(tab => tab.id).join(', ')}`);
       }
       // The popup listens to extension runtime messages; content scripts are
       // addressed through tabs.sendMessage. Exercise both real delivery paths.
-      await chrome.tabs.sendMessage(targetTab.id, { action });
       await chrome.runtime.sendMessage({ action }).catch(() => {});
     }, { action, targetUrl: page.url() });
   };
