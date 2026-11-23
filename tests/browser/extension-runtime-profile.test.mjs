@@ -173,8 +173,8 @@ test('profiles real extension renderer idle versus active playback workload', {
     candidate.url().startsWith(`chrome-extension://${engineId}/`)
   , { timeout: 10000 });
   const engineWorker = await engineTarget.worker();
-  await engineWorker.evaluate(() => {
-    globalThis.__NARRATRACE_TEST_DELAY_MS = 4500;
+  await engineWorker.evaluate(async () => {
+    await chrome.storage.local.set({ narraTraceTestDelayMs: 4500 });
   });
 
   const page = await browser.newPage();
