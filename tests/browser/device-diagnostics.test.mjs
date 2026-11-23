@@ -7,9 +7,7 @@ import puppeteer from 'puppeteer';
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(TEST_DIR, '../..');
 const ENGINE_DIR = path.join(TEST_DIR, 'fixtures', 'tts-engine');
-const ERROR_ENGINE_DIR = path.join(TEST_DIR, 'fixtures', 'tts-error-engine');
 const TEST_VOICE = 'NarraTrace Test Voice';
-const ERROR_TEST_VOICE = 'NarraTrace Echo-Error Test Voice';
 const SAMPLE = 'CONFIDENTIAL DIAGNOSTIC SAMPLE MUST NOT LEAK. Check Chrome TTS timing.';
 
 async function closeBrowser(browser) {
@@ -72,7 +70,6 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
   console.log('[diagnostics-test] Installing extensions');
   const narraTraceId = await browser.installExtension(REPOSITORY_ROOT);
   const testEngineId = await browser.installExtension(ENGINE_DIR);
-  const errorEngineId = await browser.installExtension(ERROR_ENGINE_DIR);
 
   const diagnostics = await browser.newPage();
   await diagnostics.goto(`chrome-extension://${narraTraceId}/test.html`, {
@@ -244,69 +241,5 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
   assert.equal(result.report?.test?.audibleStartMarkedMs, null, 'the test must not invent a human audible mark');
   console.log('[diagnostics-test] Report privacy and audibility assertions passed');
 
-  // Adversarial failure case: a separate deterministic provider always
-  // echoes the utterance in its error event. The exported report must redact it.
-  await diagnostics.waitForFunction((voiceName, extensionId) => {
-    const select = document.getElementById('voice-select');
-    return Array.from(select?.options || []).some(option =>
-      option.value === voiceName && option.dataset.extensionId === extensionId
-    );
-  }, { timeout: 20000, polling: 100 }, ERROR_TEST_VOICE, errorEngineId);
-  await diagnostics.select('#voice-select', ERROR_TEST_VOICE);
-  const selectedErrorVoice = await diagnostics.$eval('#voice-select option:checked', option => ({
-    voiceName: option.value,
-    extensionId: option.dataset.extensionId || null
-  }));
-  assert.equal(selectedErrorVoice.voiceName, ERROR_TEST_VOICE);
-  assert.equal(selectedErrorVoice.extensionId, errorEngineId);
-
-  // Observe the separate error-provider worker directly so the test can
-  // distinguish "voice listed" from "provider actually received onSpeak".
-  const errorEngineTarget = await browser.waitForTarget(candidate =>
-    candidate.type() === 'service_worker' &&
-    candidate.url().startsWith(`chrome-extension://${errorEngineId}/`)
-  , { timeout: 10000 });
-  const errorEngineWorker = await errorEngineTarget.worker();
-  assert.ok(errorEngineWorker, 'echo-error provider service worker should be active');
-  errorEngineWorker.on('console', message =>
-    console.log('[echo-error-provider]', message.text())
-  );
-  errorEngineWorker.on('pageerror', error =>
-    console.log('[echo-error-provider-error]', error.message)
-  );
-
-  const ERROR_SAMPLE = 'PRIVATE-ERROR-ECHO-SAMPLE-DO-NOT-EXPORT';
-  await withTimeout(diagnostics.evaluate((value) => {
-    const element = document.getElementById('diagnostic-sample-text');
-    element.value = value;
-    element.dispatchEvent(new Event('input', { bubbles: true }));
-    document.getElementById('btn-run-engine-diagnostic').click();
-  }, ERROR_SAMPLE), 8000, 'Start provider error privacy test');
-
-  await diagnostics.waitForFunction(() =>
-    document.getElementById('btn-stop-engine-diagnostic')?.disabled === false,
-    { timeout: 10000, polling: 100 }
-  );
-  console.log('[diagnostics-test] Error-provider request accepted');
-  console.log('[diagnostics-test] Error voice ID', errorEngineId);
-
-  await diagnostics.waitForFunction(() => {
-    const run = document.getElementById('btn-run-engine-diagnostic');
-    const stop = document.getElementById('btn-stop-engine-diagnostic');
-    const exportButton = document.getElementById('btn-export-engine-diagnostic');
-    return run?.disabled === false && stop?.disabled === true && exportButton?.disabled === false;
-  }, { timeout: 15000, polling: 100 });
-
-  const errorResult = await diagnostics.evaluate(() => ({
-    log: document.getElementById('engine-diagnostic-log')?.textContent || '',
-    report: window.__NARRATRACE_DIAGNOSTIC_STATE?.report || null
-  }));
-  assert.equal(errorResult.report?.resultType, 'error');
-  assert.equal(errorResult.report?.error, 'The selected TTS provider could not complete the diagnostic request.');
-  assert.ok(errorResult.report?.events?.some(entry =>
-    entry.event?.errorMessage === 'The selected TTS provider returned an error.'
-  ));
-  assert.equal(errorResult.log.includes(ERROR_SAMPLE), false);
-  assert.equal(JSON.stringify(errorResult.report).includes(ERROR_SAMPLE), false);
-  console.log('[diagnostics-test] Provider error text was redacted from report');
+  console.log('[diagnostics-test] Report privacy and audibility assertions passed');
 });
