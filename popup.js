@@ -110,6 +110,7 @@ function updatePlayState(state, currentSentence = null, currentIndex = 0, totalS
       const pct = Math.round(((currentIndex + 1) / totalSentences) * 100);
       progressBarFillEl.style.width = `${pct}%`;
       progressBarFillEl.parentElement?.setAttribute('aria-valuenow', pct);
+      progressBarFillEl.parentElement?.setAttribute('aria-valuetext', `Sentence ${currentIndex + 1} of ${totalSentences}`);
 
       // Estimate remaining time (avg ~18 words/sentence at ~160 WPM * speed)
       const remainingSentences = Math.max(0, totalSentences - (currentIndex + 1));
@@ -132,6 +133,7 @@ function updatePlayState(state, currentSentence = null, currentIndex = 0, totalS
     if (readingEstEl) readingEstEl.style.display = 'none';
     progressBarFillEl.style.width = '0%';
     progressBarFillEl.parentElement?.setAttribute('aria-valuenow', 0);
+    progressBarFillEl.parentElement?.setAttribute('aria-valuetext', 'No reading progress');
     sentenceBoxEl.classList.add('idle');
     sentenceBoxEl.classList.remove('active');
     sentenceBoxEl.textContent = 'Ready to read this webpage. Press play to start.';
