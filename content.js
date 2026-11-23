@@ -3438,7 +3438,7 @@
       <div class="speed-row">
         <span class="speed-min-max">0.5×</span>
         <input type="range" class="speed-range" id="ra-speed-range"
-          min="0.5" max="3.0" step="0.1" value="1.0">
+          min="0.5" max="3.0" step="0.1" value="1.0" aria-valuetext="1.0 times playback speed">
         <span class="speed-min-max">3.0×</span>
       </div>
     </div>
@@ -3453,7 +3453,7 @@
       <div class="speed-row">
         <span class="speed-min-max">0%</span>
         <input type="range" class="speed-range" id="ra-volume-range"
-          min="0" max="1" step="0.05" value="1.0">
+          min="0" max="1" step="0.05" value="1.0" aria-valuetext="100 percent volume">
         <span class="speed-min-max">100%</span>
       </div>
     </div>
