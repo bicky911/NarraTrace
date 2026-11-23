@@ -428,7 +428,9 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   const inPageWorker = await inPageWorkerTarget.worker();
   const assertInPagePlayNames = async (action, expected) => {
     await inPageWorker.evaluate(async (playbackAction) => {
-      await chrome.runtime.sendMessage({ action: playbackAction }).catch(() => {});
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) throw new Error('No active tab found for in-page playback state test.');
+      await chrome.tabs.sendMessage(tab.id, { action: playbackAction });
     }, action);
     await page.waitForFunction((label) => {
       const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
