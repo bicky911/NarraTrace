@@ -197,10 +197,9 @@ async function initializeWorker() {
   setupContextMenu();
   await playbackManager.loadPreferences();
 
-  // A TTS engine extension (Kokoro, Supertonic, ...) registers its voices a
-  // moment after Chrome starts it, so the voice list is still empty when the
-  // worker boots. Chrome announces every change of that list — re-resolve the
-  // voice then, so the preferred engine takes over as soon as it appears.
+  // A TTS engine extension (Piper, Supertonic, or another provider) may
+  // register its voices after Chrome starts it. Chrome announces each change
+  // of the voice list — re-resolve automatic selection when that happens.
   registerVoiceChangeListener();
   const restored = await playbackManager.restoreFromSession();
   if (restored) {
