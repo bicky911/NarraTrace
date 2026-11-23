@@ -199,72 +199,121 @@ async function loadVoices() {
 /**
  * Synchronize with the active tab and existing playback session.
  */
+function chromeCallbackPromise(invoke) {
+  return new Promise((resolve, reject) => {
+    try {
+      invoke((value) => {
+        let lastError = null;
+        try {
+          lastError = chrome.runtime?.lastError || null;
+        } catch (err) {
+          reject(err);
+          return;
+        }
+        if (lastError) {
+          reject(new Error(lastError.message || 'Chrome extension API request failed.'));
+        } else {
+          resolve(value);
+        }
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+/**
+ * Hydrate every persisted value and the live playback snapshot before showing
+ * the popup. The voice list is loaded independently so a slow provider cannot
+ * block the first stable render.
+ */
 async function initActiveTabAndState() {
-  // 1. Get Active Tab Info
   try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tabs && tabs.length > 0) {
-      const tab = tabs[0];
+    const tabsRequest = Promise.resolve().then(() =>
+      chrome.tabs.query({ active: true, currentWindow: true })
+    );
+    const preferencesRequest = chromeCallbackPromise((callback) => {
+      chrome.storage.local.get(
+        ['readAloud_popupTheme', 'readAloud_userPreferences', 'readAloud_pillVisible'],
+        callback
+      );
+    });
+    const playbackRequest = chromeCallbackPromise((callback) => {
+      chrome.runtime.sendMessage({ action: 'GET_PLAYBACK_STATE' }, callback);
+    });
+
+    const [tabsResult, preferencesResult, playbackResult] = await Promise.allSettled([
+      tabsRequest,
+      preferencesRequest,
+      playbackRequest
+    ]);
+
+    if (tabsResult.status === 'fulfilled' && tabsResult.value && tabsResult.value.length > 0) {
+      const tab = tabsResult.value[0];
       activeTabId = tab.id;
       tabTitleEl.textContent = (tab.title || tab.url || 'Webpage').toUpperCase();
       tabTitleEl.title = tab.title || '';
-    }
-  } catch (_) {
-    tabTitleEl.textContent = 'STANDBY';
-  }
-
-  // 2. Load Preferences, Theme & Module Visibility
-  // Popup theme uses its own key so the popup light/drop toggle never
-  // overwrites the on-page pill's TE/Light/FIELD finish (readAloud_theme).
-  chrome.storage.local.get(['readAloud_popupTheme', 'readAloud_userPreferences', 'readAloud_pillVisible'], (res) => {
-    if (chrome.runtime.lastError) {
-      console.warn('[Popup] storage.local.get error:', chrome.runtime.lastError.message);
-      return;
-    }
-    const theme = res?.readAloud_popupTheme === 'light' ? 'light' : 'dark';
-    applyTheme(theme);
-
-    if (typeof res?.readAloud_pillVisible === 'boolean') {
-      isPillVisible = res.readAloud_pillVisible;
     } else {
-      isPillVisible = true;
+      tabTitleEl.textContent = 'STANDBY';
+      if (tabsResult.status === 'rejected') {
+        console.warn('[Popup] Active tab lookup failed:', tabsResult.reason);
+      }
     }
-    updatePillToggleText();
 
-    const prefs = res?.readAloud_userPreferences;
-    if (prefs && typeof prefs.rate === 'number') {
-      currentSpeed = prefs.rate;
-      updateSpeedDisplay(currentSpeed);
-    }
-    if (prefs && typeof prefs.volume === 'number') {
-      updateVolumeDisplay(prefs.volume);
-    }
-  });
+    if (preferencesResult.status === 'fulfilled') {
+      const res = preferencesResult.value || {};
+      const theme = res.readAloud_popupTheme === 'light' ? 'light' : 'dark';
+      applyTheme(theme);
 
-  // 3. Sync Background Playback State
-  chrome.runtime.sendMessage({ action: 'GET_PLAYBACK_STATE' }, (res) => {
-    if (chrome.runtime.lastError) {
-      console.warn('[Popup] GET_PLAYBACK_STATE error:', chrome.runtime.lastError.message);
-      return;
-    }
-    if (res && res.success && res.state) {
-      const state = res.state;
-      updatePlayState(
-        state.playbackState,
-        state.currentSentence,
-        state.currentIndex,
-        state.totalSentences
-      );
+      isPillVisible = typeof res.readAloud_pillVisible === 'boolean'
+        ? res.readAloud_pillVisible
+        : true;
+      updatePillToggleText();
 
-      if (state.options && typeof state.options.rate === 'number') {
-        currentSpeed = state.options.rate;
+      const prefs = res.readAloud_userPreferences;
+      if (prefs && typeof prefs.rate === 'number' && Number.isFinite(prefs.rate)) {
+        currentSpeed = prefs.rate;
         updateSpeedDisplay(currentSpeed);
       }
-      if (state.options && typeof state.options.volume === 'number') {
-        updateVolumeDisplay(state.options.volume);
+      if (prefs && typeof prefs.volume === 'number' && Number.isFinite(prefs.volume)) {
+        updateVolumeDisplay(prefs.volume);
       }
+    } else {
+      console.warn('[Popup] Preference hydration failed:', preferencesResult.reason);
+      applyTheme('dark');
+      isPillVisible = true;
+      updatePillToggleText();
     }
-  });
+
+    if (playbackResult.status === 'fulfilled') {
+      const res = playbackResult.value;
+      if (res && res.success && res.state) {
+        const state = res.state;
+        updatePlayState(
+          state.playbackState,
+          state.currentSentence,
+          state.currentIndex,
+          state.totalSentences
+        );
+
+        if (state.options && typeof state.options.rate === 'number') {
+          currentSpeed = state.options.rate;
+          updateSpeedDisplay(currentSpeed);
+        }
+        if (state.options && typeof state.options.volume === 'number') {
+          updateVolumeDisplay(state.options.volume);
+        }
+      }
+    } else {
+      console.warn('[Popup] Playback-state hydration failed:', playbackResult.reason);
+    }
+  } catch (err) {
+    console.warn('[Popup] Initial hydration failed:', err);
+  } finally {
+    // visibility:hidden preserves layout dimensions while preventing default
+    // values and the wrong theme from flashing during popup initialization.
+    document.body.classList.add('is-hydrated');
+  }
 }
 
 function updateSpeedDisplay(rate) {
