@@ -3328,7 +3328,7 @@
         <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
       </button>
 
-      <button class="icon-btn play-btn" id="ra-play" title="Play / Pause (Alt+P)" aria-label="Play or pause reading">
+      <button class="icon-btn play-btn" id="ra-play" title="Play / Pause (Alt+P)" aria-label="Play reading" aria-controls="ra-reader-body">
         <svg id="ra-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       </button>
 
@@ -3537,14 +3537,14 @@
 
       <div class="reader-header-right">
         <!-- Font Size Stepper -->
-        <div class="reader-tool-group">
-          <button class="reader-tool-btn" id="ra-font-dec" title="Decrease font size">A-</button>
+        <div class="reader-tool-group" role="group" aria-label="Reading text size">
+          <button type="button" class="reader-tool-btn" id="ra-font-dec" title="Decrease font size" aria-label="Decrease reading text size">A-</button>
           <span class="reader-tool-val" id="ra-font-size-val">20px</span>
-          <button class="reader-tool-btn" id="ra-font-inc" title="Increase font size">A+</button>
+          <button type="button" class="reader-tool-btn" id="ra-font-inc" title="Increase font size" aria-label="Increase reading text size">A+</button>
         </div>
 
         <!-- Font Family Selector -->
-        <select class="reader-select" id="ra-reader-font" title="Select typography font">
+        <select class="reader-select" id="ra-reader-font" title="Select typography font" aria-label="Reading font">
           <option value="sans">Sans-Serif</option>
           <option value="serif">Serif (Editorial)</option>
           <option value="mono">Monospace</option>
@@ -3552,7 +3552,7 @@
         </select>
 
         <!-- Theme Finish -->
-        <div class="reader-theme-group">
+        <div class="reader-theme-group" role="group" aria-label="Reading color theme">
           <button type="button" class="reader-th-btn active" data-rtheme="cream" title="Warm paper theme" aria-label="Warm paper theme" aria-pressed="true" style="background:#F3EEE6; color:#302925;">Aa</button>
           <button type="button" class="reader-th-btn" data-rtheme="dark" title="Soft charcoal theme" aria-label="Soft charcoal theme" aria-pressed="false" style="background:#1C1A1D; color:#F0EAE4; border-color:#40383D;">Aa</button>
           <button type="button" class="reader-th-btn" data-rtheme="sepia" title="Sepia paper theme" aria-label="Sepia paper theme" aria-pressed="false" style="background:#EDE2CF; color:#49382D;">Aa</button>
@@ -4474,6 +4474,7 @@
       playBtn.setAttribute('aria-label', 'Pause reading');
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PAUSE;
       if (rctrlPlayBtn) rctrlPlayBtn.title = 'Pause (Alt+P)';
+        rctrlPlayBtn.setAttribute('aria-label', 'Pause reading');
       container.classList.add('is-playing');
       startMutationObserver();
       startHeartbeat();
@@ -4483,6 +4484,7 @@
       playBtn.setAttribute('aria-label', 'Play or pause reading');
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PLAY;
       if (rctrlPlayBtn) rctrlPlayBtn.title = 'Play (Alt+P)';
+        rctrlPlayBtn.setAttribute('aria-label', 'Play reading');
       container.classList.remove('is-playing');
       stopHeartbeat();
       if (state === 'STOPPED' || state === 'IDLE') {
@@ -4605,6 +4607,7 @@
     }
     if (rctrlPlayBtn) {
       rctrlPlayBtn.title = (currentPlaybackState === 'PLAYING') ? 'Pause (Alt+P)' : 'Play (Alt+P)';
+      rctrlPlayBtn.setAttribute('aria-label', currentPlaybackState === 'PLAYING' ? 'Pause reading' : 'Play reading');
     }
     if (rspeedBadge) {
       rspeedBadge.textContent = `${currentSpeed.toFixed(1)}x`;
