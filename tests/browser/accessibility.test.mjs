@@ -420,7 +420,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       !player.classList.contains('focus-restoring');
   });
 
-  // The popup's ready-state badge must remain legible in the light theme.
+  // Both ready and warning engine badges must remain legible in the light theme.
   // Its status color is text, so test the rendered foreground against the
   // composited translucent badge surface rather than checking token values.
   assert.equal(typeof extensionId, 'string');
