@@ -4,6 +4,7 @@
 
 - Add a bundled real-engine diagnostics page for the selected Chrome TTS voice, including event timing, manual first-audio confirmation, safe stop, and JSON export without sample text.
 - Restrict diagnostic speech and full session inspection to the bundled diagnostics page; prevent normal playback and diagnostics from overlapping.
+- Redact raw provider error strings before diagnostics export; an adversarial Chromium test verifies that provider errors cannot echo the spoken sample into the report.
 - Prioritize Piper and Supertonic as NarraTrace's maintained provider profiles.
 - Keep other Chrome TTS extensions discoverable through the generic provider path; provider-specific behavior is not assumed or release-gated.
 - Remove obsolete provider-specific tuning from the current target implementation; maintain dedicated profiles only where NarraTrace has verified provider behavior.
