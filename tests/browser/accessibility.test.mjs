@@ -219,7 +219,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   // Closing the reader must reveal that opener before restoring focus.
   await page.evaluate(() => {
     const root = document.getElementById('read-aloud-player-host').shadowRoot;
-    root.querySelector('.player-pill').classList.add('is-tucked', 'beaded');
+    root.querySelector('.player-pill').classList.add('pill-mini', 'is-tucked', 'beaded');
     const settings = root.getElementById('ra-settings');
     if (settings.getClientRects().length !== 0) {
       throw new Error('Expected the beaded player to hide its Settings trigger');
@@ -237,7 +237,9 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       inert: dialog.inert,
       ariaHidden: dialog.getAttribute('aria-hidden'),
       activeId: root.activeElement?.id,
-      playerBeaded: root.querySelector('.player-pill')?.classList.contains('beaded')
+      playerBeaded: root.querySelector('.player-pill')?.classList.contains('beaded'),
+      playerMini: root.querySelector('.player-pill')?.classList.contains('pill-mini'),
+      focusRestoring: root.querySelector('.player-pill')?.classList.contains('focus-restoring')
     };
   });
   console.log('[NarraTrace accessibility reader Escape]', JSON.stringify(afterReaderEscape));
@@ -246,6 +248,8 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   assert.equal(afterReaderEscape.ariaHidden, 'true', 'Escape should hide the reader dialog from assistive technology');
   assert.equal(afterReaderEscape.activeId, 'ra-settings', 'Escape should restore focus to the settings trigger');
   assert.equal(afterReaderEscape.playerBeaded, false, 'Restoring focus should untuck the player first');
+  assert.equal(afterReaderEscape.playerMini, true, 'Focus restoration should preserve the user-selected mini layout');
+  assert.equal(afterReaderEscape.focusRestoring, false, 'Temporary focus styling should not persist as a saved layout change');
 
   // Escape also closes settings, updates expanded state, and restores focus.
   await page.evaluate(() => {
