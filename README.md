@@ -30,7 +30,7 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 * **Semantic Noise Stripper:** Cleans citations (`[1]`, `[citation needed]`), academic parentheticals (`(Smith et al., 2024)`), raw URLs, DOIs, and markdown symbols before TTS without mutating DOM highlights.
 * **Multi-Engine Speech Support:** Maintained provider profiles for Piper and Supertonic, plus generic compatibility with other Chrome TTS extensions and native system voices. Processing location depends on the selected provider and its own implementation.
 * **Real-Engine Diagnostics:** A bundled Chrome TTS diagnostic page records provider events and timings, requires a manual first-audio confirmation for a Passed result, and exports a report without including the sample text.
-* **Multilingual Script Routing:** Auto-detects Bangla (বাংলা), Hindi (हिन्दी), and Latin scripts, routing each to native neural voices.
+* **Multilingual Script Routing:** Auto-detects Bangla (বাংলা), Hindi (हिन्दी), and Latin scripts, routing to the best matching installed voice when one is available.
 * **100% Shadow DOM Encapsulated:** Complete style isolation guarantees the player never clashes with host website styles.
 
 ---
@@ -53,6 +53,7 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 NarraTrace uses layered checks. Core regression tests require Node.js 22 or later and Python 3.12:
 
 ```bash
+node --test tests/speech-engine.test.mjs
 node --test tests/playback-manager.test.mjs
 node --test tests/sentence-tokenizer.test.mjs
 node --test tests/resource-lifecycle.test.mjs
@@ -64,7 +65,9 @@ The Chromium integration suite uses Puppeteer and a deterministic test-only TTS 
 
 ```bash
 npm install --prefix tests/browser --no-save --no-package-lock puppeteer@25.17.0
-node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs tests/browser/accessibility.test.mjs tests/browser/performance-profile.test.mjs
+node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs tests/browser/accessibility.test.mjs tests/browser/device-diagnostics.test.mjs
+node --test tests/browser/performance-profile.test.mjs
+node --test tests/browser/extension-runtime-profile.test.mjs
 ```
 
 GitHub Actions runs all four layers on pull requests. The deterministic TTS fixture exercises Chrome's TTS event API but does not measure the audio quality or timing of installed neural voice engines.
@@ -73,9 +76,9 @@ GitHub Actions runs all four layers on pull requests. The deterministic TTS fixt
 
 ## 📄 Architecture & Rules
 
-* **Plain JavaScript MV3:** Zero bundlers, zero npm dependencies, and no node_modules.
+* **Plain JavaScript MV3:** No bundler or runtime package dependencies in the extension. Pinned Puppeteer is used only by the optional browser-test suite.
 * **No NarraTrace backend, analytics, or trackers:** The extension has no first-party network client. Narration text is passed to the selected Chrome TTS provider; on-device versus network processing depends on that provider.
-* **Accessible (WCAG AA Compliant):** Full keyboard focus rings (`#FF5C00`), ARIA attributes, and high-contrast color palettes.
+* **Keyboard Accessibility:** Visible focus indicators, dialog semantics, keyboard-operable controls, and high-contrast interface colors. Formal assistive-technology conformance checks remain part of release validation.
 * **Legacy internal identifiers:** Invisible plumbing (`readAloud_*` storage keys, `ra-*` element IDs, `--ra-*` CSS tokens) deliberately keeps its pre-rename names so upgrading users keep every saved voice, speed, and theme setting. Only what the user can see is branded NarraTrace.
 
 
