@@ -672,8 +672,10 @@ check(
     'text.length > 500' in bg and 'rate < 0.5' in bg and 'rate > 2.0' in bg,
 )
 check(
-    'background.js: diagnostic events use the shared privacy sanitizer',
-    "import {\\n  sanitizeTtsDiagnosticEvent" in bg and 'event: sanitizeTtsDiagnosticEvent(event)' in bg,
+    'background.js: diagnostic events use the shared privacy sanitizer module',
+    "from './tts-diagnostic-privacy.js'" in bg and
+    'sanitizeTtsDiagnosticEvent' in bg and
+    'event: sanitizeTtsDiagnosticEvent(event)' in bg,
 )
 check(
     'tts-diagnostic-privacy.js: raw provider error strings are replaced by a generic classification',
