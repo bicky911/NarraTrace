@@ -214,6 +214,18 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   assert.match(endValue, /Sentence [1-9][0-9]* of [1-9][0-9]*/);
   assert.ok(!endValue.startsWith('Sentence 1 of '), 'End should move to the final sentence');
 
+  // Reproduce the docked-player edge case deterministically: after its
+  // auto-tuck, CSS hides the pill-body that contains the Settings opener.
+  // Closing the reader must reveal that opener before restoring focus.
+  await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    root.querySelector('.player-pill').classList.add('is-tucked', 'beaded');
+    const settings = root.getElementById('ra-settings');
+    if (settings.getClientRects().length !== 0) {
+      throw new Error('Expected the beaded player to hide its Settings trigger');
+    }
+  });
+
   // Escape closes the dialog, hides it from AT, and restores focus to its opener.
   await page.keyboard.press('Escape');
   await new Promise(resolve => setTimeout(resolve, 100));
@@ -224,7 +236,8 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       isOpen: dialog.classList.contains('open'),
       inert: dialog.inert,
       ariaHidden: dialog.getAttribute('aria-hidden'),
-      activeId: root.activeElement?.id
+      activeId: root.activeElement?.id,
+      playerBeaded: root.querySelector('.player-pill')?.classList.contains('beaded')
     };
   });
   console.log('[NarraTrace accessibility reader Escape]', JSON.stringify(afterReaderEscape));
@@ -232,6 +245,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   assert.equal(afterReaderEscape.inert, true, 'Escape should make the reader dialog inert');
   assert.equal(afterReaderEscape.ariaHidden, 'true', 'Escape should hide the reader dialog from assistive technology');
   assert.equal(afterReaderEscape.activeId, 'ra-settings', 'Escape should restore focus to the settings trigger');
+  assert.equal(afterReaderEscape.playerBeaded, false, 'Restoring focus should untuck the player first');
 
   // Escape also closes settings, updates expanded state, and restores focus.
   await page.evaluate(() => {
