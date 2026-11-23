@@ -684,6 +684,27 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     );
   });
 
+  // Advance the in-page progress before stopping, then verify that both
+  // page-level sliders clear their stale sentence announcement.
+  await popupWorker.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) throw new Error('No active tab found for progress reset regression.');
+    await chrome.tabs.sendMessage(tab.id, {
+      action: 'SENTENCE_CHANGED',
+      sentence: { text: 'A sentence used for page progress accessibility.' },
+      index: 2,
+      totalSentences: 10
+    });
+  });
+  await page.waitForFunction(() => {
+    const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
+    const tracks = [root?.getElementById('ra-progress-track'), root?.getElementById('ra-rprogress-track')];
+    return tracks.every(track =>
+      track?.getAttribute('aria-valuenow') === '30' &&
+      track.getAttribute('aria-valuetext') === 'Sentence 3 of 10'
+    );
+  });
+
   await dispatchPlaybackState('PLAYBACK_STOPPED');
   await popupPage.waitForFunction(() => {
     const play = document.getElementById('ctrl-play');
@@ -694,9 +715,13 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   await page.waitForFunction(() => {
     const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
     const controls = [root?.getElementById('ra-play'), root?.getElementById('ra-rctrl-play')];
+    const tracks = [root?.getElementById('ra-progress-track'), root?.getElementById('ra-rprogress-track')];
     return controls.every(control =>
       control?.getAttribute('aria-label') === 'Play reading' &&
       control.getAttribute('aria-pressed') === 'false'
+    ) && tracks.every(track =>
+      track?.getAttribute('aria-valuenow') === '0' &&
+      track.getAttribute('aria-valuetext') === 'No sentences loaded'
     );
   });
 
