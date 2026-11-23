@@ -759,6 +759,18 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     const voice = document.getElementById('popup-voice-select');
     const chip = document.querySelector('.chip[data-speed="1.5"]');
     const value = document.getElementById('popup-speed-display');
+    if (!speed || !voice || !chip || !value) {
+      throw new Error('Expected popup slider, voice selector, speed preset, and value label to exist.');
+    }
+    // Headless Chrome can expose no system TTS voices. Add a temporary option
+    // so its light-theme foreground/background style can still be verified.
+    let option = voice.options[0];
+    if (!option) {
+      option = document.createElement('option');
+      option.value = 'contrast-test';
+      option.textContent = 'Contrast test voice';
+      voice.appendChild(option);
+    }
     const rgb = value => value.match(/[0-9.]+/g).slice(0, 3).map(Number);
     const luminance = channels => channels.map(channel => {
       const value = channel / 255;
@@ -770,9 +782,9 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
     };
     const thumb = getComputedStyle(speed, '::-webkit-slider-thumb');
-    const option = voice.options[0];
     return {
       speedTrack: getComputedStyle(speed).backgroundColor,
+      speedTrackContrast: ratio(getComputedStyle(speed).backgroundColor, getComputedStyle(document.body).backgroundColor),
       speedThumb: thumb.backgroundColor,
       speedThumbContrast: ratio(thumb.backgroundColor, getComputedStyle(document.body).backgroundColor),
       selectBorder: getComputedStyle(voice).borderTopColor,
@@ -792,6 +804,10 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       focusedControl: document.activeElement?.id
     };
   });
+  assert.ok(
+    lightControlContrast.speedTrackContrast >= 3,
+    `Light-theme speed track must meet 3:1 non-text contrast; got ${lightControlContrast.speedTrackContrast.toFixed(2)}:1`
+  );
   assert.ok(
     lightControlContrast.speedThumbContrast >= 3,
     `Light-theme speed thumb must meet 3:1 non-text contrast; got ${lightControlContrast.speedThumbContrast.toFixed(2)}:1`
