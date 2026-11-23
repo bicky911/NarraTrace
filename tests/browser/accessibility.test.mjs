@@ -255,7 +255,8 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       fontGroupName: root.querySelector('.reader-tool-group[role="group"]')?.getAttribute('aria-label'),
       themeGroupName: root.querySelector('.reader-theme-group[role="group"]')?.getAttribute('aria-label'),
       playControls: root.getElementById('ra-rctrl-play').getAttribute('aria-controls'),
-      paragraphPlayName: root.getElementById('ra-hover-play').getAttribute('aria-label')
+      paragraphPlayName: root.getElementById('ra-hover-play').getAttribute('aria-label'),
+      selectionPlayName: root.getElementById('ra-selection-play').getAttribute('aria-label')
     };
   });
   assert.equal(readerVisual.fontSize, 20);
@@ -274,6 +275,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   assert.equal(readerVisual.themeGroupName, 'Reading color theme');
   assert.equal(readerVisual.playControls, 'ra-reader-body');
   assert.equal(readerVisual.paragraphPlayName, 'Read this paragraph aloud');
+  assert.equal(readerVisual.selectionPlayName, 'Read selected text aloud');
 
   // Each reading palette exposes a distinct accessible name and selected state.
   await page.evaluate(() => {
