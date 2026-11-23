@@ -249,8 +249,8 @@ class PlaybackManager {
     this.leadInMs = 0;
     // What we have learned about each TTS engine, keyed by extension id.
     //
-    //   prepareMs          time from the engine's 'start' event to its first
-    //                       boundary — the engine's setup cost per utterance.
+    //   prepareMs          time from the request to its first sentence boundary
+    //                       or valid word event — provider setup per utterance.
     //   baseCharsPerSecond measured speaking rate at 1.0x rate.
     //   leadInMs           delay between announcing a boundary and the voice
     //                       becoming audible (Supertonic only).
