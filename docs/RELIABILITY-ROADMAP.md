@@ -1,74 +1,71 @@
 # NarraTrace 1.5 — Reliability & Verification
 
 ## Purpose
-Establish a trustworthy quality baseline before adding features or performing risky architectural refactors. This roadmap is an engineering plan, not a claim that the items are already implemented or verified.
+Reliability, user-visible synchronization, privacy, accessibility, and repeatable release validation take priority over feature expansion. This roadmap distinguishes automated coverage from real-device validation.
 
 ## Stage 1: Baseline and regression safety
-- [x] Add CI execution for the existing static verification harness.
-- [x] Document test limitations and the staged plan.
-- [ ] Reconcile automatic voice-selection expectations between implementation, README, and manual checklist.
-- [ ] Capture a repeatable Chrome test environment and supported-engine matrix.
-- [ ] Record baseline results for the current branch and main.
+- [x] CI runs the existing static verification harness.
+- [x] Add Node regression suites and Chromium integration tests.
+- [x] Align maintained provider scope and selection expectations across implementation and documentation (Piper and Supertonic; generic Chrome TTS fallback; no Kokoro-specific maintenance).
+- [x] Document broad page access and provider-dependent processing.
+- [ ] Maintain a tested Chrome/OS/provider matrix based on real-device reports.
+- [ ] Compare repeatable baseline measurements across representative hardware.
 
 ## Stage 2: Playback reliability
-- [x] Guard asynchronous start, pause, resume, stop, skip, jump, and worker-recovery continuations against superseded playback runs.
-- [x] Add deterministic mocked Chrome/TTS regression tests for overlapping starts, rapid skips, pause/resume, worker-recovery timeout, and rapid rate changes.
-- [x] Stop a timed-out orphaned utterance before worker-recovery replay to prevent overlapping speech.
-- [x] Route rate, volume, pitch, and voice updates through a shared latest-run restart guard.
-- [ ] Define the remaining explicit playback state-transition invariants.
-- [ ] Test rapid play/pause/stop/next/previous and tab-switching sequences.
-- [ ] Verify exactly-once sentence advancement on completion, timeout, and errors.
-- [ ] Exercise service-worker termination and session restoration.
-- [ ] Validate resume offsets after speed changes and pauses.
-- [ ] Add deterministic mocked Chrome TTS tests.
+- [x] Guard asynchronous playback transitions against superseded playback runs.
+- [x] Regression-test overlapping starts, rapid skips, pause/resume, worker-recovery timeout, and rapid rate changes.
+- [x] Stop a timed-out orphan utterance before worker recovery to prevent overlap.
+- [x] Route rate, volume, pitch, and voice updates through a guarded restart path.
+- [x] Exercise service-worker recovery with a deterministic Chromium TTS fixture.
+- [ ] Define all playback state-transition invariants explicitly.
+- [ ] Verify exactly-once advancement across completion, timeout, and provider errors on real providers.
+- [ ] Validate resume offsets and rapid control/tab-switch sequences with installed providers.
 
 ## Stage 3: Synchronization
-- [x] Keep native word events authoritative while the estimator bridges stale or partial boundary streams.
-- [x] Reject malformed native word indices without disabling estimator fallback.
-- [x] De-duplicate repeated synthetic word events within the same word.
-- [x] Add regression coverage for grouped sentence offsets and full-source resume-position mapping.
-- [ ] Normalize TTS word-boundary events across supported engines.
-- [ ] Validate offset handling with partial, missing, and delayed boundary events.
-- [ ] Verify estimator recalibration at sentence boundaries.
-- [ ] Test language/script routing and voice changes mid-session.
+- [x] Keep native word events authoritative while a fallback estimator bridges sparse events.
+- [x] Reject malformed native offsets without disabling fallback.
+- [x] De-duplicate repeated synthetic boundary events.
+- [x] Test grouped sentence mapping and full-source resume offsets.
+- [x] Test extraction and word/sentence range mapping in Chromium fixtures.
+- [ ] Validate partial, missing, delayed, and provider-specific boundary behavior with real voices.
+- [ ] Verify estimator recalibration, language/script routing, and mid-session voice changes on-device.
+- [ ] Prefer sentence-level highlighting when reliable word offsets are unavailable.
 
 ## Stage 4: Content extraction
-- [x] Add a structured research-article fixture covering headings, paragraphs, lists, captions, tables, metadata, navigation, sidebars, recommendations, footer noise, and references.
-- [x] Fix the tokenizer boundary that incorrectly split honorifics from capitalized names.
-- [x] Retain short structural headings so reference-section cutoff can operate.
-- [x] Verify Readability output and its integration with the shared sentence tokenizer.
-- [x] Test production content-block selection, references cutoff, sentence DOM ranges, and word subranges across inline nodes.
-- [x] Simulate paragraph replacement and verify stale sentence ranges can be relocated without pointing to detached nodes.
-- [x] Verify missing text and empty blocks do not create phantom sentence/word ranges.
-- [ ] Build additional fixtures for long articles, dynamic pages, and noisy layouts.
-- [ ] Add malformed and inaccessible DOM regression cases.
+- [x] Test structured article content, references, headings, captions, tables, lists, and noise blocks.
+- [x] Test paragraph replacement and stale-range relocation in the browser fixture.
+- [x] Verify empty content does not create phantom ranges.
+- [ ] Add additional real-world fixtures for long, noisy, dynamic, malformed, and inaccessible layouts.
 
 ## Stage 5: Performance and maintainability
-- [x] Remove always-on 1.2 s zoom-compensation polling; react to viewport and resolution changes instead.
-- [x] Re-arm the device-pixel-ratio watcher on BFCache restore and disconnect it on pagehide.
-- [x] Add resource-lifecycle regression tests for DPR watcher registration, re-arming, cleanup, and legacy listener support.
-- [x] Test MutationObserver start idempotency, mutation throttling, disconnect, timer cancellation, and restart after cleanup.
-- [x] Add a repeatable Chromium large-article baseline for production block selection, sentence DOM mapping, renderer script duration, and heap delta.
-- [x] Record two CI measurements: 41.5 ms / 0.76 MB and 37.4 ms / 0.74 MB for 1,200 paragraphs and 2,401 ranges.
-- [x] Establish a coarse CI guard: 1,200 paragraphs / 2,401 sentence ranges under 1,000 ms and renderer heap delta under 32 MB.
-- [x] Add a real-extension renderer profile comparing idle and active-playback script/task time and heap deltas on a local long article.
-- [ ] Collect repeated profiles on representative user hardware before refining performance budgets.
-- [ ] Modularize only behind test coverage; avoid a rewrite.
-- [ ] Audit remaining event-listener and timer cleanup paths.
+- [x] Replace continuous zoom polling with viewport/resolution lifecycle-aware watchers.
+- [x] Test watcher registration, re-arming, cleanup, and mutation-observer lifecycle.
+- [x] Add a large-page baseline and renderer idle-versus-playback profile in CI.
+- [x] Establish coarse CI performance ceilings.
+- [ ] Collect repeat profiles on representative CPU-only and higher-end hardware.
+- [ ] Audit remaining event listeners, timers, and lifecycle cleanup paths.
+- [ ] Modularize only where test coverage and clear boundaries justify it; no rewrite for its own sake.
 
-## Stage 6: Release quality
-- [x] Clarify the NarraTrace-to-Chrome-TTS data flow and distinguish core extension behavior from third-party voice-provider processing.
-- [x] Remove unused `activeTab` and `scripting` permissions and add a manifest/privacy regression test.
-- [ ] Accessibility test keyboard navigation, screen readers, reduced motion, and focus restoration.
+## Stage 6: Accessibility, security, and release
+- [x] Add Focus Reader dialog semantics, keyboard focus trapping, Escape behavior, focus restoration, and slider announcements to automated Chromium checks.
+- [x] Test focus restoration in mini/tucked player conditions.
+- [x] Add diagnostic privacy sanitization and access-control tests.
+- [x] Remove unused manifest permissions and test the privacy/permission contract.
+- [ ] Conduct manual screen-reader and assistive-technology checks.
+- [ ] Verify reduced-motion behavior, contrast, and keyboard navigation on real Chrome/OS combinations.
 - [ ] Complete the remaining extension security-boundary review.
-- [ ] Verify release package, changelog, version, and upgrade behavior.
+- [ ] Run the manual real-engine checklist with installed Piper and Supertonic voices.
+- [ ] Confirm cold/warm first-audio latency, sentence gaps, highlight drift, 30-minute memory behavior, and CPU use.
+- [ ] Make an explicit repository license decision before redistribution.
+- [ ] Verify final package, version, changelog, upgrade behavior, and release notes before publishing.
 
-## Acceptance criteria
-- No unexplained playback stalls, duplicate or missing sentence transitions in defined scenarios.
-- Resume position and highlighting behave consistently across supported engines, including fallback paths.
-- Service-worker termination/restart behavior is tested rather than assumed.
-- Automated checks pass on proposed changes.
-- Privacy, compatibility, and accessibility claims are evidence-based.
+## Release acceptance criteria
+- Automated checks pass on the release candidate.
+- No known unexplained stalls, duplicate or missing transitions in tested scenarios.
+- Highlighting and resume behavior are evidence-based for supported provider profiles.
+- Service-worker recovery is tested, not assumed.
+- Privacy, permissions, compatibility, and accessibility claims match evidence.
+- Real-provider audio and manual release gates are completed and documented.
 
 ## Scope discipline
-Reliability improvements take priority over major feature additions. Each change should be small, independently reviewable, accompanied by tests, and evaluated against the acceptance criteria.
+Small, reviewable changes with regression tests. Avoid unrelated features, risky rewrites, and unsupported claims. Do not publish or label a release as verified until the outstanding real-device and release gates above are completed.
