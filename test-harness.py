@@ -317,7 +317,7 @@ check(
 
 check(
     'speech-engine.js: Supertonic remains a maintained provider profile',
-    'SUPERTONIC_EXTENSION_ID' in se and bool(re.search(r'id:\\s*SUPERTONIC_EXTENSION_ID[\\s\\S]*?priority:\\s*20', se)),
+    'SUPERTONIC_EXTENSION_ID' in se and bool(re.search(r'id:\s*SUPERTONIC_EXTENSION_ID[\s\S]*?priority:\s*20', se)),
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
