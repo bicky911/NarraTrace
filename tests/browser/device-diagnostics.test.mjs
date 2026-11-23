@@ -200,11 +200,15 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
   assert.equal(blockedNormalPlayback?.success, false);
   assert.match(blockedNormalPlayback?.error || '', /diagnostic is active/i);
 
-  await diagnostics.waitForFunction(() =>
-    document.getElementById('engine-diagnostic-status')?.textContent
-      .toLowerCase().includes('audible output was not confirmed'),
-    { timeout: 20000 }
-  );
+  // Wait for a terminal diagnostic state, then inspect the exact outcome.
+  // This distinguishes clean completion from interruption or a missing event.
+  await diagnostics.waitForFunction(() => {
+    const run = document.getElementById('btn-run-engine-diagnostic');
+    const stop = document.getElementById('btn-stop-engine-diagnostic');
+    const exportButton = document.getElementById('btn-export-engine-diagnostic');
+    return run?.disabled === false && stop?.disabled === true && exportButton?.disabled === false;
+  }, { timeout: 15000 });
+  console.log('[diagnostics-test] Diagnostic reached a terminal state');
 
   console.log('[diagnostics-test] Diagnostic completed without audible mark');
   const result = await diagnostics.evaluate(() => ({
@@ -214,9 +218,15 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     report: typeof diagnosticReport === 'object' ? diagnosticReport : null
   }));
 
+  console.log('[diagnostics-test] Terminal report summary', JSON.stringify({
+    status: result.status,
+    resultType: result.report?.resultType,
+    eventTypes: result.report?.events?.map(entry => entry.event?.type)
+  }));
   assert.match(result.log, /start/i);
   assert.match(result.log, /word/i);
   assert.match(result.log, /end/i);
+  assert.equal(result.report?.resultType, 'end', 'silent test provider should still deliver a clean TTS end event');
   assert.equal(result.log.includes(SAMPLE), false, 'event log must never include the diagnostic sample');
   assert.equal(result.exportEnabled, true, 'a completed diagnostic report should be exportable');
   assert.equal(result.report?.test?.sampleTextIncluded, false);
