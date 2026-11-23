@@ -17,6 +17,11 @@ async function record(event) {
 }
 
 chrome.ttsEngine.onSpeak.addListener((utterance, options, sendTtsEvent) => {
+  // Individual browser tests can tune the fake utterance duration without
+  // changing the longer default used by diagnostics isolation checks.
+  const speechDurationMs = Number.isFinite(globalThis.__NARRATRACE_TEST_DELAY_MS)
+    ? Math.max(100, globalThis.__NARRATRACE_TEST_DELAY_MS)
+    : SPEECH_DURATION_MS;
   void record({ type: 'speak', text: utterance });
   sendTtsEvent({ type: 'start', charIndex: 0 });
   let wordEventsSent = 0;
@@ -48,7 +53,7 @@ chrome.ttsEngine.onSpeak.addListener((utterance, options, sendTtsEvent) => {
           length: word[0].length
         });
         wordEventsSent++;
-      }, Math.max(75, SPEECH_DURATION_MS / Math.max(words.length, 1)));
+      }, Math.max(75, speechDurationMs / Math.max(words.length, 1)));
       activeTimers.add(wordTimer);
     }
   }
@@ -57,7 +62,7 @@ chrome.ttsEngine.onSpeak.addListener((utterance, options, sendTtsEvent) => {
     activeTimers.delete(timer);
     sendTtsEvent({ type: 'end', charIndex: utterance.length });
     void record({ type: 'end', text: utterance, wordEventsSent });
-  }, SPEECH_DURATION_MS);
+  }, speechDurationMs);
   activeTimers.add(timer);
 });
 
