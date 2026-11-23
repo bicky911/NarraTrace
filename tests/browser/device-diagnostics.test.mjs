@@ -260,6 +260,21 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
   assert.equal(selectedErrorVoice.voiceName, ERROR_TEST_VOICE);
   assert.equal(selectedErrorVoice.extensionId, errorEngineId);
 
+  // Observe the separate error-provider worker directly so the test can
+  // distinguish "voice listed" from "provider actually received onSpeak".
+  const errorEngineTarget = await browser.waitForTarget(candidate =>
+    candidate.type() === 'service_worker' &&
+    candidate.url().startsWith(`chrome-extension://${errorEngineId}/`)
+  , { timeout: 10000 });
+  const errorEngineWorker = await errorEngineTarget.worker();
+  assert.ok(errorEngineWorker, 'echo-error provider service worker should be active');
+  errorEngineWorker.on('console', message =>
+    console.log('[echo-error-provider]', message.text())
+  );
+  errorEngineWorker.on('pageerror', error =>
+    console.log('[echo-error-provider-error]', error.message)
+  );
+
   const ERROR_SAMPLE = 'PRIVATE-ERROR-ECHO-SAMPLE-DO-NOT-EXPORT';
   await withTimeout(diagnostics.evaluate((value) => {
     const element = document.getElementById('diagnostic-sample-text');
@@ -273,6 +288,7 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     { timeout: 10000, polling: 100 }
   );
   console.log('[diagnostics-test] Error-provider request accepted');
+  console.log('[diagnostics-test] Error voice ID', errorEngineId);
 
   await diagnostics.waitForFunction(() => {
     const run = document.getElementById('btn-run-engine-diagnostic');
