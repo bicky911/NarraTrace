@@ -530,10 +530,10 @@
     </div>
     <div class="header-right">
       <span id="engine-badge" class="engine-badge">
-        <span id="status-dot" class="status-dot"></span>
+        <span id="status-dot" class="status-dot" aria-hidden="true"></span>
         <span id="badge-text">ENGINE</span>
       </span>
-      <button class="icon-toggle" id="theme-toggle" title="Toggle OP-1 Light / Dark mode" aria-label="Toggle light or dark theme">☼</button>
+      <button class="icon-toggle" id="theme-toggle" title="Toggle OP-1 Light / Dark mode" aria-label="Switch to light theme">☼</button>
     </div>
   </div>
 
@@ -559,7 +559,7 @@
         <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
       </button>
 
-      <button class="ctrl-btn play-main" id="ctrl-play" title="Play / Pause (Alt+P)" aria-label="Play or pause reading">
+      <button class="ctrl-btn play-main" id="ctrl-play" title="Play / Pause (Alt+P)" aria-label="Play reading" aria-pressed="false">
         <svg id="ctrl-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       </button>
 
@@ -595,11 +595,11 @@
       <div class="speed-slider-wrap">
         <input type="range" id="popup-speed-slider" min="0.5" max="3.0" step="0.1" value="1.0">
       </div>
-      <div class="speed-chips">
-        <button class="chip active" data-speed="1.0">1.0×</button>
-        <button class="chip" data-speed="1.2">1.2×</button>
-        <button class="chip" data-speed="1.5">1.5×</button>
-        <button class="chip" data-speed="2.0">2.0×</button>
+      <div class="speed-chips" role="group" aria-label="Playback speed presets">
+        <button type="button" class="chip active" data-speed="1.0" aria-pressed="true">1.0×</button>
+        <button type="button" class="chip" data-speed="1.2" aria-pressed="false">1.2×</button>
+        <button type="button" class="chip" data-speed="1.5" aria-pressed="false">1.5×</button>
+        <button type="button" class="chip" data-speed="2.0" aria-pressed="false">2.0×</button>
       </div>
     </div>
 
@@ -617,7 +617,7 @@
 
   <!-- Bottom Hardware Actions -->
   <div class="footer-actions">
-    <button class="footer-btn" id="btn-toggle-pill" title="Toggle floating on-screen pill module" aria-label="Toggle floating on-screen pill player">
+    <button class="footer-btn" id="btn-toggle-pill" title="Toggle floating on-screen pill module" aria-label="Hide floating player" aria-pressed="true">
       <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
       <span id="btn-toggle-text">HIDE SCREEN MODULE</span>
     </button>
