@@ -6,7 +6,7 @@
 - Restrict diagnostic speech and full session inspection to the bundled diagnostics page; prevent normal playback and diagnostics from overlapping.
 - Prioritize Piper and Supertonic as NarraTrace's maintained provider profiles.
 - Keep other Chrome TTS extensions discoverable through the generic provider path; provider-specific behavior is not assumed or release-gated.
-- Remove Kokoro-specific provider tuning from the current target implementation. Historical 1.3.0 notes below are retained as release history, not as a current support commitment.
+- Remove obsolete provider-specific tuning from the current target implementation; maintain dedicated profiles only where NarraTrace has verified provider behavior.
 - Fix keyboard focus restoration when the floating player is auto-tucked or using mini layout.
 - Add deterministic Chromium regression coverage for Focus Reader and Settings focus restoration.
 
