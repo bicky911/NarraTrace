@@ -45,6 +45,8 @@ let isPillVisible        = true;
 function updatePillToggleText() {
   if (btnTogglePillText) {
     btnTogglePillText.textContent = isPillVisible ? 'HIDE SCREEN MODULE' : 'SHOW SCREEN MODULE';
+    btnTogglePill.setAttribute('aria-pressed', String(isPillVisible));
+    btnTogglePill.setAttribute('aria-label', isPillVisible ? 'Hide floating player' : 'Show floating player');
   }
 }
 
@@ -60,10 +62,12 @@ function applyTheme(theme) {
     document.body.classList.add('light');
     themeToggleEl.textContent = '●';
     themeToggleEl.title = 'Switch to Dark Mode';
+    themeToggleEl.setAttribute('aria-label', 'Switch to dark theme');
   } else {
     document.body.classList.remove('light');
     themeToggleEl.textContent = '☼';
     themeToggleEl.title = 'Switch to OP-1 Light Mode';
+    themeToggleEl.setAttribute('aria-label', 'Switch to light theme');
   }
 }
 
@@ -79,6 +83,7 @@ function updateVolumeDisplay(vol) {
 function updatePlayState(state, currentSentence = null, currentIndex = 0, totalSentences = 0) {
   currentPlaybackState = state;
   ctrlPlayBtn.setAttribute('aria-label', state === 'PLAYING' ? 'Pause reading' : 'Play reading');
+  ctrlPlayBtn.setAttribute('aria-pressed', String(state === 'PLAYING'));
 
   if (state === 'PLAYING') {
     ctrlPlayIcon.innerHTML = SVG_PAUSE;
@@ -324,8 +329,10 @@ function updateSpeedDisplay(rate) {
     const chipSpeed = parseFloat(chip.dataset.speed);
     if (Math.abs(chipSpeed - rate) < 0.05) {
       chip.classList.add('active');
+      chip.setAttribute('aria-pressed', 'true');
     } else {
       chip.classList.remove('active');
+      chip.setAttribute('aria-pressed', 'false');
     }
   });
 }
