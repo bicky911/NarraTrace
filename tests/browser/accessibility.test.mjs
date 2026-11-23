@@ -248,7 +248,13 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       themeName: firstTheme.getAttribute('aria-label'),
       themePressed: firstTheme.getAttribute('aria-pressed'),
       headerMinHeight: parseFloat(getComputedStyle(root.querySelector('.reader-header')).minHeight),
-      controlSize: Math.round(root.getElementById('ra-rctrl-play').getBoundingClientRect().width)
+      controlSize: Math.round(root.getElementById('ra-rctrl-play').getBoundingClientRect().width),
+      fontDecreaseName: root.getElementById('ra-font-dec').getAttribute('aria-label'),
+      fontIncreaseName: root.getElementById('ra-font-inc').getAttribute('aria-label'),
+      fontSelectName: root.getElementById('ra-reader-font').getAttribute('aria-label'),
+      fontGroupName: root.querySelector('.reader-tool-group[role="group"]')?.getAttribute('aria-label'),
+      themeGroupName: root.querySelector('.reader-theme-group[role="group"]')?.getAttribute('aria-label'),
+      playControls: root.getElementById('ra-rctrl-play').getAttribute('aria-controls')
     };
   });
   assert.equal(readerVisual.fontSize, 20);
@@ -260,6 +266,12 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   assert.equal(readerVisual.themeName, 'Warm paper theme');
   assert.equal(readerVisual.themePressed, 'true');
   assert.ok(readerVisual.controlSize >= 44);
+  assert.equal(readerVisual.fontDecreaseName, 'Decrease reading text size');
+  assert.equal(readerVisual.fontIncreaseName, 'Increase reading text size');
+  assert.equal(readerVisual.fontSelectName, 'Reading font');
+  assert.equal(readerVisual.fontGroupName, 'Reading text size');
+  assert.equal(readerVisual.themeGroupName, 'Reading color theme');
+  assert.equal(readerVisual.playControls, 'ra-reader-body');
 
   // Each reading palette exposes a distinct accessible name and selected state.
   await page.evaluate(() => {
