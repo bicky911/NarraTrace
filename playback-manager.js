@@ -364,7 +364,7 @@ class PlaybackManager {
     if (this._keepAliveAlarmSyncPromise) return this._keepAliveAlarmSyncPromise;
     if (this._keepAliveAlarmApplied === this._keepAliveAlarmDesired) return Promise.resolve();
 
-    this._keepAliveAlarmSyncPromise = (async () => {
+    this._keepAliveAlarmSyncPromise = Promise.resolve().then(async () => {
       try {
         // Re-read the desired state after each awaited Chrome API call. Rapid
         // pause/resume transitions therefore converge on the latest state
@@ -387,7 +387,7 @@ class PlaybackManager {
       } finally {
         this._keepAliveAlarmSyncPromise = null;
       }
-    })();
+    });
 
     return this._keepAliveAlarmSyncPromise;
   }
