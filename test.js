@@ -10,6 +10,10 @@ const { splitIntoChunks } = globalThis.ReadAloudTokenizer;
 const badgeEl = document.getElementById('supertonic-badge');
 const statusMessageEl = document.getElementById('status-message');
 const voiceSelectEl = document.getElementById('voice-select');
+let manuallySelectedVoice = null;
+let voiceLoadGeneration = 0;
+const MAX_VOICE_DISCOVERY_ATTEMPTS = 24;
+const VOICE_DISCOVERY_INTERVAL_MS = 500;
 const rateSliderEl = document.getElementById('rate-slider');
 const rateDisplayEl = document.getElementById('rate-display');
 const articleTextEl = document.getElementById('article-text');
@@ -320,61 +324,98 @@ function updateActiveSentence(index) {
   });
 }
 
-// Load and populate voices
+// Load and populate voices. Chrome TTS providers can register asynchronously
+// after an extension page opens, so retry briefly and refresh on registry changes.
 async function loadVoices() {
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'GET_VOICES' });
-    if (!response || !response.success) return;
+  const generation = ++voiceLoadGeneration;
 
-    const report = response.data;
-    if (report.engineId) {
-      badgeEl.className = 'badge success';
-      badgeEl.textContent = `${report.engineLabel} Active`;
-    } else {
-      badgeEl.className = 'badge warning';
-      badgeEl.textContent = 'System Voice Fallback';
-    }
-    statusMessageEl.textContent = report.statusMessage;
+  for (let attempt = 0; attempt < MAX_VOICE_DISCOVERY_ATTEMPTS; attempt++) {
+    if (generation !== voiceLoadGeneration) return;
 
-    voiceSelectEl.innerHTML = '';
+    try {
+      const response = await chrome.runtime.sendMessage({ action: 'GET_VOICES' });
+      if (generation !== voiceLoadGeneration) return;
 
-    (report.engines || []).forEach((engine) => {
-      if (!engine.voices || engine.voices.length === 0) return;
-      const isActive = engine.id === report.engineId;
-      const group = document.createElement('optgroup');
-      group.label = isActive ? `★ ${engine.fullLabel}` : engine.fullLabel;
-      engine.voices.forEach((v) => {
-        const opt = document.createElement('option');
-        opt.value = v.voiceName;
-        opt.textContent = `${v.voiceName} (${v.lang || 'en'})`;
-        opt.dataset.extensionId = v.extensionId || '';
-        opt.dataset.lang = v.lang || '';
-        if (report.selectedVoice && report.selectedVoice.voiceName === v.voiceName) {
-          opt.selected = true;
+      if (response?.success) {
+        const report = response.data || {};
+        if (report.engineId) {
+          badgeEl.className = 'badge success';
+          badgeEl.textContent = `${report.engineLabel} Active`;
+        } else {
+          badgeEl.className = 'badge warning';
+          badgeEl.textContent = 'System Voice Fallback';
         }
-        group.appendChild(opt);
-      });
-      voiceSelectEl.appendChild(group);
-    });
+        statusMessageEl.textContent = report.statusMessage || '';
 
-    if (report.localSystemVoices && report.localSystemVoices.length > 0) {
-      const sysGroup = document.createElement('optgroup');
-      sysGroup.label = '💻 Windows Local Voices';
-      report.localSystemVoices.forEach((v) => {
-        const opt = document.createElement('option');
-        opt.value = v.voiceName;
-        opt.textContent = `${v.voiceName}`;
-        opt.dataset.extensionId = '';
-        opt.dataset.lang = v.lang || '';
-        if (report.selectedVoice && report.selectedVoice.voiceName === v.voiceName && (!report.selectedVoice.extensionId)) {
-          opt.selected = true;
+        voiceSelectEl.innerHTML = '';
+
+        (report.engines || []).forEach((engine) => {
+          if (!engine.voices || engine.voices.length === 0) return;
+          const isActive = engine.id === report.engineId;
+          const group = document.createElement('optgroup');
+          group.label = isActive ? `★ ${engine.fullLabel}` : engine.fullLabel;
+          engine.voices.forEach((v) => {
+            const opt = document.createElement('option');
+            opt.value = v.voiceName;
+            opt.textContent = `${v.voiceName} (${v.lang || 'en'})`;
+            opt.dataset.extensionId = v.extensionId || '';
+            opt.dataset.lang = v.lang || '';
+            if (report.selectedVoice &&
+                report.selectedVoice.voiceName === v.voiceName &&
+                (report.selectedVoice.extensionId || '') === (v.extensionId || '')) {
+              opt.selected = true;
+            }
+            group.appendChild(opt);
+          });
+          voiceSelectEl.appendChild(group);
+        });
+
+        if (report.localSystemVoices && report.localSystemVoices.length > 0) {
+          const sysGroup = document.createElement('optgroup');
+          sysGroup.label = '💻 Windows Local Voices';
+          report.localSystemVoices.forEach((v) => {
+            const opt = document.createElement('option');
+            opt.value = v.voiceName;
+            opt.textContent = v.voiceName;
+            opt.dataset.extensionId = '';
+            opt.dataset.lang = v.lang || '';
+            if (report.selectedVoice &&
+                report.selectedVoice.voiceName === v.voiceName &&
+                !report.selectedVoice.extensionId) {
+              opt.selected = true;
+            }
+            sysGroup.appendChild(opt);
+          });
+          voiceSelectEl.appendChild(sysGroup);
         }
-        sysGroup.appendChild(opt);
-      });
-      voiceSelectEl.appendChild(sysGroup);
+
+        // A registry refresh must not silently override a voice the user
+        // explicitly selected while the diagnostics page was open.
+        if (manuallySelectedVoice) {
+          const selectedOption = Array.from(voiceSelectEl.options).find(option =>
+            option.value === manuallySelectedVoice.voiceName &&
+            (option.dataset.extensionId || '') === manuallySelectedVoice.extensionId
+          );
+          if (selectedOption) selectedOption.selected = true;
+        }
+
+        const hasExtensionVoices = (report.engines || []).some(engine =>
+          Array.isArray(engine.voices) && engine.voices.length > 0
+        );
+        if (hasExtensionVoices) return;
+      } else if (attempt === MAX_VOICE_DISCOVERY_ATTEMPTS - 1) {
+        return;
+      }
+    } catch (err) {
+      if (attempt === MAX_VOICE_DISCOVERY_ATTEMPTS - 1) {
+        console.warn('Voice loading error:', err);
+        return;
+      }
     }
-  } catch (err) {
-    console.warn('Voice loading error:', err);
+
+    if (attempt < MAX_VOICE_DISCOVERY_ATTEMPTS - 1) {
+      await new Promise(resolve => setTimeout(resolve, VOICE_DISCOVERY_INTERVAL_MS));
+    }
   }
 }
 
@@ -389,6 +430,11 @@ rateSliderEl.addEventListener('input', () => {
 voiceSelectEl.addEventListener('change', () => {
   const opt = voiceSelectEl.selectedOptions[0];
   if (!opt) return;
+  manuallySelectedVoice = {
+    voiceName: opt.value,
+    extensionId: opt.dataset.extensionId || '',
+    lang: opt.dataset.lang || ''
+  };
   chrome.runtime.sendMessage({
     action: 'SET_VOICE',
     voiceName: opt.value,
@@ -557,7 +603,14 @@ chrome.runtime.onMessage.addListener((message) => {
 });
 
 // Initial boot
-loadVoices();
+try {
+  chrome.tts?.onVoicesChanged?.addListener(() => {
+    void loadVoices();
+  });
+} catch (_) {
+  // The bounded startup retry still handles providers that register late.
+}
+void loadVoices();
 
 // Pre-render default text sentences
 renderSentenceList(splitIntoChunks(articleTextEl.value), -1);
