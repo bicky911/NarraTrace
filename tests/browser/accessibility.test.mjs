@@ -130,6 +130,8 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       role: panel.getAttribute('role'),
       labelledBy: panel.getAttribute('aria-labelledby'),
       titleText: root.getElementById('ra-settings-title')?.textContent,
+      speedValueText: root.getElementById('ra-speed-range')?.getAttribute('aria-valuetext'),
+      volumeValueText: root.getElementById('ra-volume-range')?.getAttribute('aria-valuetext'),
       voiceStatusRole: root.getElementById('ra-voice-status')?.getAttribute('role'),
       voiceStatusLive: root.getElementById('ra-voice-status')?.getAttribute('aria-live'),
       statusToastRole: root.getElementById('ra-status-toast')?.getAttribute('role'),
@@ -154,6 +156,8 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     role: 'dialog',
     labelledBy: 'ra-settings-title',
     titleText: 'SETTINGS',
+    speedValueText: '1.0 times playback speed',
+    volumeValueText: '100 percent volume',
     voiceStatusRole: 'status',
     voiceStatusLive: 'polite',
     statusToastRole: 'status',
@@ -168,6 +172,24 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     highlightGroup: 'group',
     highlightGroupName: 'Word highlight color',
     highlightPressed: ['true', 'false', 'false', 'false']
+  });
+
+  // Speed and volume sliders announce readable values as they change.
+  await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    const speed = root.getElementById('ra-speed-range');
+    const volume = root.getElementById('ra-volume-range');
+    speed.value = '1.4';
+    speed.dispatchEvent(new Event('input', { bubbles: true }));
+    volume.value = '0.35';
+    volume.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForFunction(() => {
+    const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
+    return root?.getElementById('ra-speed-range')?.getAttribute('aria-valuetext') === '1.4 times playback speed' &&
+      root?.getElementById('ra-volume-range')?.getAttribute('aria-valuetext') === '35 percent volume' &&
+      root?.getElementById('ra-speed-display')?.textContent === '1.4×' &&
+      root?.getElementById('ra-volume-display')?.textContent === '35%';
   });
 
   // Selected theme and highlight colors must be exposed as toggle states,
