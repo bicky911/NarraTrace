@@ -814,7 +814,8 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       selectedChipPressed: chip.getAttribute('aria-pressed'),
       selectedChipTextContrast: ratio(getComputedStyle(chip).color, getComputedStyle(chip).backgroundColor),
       valueText: getComputedStyle(value).color,
-      valueContrast: ratio(getComputedStyle(value).color, getComputedStyle(document.body).backgroundColor),
+      valueSurface: getComputedStyle(value).backgroundColor,
+      valueContrast: ratio(getComputedStyle(value).color, getComputedStyle(value).backgroundColor),
       focusOutline: getComputedStyle(speed).outlineColor,
       focusOutlineContrast: ratio(getComputedStyle(speed).outlineColor, getComputedStyle(document.body).backgroundColor),
       focusedControl: document.activeElement?.id
@@ -845,7 +846,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   assert.notEqual(lightControlContrast.selectedChipSurface, 'rgba(252, 249, 243, 1)');
   assert.ok(
     lightControlContrast.valueContrast >= 4.5,
-    `Light-theme speed value text must meet WCAG AA; got ${lightControlContrast.valueContrast.toFixed(2)}:1`
+    `Light-theme speed value text must meet WCAG AA; got ${lightControlContrast.valueContrast.toFixed(2)}:1 (${lightControlContrast.valueText} on ${lightControlContrast.valueSurface})`
   );
   assert.equal(lightControlContrast.focusedControl, 'popup-speed-slider');
   assert.ok(
