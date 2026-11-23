@@ -10,6 +10,10 @@
 - Remove obsolete provider-specific tuning from the current target implementation; maintain dedicated profiles only where NarraTrace has verified provider behavior.
 - Fix keyboard focus restoration when the floating player is auto-tucked or using mini layout.
 - Add deterministic Chromium regression coverage for Focus Reader and Settings focus restoration.
+- Apply Supertonic's measured lead-in correction from the first utterance, preventing word highlighting from advancing before audio is audible.
+- Include provider lead-in in adaptive utterance batching so expensive startup is not repeatedly paid at every sentence.
+- Retry diagnostics voice discovery and refresh when Chrome's TTS provider registry changes, without overriding a manually selected voice.
+- Run verification on stacked engineering pull requests, not only pull requests targeting `main`.
 
 Personal-use Chrome MV3 extension that narrates web pages aloud through
 Chrome's TTS API, with maintained provider profiles for Piper and Supertonic,
