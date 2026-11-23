@@ -58,6 +58,20 @@ If a provider does not expose dependable word offsets, sentence-level highlighti
 - [ ] Open Settings, then press Escape. Focus returns to the Settings trigger even in mini layout.
 - [ ] Confirm focus indicators remain visible and that reduced-motion preference is respected.
 
+### Popup and assistive-technology state checks
+
+- [ ] With a screen reader enabled, verify the popup play control announces **Play reading**, **Pause reading**, and **Resume reading** as playback changes state.
+- [ ] Verify the voice selector is named and that voice discovery/selection status is announced without forcing focus away from the control.
+- [ ] Verify playback speed and volume controls expose readable current values (for example, **1.5 times playback speed** and **40 percent volume**).
+- [ ] Verify the reading progress control announces the current sentence position and returns to **No reading progress** after playback stops.
+- [ ] Verify Focus Reader text-size, font, and theme controls have meaningful names, and selected themes/highlight colors expose their active state.
+- [ ] Switch among cream, dark, sepia, and OLED themes. Confirm body copy, metadata, and the active-word treatment remain comfortably legible.
+
+### Compact layout and motion
+
+- [ ] Set the browser viewport to 320 × 740 px while Focus Reader is open. The reader header and playback bar must remain inside the viewport without horizontal document scrolling.
+- [ ] Enable the operating system/browser reduced-motion preference. Confirm decorative transitions and animations are suppressed while playback and focus behavior remain functional.
+
 ## 5 · Page extraction and dynamic content
 
 - [ ] Test a research article with headings, lists, captions, tables, and references.
