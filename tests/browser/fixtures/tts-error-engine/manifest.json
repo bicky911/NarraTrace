@@ -10,7 +10,7 @@
       {
         "voice_name": "NarraTrace Echo-Error Test Voice",
         "lang": "en-US",
-        "event_types": ["error"]
+        "event_types": ["start", "error"]
       }
     ]
   }
