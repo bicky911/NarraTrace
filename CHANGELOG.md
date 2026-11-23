@@ -8,9 +8,9 @@
 - Fix keyboard focus restoration when the floating player is auto-tucked or using mini layout.
 - Add deterministic Chromium regression coverage for Focus Reader and Settings focus restoration.
 
-Personal-use Chrome MV3 extension that narrates web pages aloud with a local
-neural TTS engine (Kokoro, Supertonic) or the Windows system voices, tracing
-every word on screen as it speaks.
+Personal-use Chrome MV3 extension that narrates web pages aloud through
+Chrome's TTS API, with maintained provider profiles for Piper and Supertonic,
+generic support for other Chrome TTS engines, and system-voice fallback.
 
 ---
 
