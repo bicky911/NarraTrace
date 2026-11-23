@@ -44,6 +44,19 @@ jobs:
         run: node --test tests/manifest-contract.test.mjs
       - name: Run existing Python verification harness
         run: python test-harness.py
+      - name: Validate the clean release package graph
+        run: python build-release.py
+      - name: Build release candidate ZIP and SHA-256
+        run: python build-release.py --build
+      - name: Upload release candidate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NarraTrace-v${{ github.event.pull_request.head.sha || github.sha }}-candidate
+          path: |
+            dist/NarraTrace-v1.4.0.zip
+            dist/NarraTrace-v1.4.0.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
 
   chrome-integration:
     name: Chrome service-worker recovery integration
