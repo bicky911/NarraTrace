@@ -103,26 +103,38 @@ def discover_runtime_files(manifest: dict) -> list[str]:
             raise PackageError(f"Unsafe manifest resource path: {relative!r}")
 
         path = ROOT.joinpath(*normalized.split("/"))
-        if not path.is_file():
-            raise PackageError(f"Required runtime file is missing: {normalized}")
+        try:
+            resolved_path = path.resolve(strict=True)
+        except OSError as error:
+            raise PackageError(f"Required runtime file is missing or unreadable: {normalized}: {error}") from error
+
+        # A repository symlink must not smuggle files from outside the checked
+        # source tree into the release archive.
+        try:
+            resolved_path.relative_to(ROOT.resolve())
+        except ValueError as error:
+            raise PackageError(f"Runtime resource escapes the repository root: {normalized}") from error
+
+        if not resolved_path.is_file():
+            raise PackageError(f"Required runtime resource is not a file: {normalized}")
 
         discovered.add(normalized)
-        suffix = path.suffix.lower()
+        suffix = resolved_path.suffix.lower()
 
         if suffix in (".js", ".mjs"):
-            source = path.read_text(encoding="utf-8")
+            source = resolved_path.read_text(encoding="utf-8")
             for match in IMPORT_RE.finditer(source):
                 resolved = resolve_reference(match.group(1), normalized)
                 if resolved:
                     queued.append(resolved)
         elif suffix in (".html", ".htm"):
-            source = path.read_text(encoding="utf-8")
+            source = resolved_path.read_text(encoding="utf-8")
             for match in HTML_REF_RE.finditer(source):
                 resolved = resolve_reference(match.group(1), normalized)
                 if resolved:
                     queued.append(resolved)
         elif suffix == ".css":
-            source = path.read_text(encoding="utf-8")
+            source = resolved_path.read_text(encoding="utf-8")
             for match in CSS_URL_RE.finditer(source):
                 resolved = resolve_reference(match.group(1), normalized)
                 if resolved:
@@ -162,7 +174,7 @@ def build_archive(files: list[str], version: str, output: Path) -> tuple[Path, s
 
     digest = sha256_file(output)
     output.with_suffix(output.suffix + ".sha256").write_text(
-        f"{digest}  {output.name}\\n", encoding="utf-8"
+        f"{digest}  {output.name}\n", encoding="utf-8"
     )
     return output, digest
 
