@@ -3370,10 +3370,12 @@
   const resumeToast = document.createElement('div');
   resumeToast.className = 'resume-toast';
   resumeToast.id = 'ra-resume-toast';
+  resumeToast.setAttribute('role', 'group');
+  resumeToast.setAttribute('aria-label', 'Resume reading prompt');
   resumeToast.innerHTML = `
-    <span id="ra-resume-text">Resume reading?</span>
+    <span id="ra-resume-text" role="status" aria-live="polite" aria-atomic="true">Resume reading?</span>
     <button class="resume-act-btn" id="ra-resume-btn">RESUME</button>
-    <button class="resume-close-btn" id="ra-resume-close" title="Dismiss">✕</button>
+    <button class="resume-close-btn" id="ra-resume-close" title="Dismiss" aria-label="Dismiss resume prompt">✕</button>
   `;
   shadow.appendChild(resumeToast);
 
@@ -3381,6 +3383,9 @@
   const statusToast = document.createElement('div');
   statusToast.className = 'resume-toast';
   statusToast.id = 'ra-status-toast';
+  statusToast.setAttribute('role', 'status');
+  statusToast.setAttribute('aria-live', 'polite');
+  statusToast.setAttribute('aria-atomic', 'true');
   statusToast.innerHTML = '<span id="ra-status-toast-text"></span>';
   shadow.appendChild(statusToast);
 
@@ -3388,11 +3393,13 @@
   const settingsPanel = document.createElement('div');
   settingsPanel.className = 'settings-panel';
   settingsPanel.id = 'ra-settings-panel';
+  settingsPanel.setAttribute('role', 'dialog');
+  settingsPanel.setAttribute('aria-labelledby', 'ra-settings-title');
   settingsPanel.inert = true;
   settingsPanel.setAttribute('aria-hidden', 'true');
   settingsPanel.innerHTML = `
     <div class="settings-header">
-      <span class="settings-title">SETTINGS</span>
+      <span class="settings-title" id="ra-settings-title">SETTINGS</span>
       <button class="settings-close" id="ra-settings-close" title="Close" aria-label="Close settings">
         <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
       </button>
@@ -3418,7 +3425,7 @@
       <select class="settings-select" id="ra-voice-select">
         <option value="">Loading voices…</option>
       </select>
-      <div class="voice-status" id="ra-voice-status"></div>
+      <div class="voice-status" id="ra-voice-status" role="status" aria-live="polite" aria-atomic="true"></div>
     </div>
 
     <hr class="settings-divider">
@@ -3457,18 +3464,18 @@
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <div>
           <label class="settings-label">THEME</label>
-          <div class="theme-row" style="gap:6px;">
-            <button class="theme-btn active" data-theme="te" title="Dark theme">DARK</button>
-            <button class="theme-btn" data-theme="light" title="Light theme">LIGHT</button>
+          <div class="theme-row" style="gap:6px;" role="group" aria-label="Player theme">
+            <button class="theme-btn active" data-theme="te" title="Dark theme" aria-pressed="true">DARK</button>
+            <button class="theme-btn" data-theme="light" title="Light theme" aria-pressed="false">LIGHT</button>
           </div>
         </div>
         <div>
           <label class="settings-label">HIGHLIGHT</label>
-          <div class="theme-row" style="gap:6px;">
-            <button class="color-swatch active" data-color="orange" title="Signal Orange" aria-label="Signal Orange highlight" style="background:#FF5C00;"></button>
-            <button class="color-swatch" data-color="indigo" title="Indigo" aria-label="Indigo highlight" style="background:#5C6BC0;"></button>
-            <button class="color-swatch" data-color="green" title="Leaf Green" aria-label="Leaf Green highlight" style="background:#2E9E4F;"></button>
-            <button class="color-swatch" data-color="pink" title="Magenta" aria-label="Magenta highlight" style="background:#E0559A;"></button>
+          <div class="theme-row" style="gap:6px;" role="group" aria-label="Word highlight color">
+            <button class="color-swatch active" data-color="orange" title="Signal Orange" aria-label="Signal Orange highlight" aria-pressed="true" style="background:#FF5C00;"></button>
+            <button class="color-swatch" data-color="indigo" title="Indigo" aria-label="Indigo highlight" aria-pressed="false" style="background:#5C6BC0;"></button>
+            <button class="color-swatch" data-color="green" title="Leaf Green" aria-label="Leaf Green highlight" aria-pressed="false" style="background:#2E9E4F;"></button>
+            <button class="color-swatch" data-color="pink" title="Magenta" aria-label="Magenta highlight" aria-pressed="false" style="background:#E0559A;"></button>
           </div>
         </div>
       </div>
@@ -3961,7 +3968,9 @@
     if (valid === 'light') host.classList.add('light');
 
     themeBtns.forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.theme === valid);
+      const selected = btn.dataset.theme === valid;
+      btn.classList.toggle('active', selected);
+      btn.setAttribute('aria-pressed', String(selected));
     });
 
     safeStorageSet({ readAloud_theme: valid });
@@ -4222,7 +4231,9 @@
   const colorSwatches = shadow.querySelectorAll('.color-swatch');
   function setActiveSwatch(colorKey) {
     colorSwatches.forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.color === colorKey);
+      const selected = btn.dataset.color === colorKey;
+      btn.classList.toggle('active', selected);
+      btn.setAttribute('aria-pressed', String(selected));
     });
   }
 
