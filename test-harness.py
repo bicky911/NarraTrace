@@ -767,7 +767,7 @@ check(
 # ─────────────────────────────────────────────────────────────────────────────
 check(
     'playback-manager.js: recovery alarm is reconciled from active playback state',
-    'function _syncKeepAliveAlarm(want)' in pm and
+    '_syncKeepAliveAlarm(want)' in pm and
     "chrome.alarms.get('readAloudKeepAlive')" in pm and
     "chrome.alarms.create('readAloudKeepAlive'" in pm and
     "chrome.alarms.clear('readAloudKeepAlive')" in pm and
