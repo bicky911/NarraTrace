@@ -765,7 +765,7 @@ check(
 )
 check(
     'playback-manager.js: restored sessions reconcile worker activity and recovery alarms',
-    bool(re.search(r'restoreFromSession[\\s\\S]{0,5000}finally[\\s\\S]{0,250}_syncKeepAliveTick\\(\\)', pm)),
+    bool(re.search(r'restoreFromSession[\s\S]{0,5000}finally[\s\S]{0,250}_syncKeepAliveTick\(\)', pm)),
 )
 check(
     'background.js: no unconditional keep-alive alarm wakes idle workers',
