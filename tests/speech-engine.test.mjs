@@ -42,11 +42,10 @@ test('Piper is the first maintained profile and dynamic IDs retain canonical ide
   ];
   const api = await loadSpeechEngine(voices);
 
-  assert.equal(
-    api.TTS_ENGINES.map(engine => engine.label).join(','),
-    'Piper,Supertonic'
+  assert.deepEqual(
+    api.TTS_ENGINES.map(engine => engine.label),
+    ['Piper', 'Supertonic']
   );
-  assert.equal(api.TTS_ENGINES.some(engine => /kokoro/i.test(engine.label)), false);
 
   const report = await api.detectAndSelectVoice();
 
