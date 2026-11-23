@@ -46,7 +46,7 @@ chrome.ttsEngine.onSpeak.addListener((utterance, options, sendTtsEvent) => {
 
       if (typeof utterance === 'string' && utterance.length > 0) {
         sendTtsEvent({ type: 'sentence', charIndex: 0, length: utterance.length });
-        const words = [...utterance.matchAll(/\\S+/g)];
+        const words = [...utterance.matchAll(/\S+/g)];
         if (words.length > 0) {
           sendTtsEvent({
             type: 'word',
