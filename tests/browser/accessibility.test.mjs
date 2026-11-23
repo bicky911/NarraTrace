@@ -266,9 +266,12 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   await page.waitForFunction(() => {
     const root = document.getElementById('read-aloud-player-host').shadowRoot;
     const panel = root.getElementById('ra-settings-panel');
+    const player = root.querySelector('.player-pill');
     return panel.inert &&
       panel.getAttribute('aria-hidden') === 'true' &&
       root.getElementById('ra-settings').getAttribute('aria-expanded') === 'false' &&
-      root.activeElement?.id === 'ra-settings';
+      root.activeElement?.id === 'ra-settings' &&
+      player.classList.contains('pill-mini') &&
+      !player.classList.contains('focus-restoring');
   });
 });
