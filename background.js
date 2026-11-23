@@ -457,8 +457,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   charIndex: Number.isFinite(event.charIndex) ? event.charIndex : null,
                   length: Number.isFinite(event.length) ? event.length : null,
                   charLength: Number.isFinite(event.charLength) ? event.charLength : null,
-                  errorMessage: typeof event.errorMessage === 'string'
-                    ? event.errorMessage.slice(0, 500)
+                  // Provider error strings are untrusted and may echo the
+                  // utterance. Export only a generic error class, never raw text.
+                  errorMessage: event.type === 'error'
+                    ? 'The selected TTS provider returned an error.'
                     : null
                 }
               }).catch(() => {});
@@ -478,7 +480,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             requestId,
             success: false,
             resultType: 'error',
-            error: String(error?.message || error).slice(0, 500),
+            // Do not put provider-supplied error text into the diagnostic
+            // report; some engines may echo the sample in their error string.
+            error: 'The selected TTS provider could not complete the diagnostic request.',
             durationMs: Date.now() - startedAt
           }).catch(() => {});
         } finally {
@@ -488,7 +492,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         }
       })().catch((error) => {
-        sendResponse({ success: false, error: String(error?.message || error) });
+        sendResponse({
+          success: false,
+          error: 'Could not prepare the selected voice for diagnostics. Refresh the voice list and try again.'
+        });
       });
 
       return true;
