@@ -1,0 +1,185 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import puppeteer from 'puppeteer';
+
+const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPOSITORY_ROOT = path.resolve(TEST_DIR, '../..');
+const ENGINE_DIR = path.join(TEST_DIR, 'fixtures', 'tts-engine');
+const TEST_VOICE = 'NarraTrace Test Voice';
+const SAMPLE = 'CONFIDENTIAL DIAGNOSTIC SAMPLE MUST NOT LEAK. Check Chrome TTS timing.';
+
+async function closeBrowser(browser) {
+  if (!browser) return;
+  const process = browser.process();
+  await Promise.race([
+    browser.close().catch(() => {}),
+    new Promise(resolve => setTimeout(resolve, 5000))
+  ]);
+  if (process && process.exitCode === null) process.kill('SIGKILL');
+}
+
+async function send(page, message) {
+  return page.evaluate((payload) => chrome.runtime.sendMessage(payload), message);
+}
+
+async function waitForState(page, expected, timeout = 12000) {
+  await page.waitForFunction(async (state) => {
+    const response = await chrome.runtime.sendMessage({ action: 'GET_PLAYBACK_STATE' });
+    return response?.success && response.state?.playbackState === state;
+  }, { timeout }, expected);
+}
+
+test('bundled diagnostics are isolated, verify audibility, and never export sample text', {
+  timeout: 60000
+}, async (t) => {
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      pipe: true,
+      timeout: 20000,
+      enableExtensions: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+  } catch (error) {
+    assert.fail(`Could not launch Chromium for diagnostics checks: ${error.message}`);
+  }
+
+  t.after(async () => closeBrowser(browser));
+
+  const narraTraceId = await browser.installExtension(REPOSITORY_ROOT);
+  const testEngineId = await browser.installExtension(ENGINE_DIR);
+
+  const diagnostics = await browser.newPage();
+  await diagnostics.goto(`chrome-extension://${narraTraceId}/test.html`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 10000
+  });
+  await diagnostics.waitForSelector('#btn-run-engine-diagnostic');
+
+  const popup = await browser.newPage();
+  await popup.goto(`chrome-extension://${narraTraceId}/popup.html`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 10000
+  });
+
+  // Only the bundled diagnostics page may inspect the session or start a
+  // diagnostic utterance. The popup must be rejected at the background boundary.
+  const deniedDiagnostic = await send(popup, {
+    action: 'RUN_TTS_DIAGNOSTIC',
+    requestId: 'popup-must-not-run',
+    text: 'This should never be spoken.',
+    voiceName: TEST_VOICE,
+    extensionId: testEngineId,
+    lang: 'en-US',
+    rate: 1
+  });
+  assert.equal(deniedDiagnostic?.success, false);
+  assert.match(deniedDiagnostic?.error || '', /restricted to the bundled diagnostics page/i);
+
+  const deniedSessionInspection = await send(popup, { action: 'GET_SESSION_STORAGE' });
+  assert.equal(deniedSessionInspection?.success, false);
+  assert.match(deniedSessionInspection?.error || '', /restricted to the bundled diagnostics page/i);
+
+  // Wait for the deterministic Chrome TTS provider to register, then select
+  // the exact voice that the diagnostic will validate against getVoices().
+  await diagnostics.waitForFunction((voiceName, extensionId) => {
+    const select = document.getElementById('voice-select');
+    return Array.from(select?.options || []).some(option =>
+      option.value === voiceName && option.dataset.extensionId === extensionId
+    );
+  }, { timeout: 20000 }, TEST_VOICE, testEngineId);
+  await diagnostics.select('#voice-select', TEST_VOICE);
+
+  const selected = await diagnostics.$eval('#voice-select option:checked', option => ({
+    voiceName: option.value,
+    extensionId: option.dataset.extensionId || null,
+    lang: option.dataset.lang || null
+  }));
+  assert.deepEqual(selected, {
+    voiceName: TEST_VOICE,
+    extensionId: testEngineId,
+    lang: 'en-US'
+  });
+
+  // First prove that diagnostics refuses to interrupt a normal narration.
+  const started = await send(diagnostics, {
+    action: 'START_PLAYBACK',
+    sentences: ['Normal playback owns the speech channel until it is stopped.']
+  });
+  assert.equal(started?.success, true);
+  await waitForState(diagnostics, 'PLAYING');
+
+  const blockedByQueue = await send(diagnostics, {
+    action: 'RUN_TTS_DIAGNOSTIC',
+    requestId: 'blocked-during-queue',
+    text: SAMPLE,
+    voiceName: selected.voiceName,
+    extensionId: selected.extensionId,
+    lang: selected.lang,
+    rate: 1
+  });
+  assert.equal(blockedByQueue?.success, false);
+  assert.match(blockedByQueue?.error || '', /stop normal narratrace playback/i);
+
+  await send(diagnostics, { action: 'STOP_PLAYBACK' });
+  await waitForState(diagnostics, 'STOPPED');
+
+  // Run the actual diagnostics page workflow. The CI provider is deliberately
+  // silent, so the report must not claim an audible pass without user marking.
+  await diagnostics.$eval('#diagnostic-sample-text', (element, value) => {
+    element.value = value;
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  }, SAMPLE);
+  await diagnostics.click('#btn-run-engine-diagnostic');
+  await diagnostics.waitForFunction(() =>
+    document.getElementById('btn-stop-engine-diagnostic')?.disabled === false,
+    { timeout: 15000 }
+  );
+
+  // A second diagnostic and normal queue playback must both be rejected while
+  // the isolated utterance owns Chrome TTS.
+  const overlappingDiagnostic = await send(diagnostics, {
+    action: 'RUN_TTS_DIAGNOSTIC',
+    requestId: 'second-diagnostic',
+    text: 'A second utterance must be refused.',
+    voiceName: selected.voiceName,
+    extensionId: selected.extensionId,
+    lang: selected.lang,
+    rate: 1
+  });
+  assert.equal(overlappingDiagnostic?.success, false);
+  assert.match(overlappingDiagnostic?.error || '', /already running/i);
+
+  const blockedNormalPlayback = await send(diagnostics, {
+    action: 'START_PLAYBACK',
+    sentences: ['Normal playback must not overlap diagnostic speech.']
+  });
+  assert.equal(blockedNormalPlayback?.success, false);
+  assert.match(blockedNormalPlayback?.error || '', /diagnostic is active/i);
+
+  await diagnostics.waitForFunction(() =>
+    document.getElementById('engine-diagnostic-status')?.textContent
+      .toLowerCase().includes('audible output was not confirmed'),
+    { timeout: 20000 }
+  );
+
+  const result = await diagnostics.evaluate(() => ({
+    log: document.getElementById('engine-diagnostic-log')?.textContent || '',
+    status: document.getElementById('engine-diagnostic-status')?.textContent || '',
+    exportEnabled: !document.getElementById('btn-export-engine-diagnostic')?.disabled,
+    report: typeof diagnosticReport === 'object' ? diagnosticReport : null
+  }));
+
+  assert.match(result.log, /start/i);
+  assert.match(result.log, /word/i);
+  assert.match(result.log, /end/i);
+  assert.equal(result.log.includes(SAMPLE), false, 'event log must never include the diagnostic sample');
+  assert.equal(result.exportEnabled, true, 'a completed diagnostic report should be exportable');
+  assert.equal(result.report?.test?.sampleTextIncluded, false);
+  assert.equal(result.report?.test?.sampleCharacterCount, SAMPLE.length);
+  assert.equal(result.report?.success, false, 'silent CI output must not be reported as an audible pass');
+  assert.equal(result.report?.test?.audibleStartMarkedMs, null, 'the test must not invent a human audible mark');
+});
