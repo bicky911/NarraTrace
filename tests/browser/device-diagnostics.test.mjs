@@ -115,7 +115,7 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     return Array.from(select?.options || []).some(option =>
       option.value === voiceName && option.dataset.extensionId === extensionId
     );
-  }, { timeout: 20000 }, TEST_VOICE, testEngineId);
+  }, { timeout: 20000, polling: 100 }, TEST_VOICE, testEngineId);
   await diagnostics.select('#voice-select', TEST_VOICE);
   console.log('[diagnostics-test] Test voice selected');
 
@@ -174,7 +174,7 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
   console.log('[diagnostics-test] Diagnostic start clicked');
   await diagnostics.waitForFunction(() =>
     document.getElementById('btn-stop-engine-diagnostic')?.disabled === false,
-    { timeout: 15000 }
+    { timeout: 15000, polling: 100 }
   );
 
   console.log('[diagnostics-test] Diagnostic request accepted by background');
@@ -209,7 +209,7 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     const stop = document.getElementById('btn-stop-engine-diagnostic');
     const exportButton = document.getElementById('btn-export-engine-diagnostic');
     return run?.disabled === false && stop?.disabled === true && exportButton?.disabled === false;
-  }, { timeout: 15000 });
+  }, { timeout: 15000, polling: 100 });
   console.log('[diagnostics-test] Diagnostic reached a terminal state');
 
   console.log('[diagnostics-test] Diagnostic completed without audible mark');
