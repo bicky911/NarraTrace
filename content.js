@@ -4021,9 +4021,7 @@
       // cycle. Removing it synchronously can hide the control before Chromium
       // commits focus, particularly in mini/beaded player states.
       requestAnimationFrame(() => {
-        if (!container.contains(shadow.activeElement)) {
-          container.classList.remove('focus-restoring');
-        }
+        container.classList.remove('focus-restoring');
       });
     } else {
       container.classList.remove('focus-restoring');
