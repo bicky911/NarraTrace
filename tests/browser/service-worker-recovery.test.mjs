@@ -34,9 +34,13 @@ async function withTimeout(promise, timeoutMs, label) {
 }
 
 async function send(page, message) {
+  // The first GET_VOICES call can legitimately wait for Chrome to expose the
+  // TTS namespace during a cold MV3 worker start. speech-engine.js allows up
+  // to 10 seconds for that API, so the test must not cut the message off at 8.
+  const timeoutMs = message.action === 'GET_VOICES' ? 15000 : 8000;
   return withTimeout(
     page.evaluate((payload) => window.narraTraceTest.send(payload), message),
-    8000,
+    timeoutMs,
     `Extension message ${message.action}`
   );
 }
@@ -64,7 +68,7 @@ async function waitForEngineEvent(browser, engineId, predicate, timeoutMs = 2000
   assert.fail(`Timed out waiting for test TTS event. Last events: ${JSON.stringify(lastEvents)}`);
 }
 
-async function waitForTestVoice(page, extensionId, voiceName, timeoutMs = 15000) {
+async function waitForTestVoice(page, extensionId, voiceName, timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
   let lastResponse = null;
   while (Date.now() < deadline) {
