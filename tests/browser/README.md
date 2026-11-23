@@ -10,14 +10,18 @@ From the repository root:
 
 ```bash
 npm install --prefix tests/browser --no-save --no-package-lock puppeteer@25.17.0
-node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs tests/browser/performance-profile.test.mjs
+node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs tests/browser/accessibility.test.mjs tests/browser/device-diagnostics.test.mjs
+node --test tests/browser/performance-profile.test.mjs
+node --test tests/browser/extension-runtime-profile.test.mjs
 ```
 
 The Chromium browser tests cover:
 
-- **Service-worker recovery:** loads NarraTrace and the deterministic TTS fixture, starts a two-sentence session, forcibly closes the NarraTrace service-worker target during the first utterance, and checks that the restored queue submits the second sentence exactly once.
+- **Service-worker recovery:** starts a two-sentence session, forcibly closes the NarraTrace service-worker target during the first utterance, and verifies the restored queue submits the second sentence exactly once.
 - **Content extraction:** parses a structured research article, verifies site chrome is excluded, executes the production content-block selector and references cutoff, and checks sentence and word ranges across nested DOM text nodes.
-- **Large-page performance:** profiles production block selection and sentence-range mapping for 1,200 paragraphs, records renderer heap/script-duration deltas, and applies a coarse 1,000 ms CI regression ceiling.
+- **Accessibility:** validates Focus Reader keyboard navigation, dialog dismissal, focus trapping and focus restoration, including the compact/auto-tucked player state.
+- **Real-engine diagnostics:** checks selected-voice validation, access restrictions, playback isolation, event timing, manual audibility gating and sample-text redaction—including provider errors that echo the utterance.
+- **Large-page performance:** profiles production block selection and sentence-range mapping for 1,200 paragraphs, records renderer heap/script-duration deltas, and applies a coarse CI regression ceiling.
 
 The browser suite is separate from the deterministic VM tests in `tests/playback-manager.test.mjs`, the tokenizer tests in `tests/sentence-tokenizer.test.mjs`, and the resource-lifecycle unit tests in `tests/resource-lifecycle.test.mjs`. The TTS fixture exercises Chrome's event API but does not validate the audio quality or latency of a user's installed neural voice engines.
 
