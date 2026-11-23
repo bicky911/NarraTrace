@@ -240,7 +240,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     body.appendChild(sampleSentence);
 
     const parse = (value) => {
-      const values = value.match(/[\\d.]+/g)?.map(Number) || [];
+      const values = value.match(/[0-9.]+/g)?.map(Number) || [];
       return values.slice(0, 3).map(channel => channel / 255);
     };
     const luminance = (color) => {
