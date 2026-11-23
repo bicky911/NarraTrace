@@ -870,6 +870,63 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     lightControlContrast.focusOutlineContrast >= 3,
     `Light-theme focus indicator must meet 3:1 non-text contrast; got ${lightControlContrast.focusOutlineContrast.toFixed(2)}:1`
   );
+  // The primary Play button uses a warm gradient in light mode. Verify
+  // both gradient stops against the actual SVG icon fill in default and hover.
+  const measurePlayGradient = async expectedColors => {
+    return popupPage.evaluate((colors) => {
+      const play = document.getElementById('ctrl-play');
+      const gradient = getComputedStyle(play).backgroundImage;
+      const fill = getComputedStyle(play.querySelector('svg')).fill;
+      const parse = value => value.match(/[0-9.]+/g).slice(0, 3).map(Number);
+      const luminance = channels => channels.map(channel => {
+        const value = channel / 255;
+        return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+      }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+      const foreground = luminance(parse(fill));
+      const stops = Array.from(gradient.matchAll(/rgba?\\(([^)]+)\\)/g), match =>
+        match[1].split(',').slice(0, 3).map(Number)
+      );
+      const contrasts = stops.map(channels => {
+        const background = luminance(channels);
+        return (Math.max(foreground, background) + 0.05) /
+          (Math.min(foreground, background) + 0.05);
+      });
+      return {
+        gradient,
+        fill,
+        stopCount: stops.length,
+        minContrast: Math.min(...contrasts),
+        containsExpectedStops: colors.every(color => gradient.includes(color))
+      };
+    }, expectedColors);
+  };
+
+  await popupPage.mouse.move(1, 1);
+  await popupPage.waitForFunction(() => {
+    const gradient = getComputedStyle(document.getElementById('ctrl-play')).backgroundImage;
+    return gradient.includes('rgb(255, 130, 90)') && gradient.includes('rgb(233, 94, 52)');
+  });
+  const playGradientDefault = await measurePlayGradient(['rgb(255, 130, 90)', 'rgb(233, 94, 52)']);
+  assert.equal(playGradientDefault.stopCount, 2);
+  assert.equal(playGradientDefault.containsExpectedStops, true);
+  assert.ok(
+    playGradientDefault.minContrast >= 4.5,
+    `Light-theme Play button default icon contrast must meet WCAG AA; got ${playGradientDefault.minContrast.toFixed(2)}:1 (${playGradientDefault.fill} on ${playGradientDefault.gradient})`
+  );
+
+  await popupPage.hover('#ctrl-play');
+  await popupPage.waitForFunction(() => {
+    const gradient = getComputedStyle(document.getElementById('ctrl-play')).backgroundImage;
+    return gradient.includes('rgb(255, 140, 26)') && gradient.includes('rgb(230, 83, 0)');
+  });
+  const playGradientHover = await measurePlayGradient(['rgb(255, 140, 26)', 'rgb(230, 83, 0)']);
+  assert.equal(playGradientHover.stopCount, 2);
+  assert.equal(playGradientHover.containsExpectedStops, true);
+  assert.ok(
+    playGradientHover.minContrast >= 4.5,
+    `Light-theme Play button hover icon contrast must meet WCAG AA; got ${playGradientHover.minContrast.toFixed(2)}:1 (${playGradientHover.fill} on ${playGradientHover.gradient})`
+  );
+
   // Reading progress should be announced in the same sentence units shown
   // by the visible sentence counter, while the numeric percentage remains intact.
   await popupWorker.evaluate(async () => {
