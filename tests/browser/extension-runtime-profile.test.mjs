@@ -165,6 +165,18 @@ test('profiles real extension renderer idle versus active playback workload', {
   const batch = await send(driver, { action: 'SET_BATCH_SIZE', size: 1 });
   assert.equal(batch?.success, true);
 
+  // Keep this renderer benchmark short enough to observe its terminal event
+  // inside the six-second playback window. The diagnostics integration test
+  // intentionally retains the fixture's longer 12-second default.
+  const engineTarget = await browser.waitForTarget(candidate =>
+    candidate.type() === 'service_worker' &&
+    candidate.url().startsWith(`chrome-extension://${engineId}/`)
+  , { timeout: 10000 });
+  const engineWorker = await engineTarget.worker();
+  await engineWorker.evaluate(() => {
+    globalThis.__NARRATRACE_TEST_DELAY_MS = 4500;
+  });
+
   const page = await browser.newPage();
   page.setDefaultTimeout(10000);
   const cdp = await page.createCDPSession();
