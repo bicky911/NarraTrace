@@ -253,6 +253,33 @@ test('a delayed pause cannot overwrite a later resume', async () => {
   assert.equal(loaded.runtimeMessages().some(message => message.action === 'PLAYBACK_PAUSED'), false);
 });
 
+test('worker recovery replays the current sentence when Chrome has no active utterance', async () => {
+  const loaded = await loadPlaybackManager([], { isSpeaking: async () => false });
+  const { manager } = loaded;
+  manager.queue = [
+    { index: 0, text: 'Replay the sentence that Chrome never accepted.' },
+    { index: 1, text: 'Continue only after that sentence ends.' }
+  ];
+  manager.currentIndex = 0;
+  manager.tabId = 504;
+  manager.playbackState = 'PLAYING';
+
+  const requests = [];
+  manager.speakCurrentSentence = (runId, offset = 0) =>
+    requests.push({ runId, index: manager.currentIndex, offset });
+
+  await manager.recoverAfterWorkerRestart();
+
+  assert.deepEqual(requests, [{
+    runId: manager.playbackRunId,
+    index: 0,
+    offset: 0
+  }], 'when Chrome is idle and no pending orphan marker exists, replay the current sentence');
+  assert.equal(manager.recoveryPendingAdvance, false);
+  assert.equal(manager.currentIndex, 0);
+  assert.equal(loaded.stopSpeechAndWaitCallCount(), 0);
+});
+
 test('worker recovery persists an orphaned utterance and advances once after it becomes idle', async () => {
   const original = await loadPlaybackManager([], { isSpeaking: async () => true });
   const manager = original.manager;
