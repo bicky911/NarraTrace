@@ -11,6 +11,7 @@
  */
 
 import {
+  SUPERTONIC_EXTENSION_ID,
   safeSpeak,
   stopSpeech,
   stopSpeechAndWait,
@@ -72,6 +73,8 @@ const ESTIMATOR_BOUNDARY_WAIT = 45000;
 // The measured lead-in correction accounts for this provider-specific delay;
 // later boundary streams are handled without assuming an early announcement.
 const BOUNDARY_ANNOUNCED_EARLY_MS = 500;
+// Measured Supertonic delay between its early sentence event and audible audio.
+const DEFAULT_SUPERTONIC_LEAD_IN_MS = 3200;
 
 // ─── Semantic Noise Stripper ────────────────────────────────────────────────
 // Removes citation clutter, raw URLs, footnote markers, and other non-speech
@@ -241,11 +244,9 @@ class PlaybackManager {
     // Measured speaking speed in characters per second, used by the position
     // estimator when the engine does not emit word/sentence events.
     this.charsPerSecond = 0;
-    // Lead-in delay: the seconds a network voice spends preparing the
-    // synthesis before the first word of an utterance is audible. Measured
-    // against the real Supertonic engine at ~3.2 s; learned and refined from
-    // the engine's own sentence boundaries as reading continues.
-    this.leadInMs = 3200;
+    // Do not assume an unmeasured lead-in for generic providers. Maintained
+    // provider defaults belong in their own engine profile below.
+    this.leadInMs = 0;
     // What we have learned about each TTS engine, keyed by extension id.
     //
     //   prepareMs          time from the engine's 'start' event to its first
@@ -274,7 +275,7 @@ class PlaybackManager {
       profile = {
         prepareMs: 0,
         baseCharsPerSecond: 0,
-        leadInMs: 0,
+        leadInMs: id === SUPERTONIC_EXTENSION_ID ? DEFAULT_SUPERTONIC_LEAD_IN_MS : 0,
         boundariesSeen: 0,
         // Average rate between sentence boundaries. It includes the gaps an
         // engine leaves when it cannot synthesise as fast as it plays, so it
