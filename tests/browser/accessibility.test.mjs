@@ -883,7 +883,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
         return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
       }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
       const foreground = luminance(parse(fill));
-      const stops = Array.from(gradient.matchAll(/rgba?\\(([^)]+)\\)/g), match =>
+      const stops = Array.from(gradient.matchAll(/rgba?\(([^)]+)\)/g), match =>
         match[1].split(',').slice(0, 3).map(Number)
       );
       const contrasts = stops.map(channels => {
