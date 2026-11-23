@@ -788,9 +788,17 @@
     }
 
 
+    body.light .engine-badge:not(.warning) {
+      color: var(--ra-led-green);
+      background: #E2F0E6;
+      border-color: #B8D4C0;
+    }
+
     body.light .engine-badge.warning {
       /* Warning badges override the ready-state token; keep their text AA-readable too. */
       color: #76351F;
+      background: #F4E3D9;
+      border-color: #D9B5A3;
     }
 
 
