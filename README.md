@@ -70,7 +70,11 @@ node --test tests/browser/performance-profile.test.mjs
 node --test tests/browser/extension-runtime-profile.test.mjs
 ```
 
-GitHub Actions runs all four layers on pull requests. The deterministic TTS fixture exercises Chrome's TTS event API but does not measure the audio quality or timing of installed neural voice engines.
+GitHub Actions runs the static, Chromium integration, and performance layers on pull requests. The deterministic TTS fixture exercises Chrome's TTS event API but does not measure the audio quality or timing of installed neural voice engines.
+
+### Release candidate packaging
+
+Run `python build-release.py` to validate the Manifest V3 runtime file graph. Run `python build-release.py --build` to create a reproducible ZIP archive and SHA-256 sidecar under `dist/`. The builder includes the bundled diagnostics page, follows local imports and HTML/CSS resources, and excludes development tests, documentation, and build output. A repository license is included only if the owner adds a `LICENSE` file.
 
 ---
 
