@@ -74,7 +74,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     await new Promise(resolve => server.close(() => resolve()));
   });
 
-  await browser.installExtension(REPOSITORY_ROOT);
+  const extensionId = await browser.installExtension(REPOSITORY_ROOT);
   const page = await browser.newPage();
   page.setDefaultTimeout(10000);
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
@@ -419,4 +419,44 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       player.classList.contains('pill-mini') &&
       !player.classList.contains('focus-restoring');
   });
+
+  // The popup's ready-state badge must remain legible in the light theme.
+  // Its status color is text, so test the rendered foreground against the
+  // composited translucent badge surface rather than checking token values.
+  assert.equal(typeof extensionId, 'string');
+  const popupPage = await browser.newPage();
+  await popupPage.goto(`chrome-extension://${extensionId}/popup.html`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 10000
+  });
+  await popupPage.waitForFunction(() => document.body.classList.contains('is-hydrated'));
+  await popupPage.click('#theme-toggle');
+  await popupPage.waitForFunction(() => document.body.classList.contains('light'));
+  const popupStatusContrast = await popupPage.evaluate(() => {
+    const badge = document.querySelector('.engine-badge');
+    const body = document.body;
+    const foreground = getComputedStyle(badge).color.match(/[0-9.]+/g).map(Number);
+    const overlay = getComputedStyle(badge).backgroundColor.match(/[0-9.]+/g).map(Number);
+    const surface = getComputedStyle(body).backgroundColor.match(/[0-9.]+/g).map(Number);
+    const alpha = overlay[3] ?? 1;
+    const background = surface.slice(0, 3).map((channel, index) =>
+      overlay[index] * alpha + channel * (1 - alpha)
+    );
+    const luminance = channels => channels.map(channel => {
+      const value = channel / 255;
+      return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+    }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+    const a = luminance(foreground);
+    const b = luminance(background);
+    return {
+      foreground: getComputedStyle(badge).color,
+      background: getComputedStyle(badge).backgroundColor,
+      contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+    };
+  });
+  assert.ok(
+    popupStatusContrast.contrast >= 4.5,
+    `Light-theme engine status text must meet WCAG AA contrast; got ${popupStatusContrast.contrast.toFixed(2)}:1`
+  );
+  await popupPage.close();
 });
