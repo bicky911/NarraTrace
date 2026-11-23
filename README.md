@@ -28,7 +28,7 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 * **Golden Gaze Auto-Scroll:** Friction-damped critically stable viewport tracking that locks the active reading sentence at the natural biomechanical sight line ($38\%$ from viewport top).
 * **Context-Aware Prosody Pauses:** Intelligent clause-boundary cadence detection that inserts natural human breathing pauses at em-dashes, semicolons, colons, ellipses, and lists.
 * **Semantic Noise Stripper:** Cleans citations (`[1]`, `[citation needed]`), academic parentheticals (`(Smith et al., 2024)`), raw URLs, DOIs, and markdown symbols before TTS without mutating DOM highlights.
-* **Multi-Engine Speech Support:** Integrates Piper, Kokoro, Supertonic, and native Chrome TTS voices. Processing location depends on the selected engine and its own implementation.
+* **Multi-Engine Speech Support:** Maintained provider profiles for Piper and Supertonic, plus generic compatibility with other Chrome TTS extensions and native system voices. Processing location depends on the selected provider and its own implementation.
 * **Multilingual Script Routing:** Auto-detects Bangla (বাংলা), Hindi (हिन्दी), and Latin scripts, routing each to native neural voices.
 * **100% Shadow DOM Encapsulated:** Complete style isolation guarantees the player never clashes with host website styles.
 
