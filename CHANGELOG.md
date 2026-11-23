@@ -1,5 +1,13 @@
 # NarraTrace — Changelog
 
+## Unreleased — reliability and provider scope
+
+- Prioritize Piper and Supertonic as NarraTrace's maintained provider profiles.
+- Keep other Chrome TTS extensions discoverable through the generic provider path; provider-specific behavior is not assumed or release-gated.
+- Remove Kokoro-specific provider tuning from the current target implementation. Historical 1.3.0 notes below are retained as release history, not as a current support commitment.
+- Fix keyboard focus restoration when the floating player is auto-tucked or using mini layout.
+- Add deterministic Chromium regression coverage for Focus Reader and Settings focus restoration.
+
 Personal-use Chrome MV3 extension that narrates web pages aloud with a local
 neural TTS engine (Kokoro, Supertonic) or the Windows system voices, tracing
 every word on screen as it speaks.
