@@ -473,14 +473,6 @@ chrome.runtime.onMessage.addListener((message) => {
 
   switch (message.action) {
     case 'TTS_DIAGNOSTIC_EVENT': {
-      console.info('[NarraTrace diagnostics] Event received ' + JSON.stringify({
-        type: message.event?.type,
-        elapsedMs: message.elapsedMs,
-        hasReport: Boolean(diagnosticReport),
-        messageRequestId: message.requestId,
-        activeRequestId: activeDiagnosticRequestId,
-        requestMatches: message.requestId === activeDiagnosticRequestId
-      }));
       if (!diagnosticReport || message.requestId !== activeDiagnosticRequestId || !message.event) break;
       const event = {
         type: String(message.event.type || 'unknown'),
@@ -497,16 +489,7 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
     }
     case 'TTS_DIAGNOSTIC_COMPLETE': {
-      console.info('[NarraTrace diagnostics] Completion received ' + JSON.stringify({
-        resultType: message.resultType,
-        success: message.success,
-        hasReport: Boolean(diagnosticReport),
-        messageRequestId: message.requestId,
-        activeRequestId: activeDiagnosticRequestId,
-        requestMatches: message.requestId === activeDiagnosticRequestId
-      }));
       if (!diagnosticReport || message.requestId !== activeDiagnosticRequestId) break;
-      console.info('[NarraTrace diagnostics] Completion guard accepted');
       if (diagnosticTimeoutId) clearTimeout(diagnosticTimeoutId);
       diagnosticTimeoutId = null;
       activeDiagnosticRequestId = null;
@@ -520,26 +503,11 @@ chrome.runtime.onMessage.addListener((message) => {
           ? 'Chrome returned an end event, but audible output was not manually confirmed.'
           : null);
       diagnosticReport.test.completedAt = new Date().toISOString();
-      console.info('[NarraTrace diagnostics] Report finalized ' + JSON.stringify({
-        resultType: diagnosticReport.resultType,
-        success: diagnosticReport.success,
-        audibleWasMarked,
-        hasRunButton: Boolean(btnRunDiagnostic),
-        hasExportButton: Boolean(btnExportDiagnostic),
-        hasClearButton: Boolean(btnClearDiagnostic)
-      }));
       btnRunDiagnostic.disabled = false;
       btnStopDiagnostic.disabled = true;
       btnMarkAudible.disabled = true;
       btnClearDiagnostic.disabled = false;
       btnExportDiagnostic.disabled = false;
-      console.info('[NarraTrace diagnostics] Buttons updated ' + JSON.stringify({
-        runDisabled: btnRunDiagnostic.disabled,
-        stopDisabled: btnStopDiagnostic.disabled,
-        markDisabled: btnMarkAudible.disabled,
-        clearDisabled: btnClearDiagnostic.disabled,
-        exportDisabled: btnExportDiagnostic.disabled
-      }));
       setDiagnosticStatus(
         diagnosticReport.success
           ? `Passed: ${diagnosticReport.resultType} after ${diagnosticReport.durationMs} ms; first audible output marked at approximately ${diagnosticReport.test.audibleStartMarkedMs} ms.`
@@ -548,14 +516,11 @@ chrome.runtime.onMessage.addListener((message) => {
             : `Diagnostic did not complete cleanly: ${diagnosticReport.error || diagnosticReport.resultType}.`),
         diagnosticReport.success ? 'success' : (message.success === true ? 'warning' : 'danger')
       );
-      console.info('[NarraTrace diagnostics] Status updated ' + diagnosticStatusEl.textContent);
-      window.__NARRATRACE_DIAGNOSTIC_STATE = {
-        report: diagnosticReport,
-        activeRequestId: activeDiagnosticRequestId,
-        runDisabled: btnRunDiagnostic.disabled,
-        stopDisabled: btnStopDiagnostic.disabled,
-        exportDisabled: btnExportDiagnostic.disabled
-      };
+      // Expose only the text-free completed report for deterministic browser
+      // verification. The actual sample text is never stored in this object.
+      window.__NARRATRACE_DIAGNOSTIC_STATE = Object.freeze({
+        report: diagnosticReport
+      });
       break;
     }
     case 'SENTENCE_CHANGED': {
