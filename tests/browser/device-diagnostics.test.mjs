@@ -217,7 +217,10 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     log: document.getElementById('engine-diagnostic-log')?.textContent || '',
     status: document.getElementById('engine-diagnostic-status')?.textContent || '',
     exportEnabled: !document.getElementById('btn-export-engine-diagnostic')?.disabled,
-    report: typeof diagnosticReport === 'object' ? diagnosticReport : null
+    // test.js is a classic page script with a top-level lexical binding;
+    // expose only its completed, text-free report through the explicit
+    // diagnostics state snapshot for deterministic browser verification.
+    report: window.__NARRATRACE_DIAGNOSTIC_STATE?.report || null
   }));
 
   console.log('[diagnostics-test] Terminal report summary', JSON.stringify({
