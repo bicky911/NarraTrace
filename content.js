@@ -3661,6 +3661,7 @@
     const label = `Playback speed ${currentSpeed.toFixed(1)} times. Activate to cycle speed.`;
     speedBadge?.setAttribute('aria-label', label);
     rspeedBadge?.setAttribute('aria-label', label);
+    updateSettingsRangeValueText();
   }
 
   let readerReturnFocus = null;
@@ -3680,6 +3681,15 @@
   let currentPlaybackState = 'IDLE';
   let currentSpeed = 1.0;
   let currentVolume = 1.0;
+
+  function updateSettingsRangeValueText() {
+    if (speedRangeEl) {
+      speedRangeEl.setAttribute('aria-valuetext', `${currentSpeed.toFixed(1)} times playback speed`);
+    }
+    if (volumeRangeEl) {
+      volumeRangeEl.setAttribute('aria-valuetext', `${Math.round(currentVolume * 100)} percent volume`);
+    }
+  }
   let isSettingsOpen = false;
   let currentTheme = 'te';
   let currentLayout = 'compact';
@@ -4134,6 +4144,7 @@
       const vol = parseFloat(volumeRangeEl.value);
       currentVolume = vol;
       if (volumeDisplayEl) volumeDisplayEl.textContent = `${Math.round(vol * 100)}%`;
+      updateSettingsRangeValueText();
       if (volumeSendTimer) clearTimeout(volumeSendTimer);
       volumeSendTimer = setTimeout(() => {
         safeSendMessage({ action: 'SET_VOLUME', volume: currentVolume });
@@ -4356,6 +4367,8 @@
     if (pronTextareaEl && prefs && typeof prefs.pronunciationText === 'string') {
       pronTextareaEl.value = prefs.pronunciationText;
     }
+
+    updateSettingsRangeValueText();
 
     // Voice label
     if (voiceInfo && prefs && prefs.voiceName) {
@@ -6447,6 +6460,7 @@
           if (pitchRangeEl) pitchRangeEl.value = String(message.options.pitch);
           if (pitchDisplayEl) pitchDisplayEl.textContent = `${message.options.pitch.toFixed(1)}×`;
         }
+        updateSettingsRangeValueText();
         if (voiceInfo && message.options && message.options.voiceName) {
           // Show first two words of the voice name in the pill (e.g. "Supertonic F1")
           voiceInfo.textContent = message.options.voiceName.split(' ').slice(0, 2).join(' ') || 'Voice';
@@ -6469,6 +6483,7 @@
         if (volumeRangeEl) volumeRangeEl.value = String(currentVolume);
         if (volumeDisplayEl) volumeDisplayEl.textContent = `${Math.round(currentVolume * 100)}%`;
       }
+      updateSettingsRangeValueText();
       if (voiceInfo && res.state.options && res.state.options.voiceName) {
         voiceInfo.textContent = res.state.options.voiceName.split(' ')[0] || 'Voice';
       }
