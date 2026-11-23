@@ -506,9 +506,19 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     target.url().startsWith(`chrome-extension://${extensionId}/`)
   , { timeout: 10000 });
   const popupWorker = await popupWorkerTarget.worker();
-  await popupWorker.evaluate(async () => {
-    await chrome.runtime.sendMessage({ action: 'PLAYBACK_PAUSED' }).catch(() => {});
-  });
+  const dispatchPlaybackState = async (action) => {
+    await popupWorker.evaluate(async ({ action, targetUrl }) => {
+      const tabs = await chrome.tabs.query({ url: targetUrl });
+      if (!tabs.length || typeof tabs[0].id !== 'number') {
+        throw new Error(`No injected NarraTrace content-script tab found for ${targetUrl}`);
+      }
+      // The popup listens to extension runtime messages; content scripts are
+      // addressed through tabs.sendMessage. Exercise both real delivery paths.
+      await chrome.tabs.sendMessage(tabs[0].id, { action });
+      await chrome.runtime.sendMessage({ action }).catch(() => {});
+    }, { action, targetUrl: page.url() });
+  };
+  await dispatchPlaybackState('PLAYBACK_PAUSED');
   await popupPage.waitForFunction(() => {
     const play = document.getElementById('ctrl-play');
     return play.getAttribute('aria-label') === 'Resume reading' &&
@@ -524,9 +534,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     );
   });
 
-  await popupWorker.evaluate(async () => {
-    await chrome.runtime.sendMessage({ action: 'PLAYBACK_RESUMED' }).catch(() => {});
-  });
+  await dispatchPlaybackState('PLAYBACK_RESUMED');
   await popupPage.waitForFunction(() => {
     const play = document.getElementById('ctrl-play');
     return play.getAttribute('aria-label') === 'Pause reading' &&
@@ -542,9 +550,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     );
   });
 
-  await popupWorker.evaluate(async () => {
-    await chrome.runtime.sendMessage({ action: 'PLAYBACK_STOPPED' }).catch(() => {});
-  });
+  await dispatchPlaybackState('PLAYBACK_STOPPED');
   await popupPage.waitForFunction(() => {
     const play = document.getElementById('ctrl-play');
     return play.getAttribute('aria-label') === 'Play reading' &&
