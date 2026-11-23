@@ -16,6 +16,7 @@ function deferred() {
 async function loadPlaybackManager(stopGates, options = {}) {
   let safeSpeakCalls = 0;
   let stopSpeechAndWaitCalls = 0;
+  let sessionState = { ...(options.sessionData || {}) };
   const runtimeMessages = [];
   const intervalCallbacks = new Map();
   const alarms = new Map();
@@ -39,8 +40,10 @@ async function loadPlaybackManager(stopGates, options = {}) {
   const chrome = {
     storage: {
       session: {
-        get: async () => options.sessionData || {},
-        set: async () => undefined
+        get: async () => sessionState,
+        set: async value => {
+          sessionState = { ...sessionState, ...value };
+        }
       },
       local: {
         get: async () => ({}),
@@ -104,6 +107,7 @@ async function loadPlaybackManager(stopGates, options = {}) {
     safeSpeakCallCount: () => safeSpeakCalls,
     stopSpeechAndWaitCallCount: () => stopSpeechAndWaitCalls,
     runtimeMessages: () => runtimeMessages,
+    sessionData: () => sessionState,
     intervalCallbacks: () => [...intervalCallbacks.values()],
     alarms: () => new Map(alarms),
     alarmEvents: () => [...alarmEvents]
@@ -249,22 +253,74 @@ test('a delayed pause cannot overwrite a later resume', async () => {
   assert.equal(loaded.runtimeMessages().some(message => message.action === 'PLAYBACK_PAUSED'), false);
 });
 
-test('worker recovery stops a timed-out orphan before replaying', async () => {
-  const loaded = await loadPlaybackManager([], { isSpeaking: async () => true });
-  const { manager } = loaded;
-  manager.queue = [{ index: 0, text: 'Recover this sentence.' }];
+test('worker recovery persists an orphaned utterance and advances once after it becomes idle', async () => {
+  const original = await loadPlaybackManager([], { isSpeaking: async () => true });
+  const manager = original.manager;
+  manager.queue = [
+    { index: 0, text: 'The orphaned sentence is still speaking.' },
+    { index: 1, text: 'Continue with the next sentence.' }
+  ];
   manager.currentIndex = 0;
   manager.tabId = 505;
   manager.playbackState = 'PLAYING';
   manager.waitForSpeechIdle = async () => false;
 
-  const replayedRuns = [];
-  manager.speakCurrentSentence = runId => replayedRuns.push(runId);
+  const firstWorkerRequests = [];
+  manager.speakCurrentSentence = (runId, offset = 0) => firstWorkerRequests.push({ runId, index: manager.currentIndex, offset });
 
   await manager.recoverAfterWorkerRestart();
 
-  assert.equal(loaded.stopSpeechAndWaitCallCount(), 1, 'the orphan must be stopped before a new utterance is queued');
-  assert.deepEqual(replayedRuns, [manager.playbackRunId]);
+  assert.equal(original.stopSpeechAndWaitCallCount(), 0,
+    'recovery must not cut off a browser-owned utterance that is still speaking');
+  assert.deepEqual(firstWorkerRequests, [],
+    'recovery must not queue a duplicate utterance while the orphan is active');
+  assert.equal(manager.recoveryPendingAdvance, true);
+  assert.equal(manager.isSwitchingSentence, false);
+  assert.equal(original.sessionData().readAloud_sessionState.recoveryPendingAdvance, true,
+    'the pending advance must survive a service-worker restart');
+
+  // A subsequent worker can also wake while the browser still owns the old
+  // utterance. It must retain the marker and defer again, without stopping or
+  // replaying the current sentence.
+  const secondWorker = await loadPlaybackManager([], {
+    isSpeaking: async () => true,
+    sessionData: original.sessionData()
+  });
+  assert.equal(await secondWorker.manager.restoreFromSession(), true);
+  secondWorker.manager.waitForSpeechIdle = async () => false;
+  const secondWorkerRequests = [];
+  secondWorker.manager.speakCurrentSentence = (runId, offset = 0) =>
+    secondWorkerRequests.push({ runId, index: secondWorker.manager.currentIndex, offset });
+
+  await secondWorker.manager.recoverAfterWorkerRestart();
+
+  assert.equal(secondWorker.manager.recoveryPendingAdvance, true);
+  assert.equal(secondWorker.manager.currentIndex, 0);
+  assert.deepEqual(secondWorkerRequests, []);
+  assert.equal(secondWorker.stopSpeechAndWaitCallCount(), 0);
+  assert.equal(secondWorker.sessionData().readAloud_sessionState.recoveryPendingAdvance, true);
+
+  // Once Chrome reports idle, a later recovery consumes the marker exactly
+  // once and starts the next sentence instead of repeating the orphan.
+  const thirdWorker = await loadPlaybackManager([], {
+    isSpeaking: async () => false,
+    sessionData: secondWorker.sessionData()
+  });
+  assert.equal(await thirdWorker.manager.restoreFromSession(), true);
+  const thirdWorkerRequests = [];
+  thirdWorker.manager.speakCurrentSentence = (runId, offset = 0) =>
+    thirdWorkerRequests.push({ runId, index: thirdWorker.manager.currentIndex, offset });
+
+  await thirdWorker.manager.recoverAfterWorkerRestart();
+
+  assert.equal(thirdWorker.manager.recoveryPendingAdvance, false);
+  assert.equal(thirdWorker.manager.currentIndex, 1);
+  assert.deepEqual(thirdWorkerRequests, [{
+    runId: thirdWorker.manager.playbackRunId,
+    index: 1,
+    offset: 0
+  }]);
+  assert.equal(thirdWorker.stopSpeechAndWaitCallCount(), 0);
 });
 
 
