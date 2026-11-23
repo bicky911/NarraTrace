@@ -755,6 +755,25 @@ check(
 # ─────────────────────────────────────────────────────────────────────────────
 # Summary
 # ─────────────────────────────────────────────────────────────────────────────
+check(
+    'playback-manager.js: recovery alarm is reconciled from active playback state',
+    'function _syncKeepAliveAlarm(want)' in pm and
+    "chrome.alarms.get('readAloudKeepAlive')" in pm and
+    "chrome.alarms.create('readAloudKeepAlive'" in pm and
+    "chrome.alarms.clear('readAloudKeepAlive')" in pm and
+    'this._syncKeepAliveAlarm(want)' in pm,
+)
+check(
+    'playback-manager.js: restored sessions reconcile worker activity and recovery alarms',
+    bool(re.search(r'restoreFromSession[\\s\\S]{0,5000}finally[\\s\\S]{0,250}_syncKeepAliveTick\\(\\)', pm)),
+)
+check(
+    'background.js: no unconditional keep-alive alarm wakes idle workers',
+    'ensureKeepAliveAlarm' not in bg and
+    "chrome.alarms.create('readAloudKeepAlive'" not in bg and
+    'chrome.alarms.onAlarm.addListener' in bg,
+)
+
 print('\n' + '─' * 67)
 passed = sum(results)
 total  = len(results)
