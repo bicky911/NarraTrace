@@ -59,8 +59,8 @@ jobs:
           node-version: "22"
       - name: Install pinned browser-test dependency
         run: npm install --prefix tests/browser --no-save --no-package-lock puppeteer@25.17.0
-      - name: Run bounded Chrome content, recovery, and accessibility tests
-        run: timeout --signal=TERM --kill-after=8s 75s node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs tests/browser/accessibility.test.mjs
+      - name: Run bounded Chrome content, recovery, accessibility, and diagnostics tests
+        run: timeout --signal=TERM --kill-after=8s 75s node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs tests/browser/accessibility.test.mjs tests/browser/device-diagnostics.test.mjs
       - name: Run large-page performance baseline
         run: timeout --signal=TERM --kill-after=8s 75s node --test tests/browser/performance-profile.test.mjs
       - name: Profile extension idle and playback renderer workload
