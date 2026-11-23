@@ -456,7 +456,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   });
   assert.ok(
     popupStatusContrast.contrast >= 4.5,
-    `Light-theme engine status text must meet WCAG AA contrast; got ${popupStatusContrast.contrast.toFixed(2)}:1`
+    `Light-theme engine status text must meet WCAG AA contrast; got ${popupStatusContrast.contrast.toFixed(2)}:1 (${popupStatusContrast.foreground} on ${popupStatusContrast.background})`
   );
   await popupPage.close();
 });
