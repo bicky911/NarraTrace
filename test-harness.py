@@ -657,6 +657,7 @@ check(
 bg = read(os.path.join(os.path.dirname(__file__), 'background.js'))
 diag_js = read(os.path.join(os.path.dirname(__file__), 'test.js'))
 diag_html = read(os.path.join(os.path.dirname(__file__), 'test.html'))
+diag_privacy = read(os.path.join(os.path.dirname(__file__), 'tts-diagnostic-privacy.js'))
 
 check(
     'background.js: diagnostic sender is restricted to bundled test.html',
@@ -671,10 +672,14 @@ check(
     'text.length > 500' in bg and 'rate < 0.5' in bg and 'rate > 2.0' in bg,
 )
 check(
-    'background.js: provider error strings are redacted before diagnostic export',
-    'event.errorMessage.slice(0, 500)' not in bg and
-    'The selected TTS provider returned an error.' in bg and
-    'The selected TTS provider could not complete the diagnostic request.' in bg,
+    'background.js: diagnostic events use the shared privacy sanitizer',
+    "import {\\n  sanitizeTtsDiagnosticEvent" in bg and 'event: sanitizeTtsDiagnosticEvent(event)' in bg,
+)
+check(
+    'tts-diagnostic-privacy.js: raw provider error strings are replaced by a generic classification',
+    "event.errorMessage" not in diag_privacy and
+    'The selected TTS provider returned an error.' in diag_privacy and
+    'The selected TTS provider could not complete the diagnostic request.' in diag_privacy,
 )
 check(
     'background.js: session inspection is restricted to diagnostics page',
