@@ -218,6 +218,26 @@ test('overlapping rate changes restart speech only once with the latest option',
 
 
 
+
+test('adaptive batching includes Supertonic audible lead-in cost', async () => {
+  const { manager } = await loadPlaybackManager([]);
+  manager.options.extensionId = 'mdoplmghlkjcnegkdhocjbjcncocbdhk';
+  manager.batchSize = 0;
+  const profile = manager.engineProfile();
+  profile.prepareMs = 0;
+  profile.leadInMs = 3200;
+  profile.baseCharsPerSecond = 13.5;
+  profile.boundariesSeen = 1;
+  profile.starving = false;
+
+  assert.equal(manager.resolveBatchSize(), 5,
+    'a 3.2 s per-utterance lead-in should justify grouping roughly five typical sentences');
+
+  profile.leadInMs = 0;
+  assert.equal(manager.resolveBatchSize(), 1,
+    'without measured setup cost, batching should remain responsive');
+});
+
 test('Supertonic first-utterance highlighting respects its measured audible lead-in', async () => {
   const loaded = await loadPlaybackManager([]);
   const { manager } = loaded;
