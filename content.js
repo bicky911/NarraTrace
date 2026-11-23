@@ -4528,6 +4528,14 @@
         clearHighlight();
         if (rprogressFillEl) rprogressFillEl.style.width = '0%';
         if (rprogressTextEl) rprogressTextEl.textContent = '01/00';
+        // The visible progress bars reset above; their accessible position
+        // must reset too, otherwise assistive technology keeps announcing a
+        // sentence position from the session that has already stopped.
+        [progressTrackEl, rprogressTrackEl].forEach(track => {
+          if (!track) return;
+          track.setAttribute('aria-valuenow', '0');
+          track.setAttribute('aria-valuetext', 'No sentences loaded');
+        });
       }
     }
   }
