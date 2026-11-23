@@ -261,9 +261,11 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       const surfaceColor = getComputedStyle(overlay).backgroundColor;
       const wordColor = getComputedStyle(sampleWord).color;
       const wordBackground = getComputedStyle(sampleWord).backgroundColor;
+      const metadataColor = getComputedStyle(root.querySelector('.reader-meta')).color;
       return {
         theme,
         bodyContrast: ratio(bodyColor, surfaceColor),
+        metadataContrast: ratio(metadataColor, surfaceColor),
         wordContrast: ratio(wordColor, wordBackground)
       };
     });
@@ -274,6 +276,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   });
   for (const palette of paletteContrast) {
     assert.ok(palette.bodyContrast >= 4.5, `${palette.theme} body text must meet WCAG AA contrast`);
+    assert.ok(palette.metadataContrast >= 4.5, `${palette.theme} metadata must meet WCAG AA contrast; got ${palette.metadataContrast.toFixed(2)}:1`);
     assert.ok(palette.wordContrast >= 4.5, `${palette.theme} highlighted word must meet WCAG AA contrast`);
   }
   await page.evaluate(() => {
