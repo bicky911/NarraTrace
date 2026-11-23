@@ -754,6 +754,21 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   await popupPage.focus('#popup-voice-select');
   await popupPage.keyboard.press('Tab');
   await popupPage.hover('.chip[data-speed="1.5"]');
+  // The chip animates its hover/selected colors. Wait for the final rendered
+  // state rather than sampling a partially blended transition frame.
+  await popupPage.waitForFunction(() => {
+    const chip = document.querySelector('.chip[data-speed="1.5"]');
+    if (!chip || chip.getAttribute('aria-pressed') !== 'true' || !chip.matches(':hover')) return false;
+    const accent = getComputedStyle(document.body).getPropertyValue('--ra-accent').trim();
+    const probe = document.createElement('span');
+    probe.style.color = accent;
+    document.body.appendChild(probe);
+    const expectedBackground = getComputedStyle(probe).color;
+    probe.remove();
+    const styles = getComputedStyle(chip);
+    return styles.backgroundColor === expectedBackground &&
+      styles.color === 'rgb(255, 255, 255)';
+  }, { timeout: 3000 });
   const lightControlContrast = await popupPage.evaluate(() => {
     const speed = document.getElementById('popup-speed-slider');
     const voice = document.getElementById('popup-voice-select');
