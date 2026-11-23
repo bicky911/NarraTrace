@@ -118,7 +118,8 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     };
   });
   assert.equal(popupVisualMetrics.bodyWidth, 360);
-  assert.match(popupVisualMetrics.bodyFont, /system-ui/i);
+  assert.match(popupVisualMetrics.bodyFont, /sans/i);
+  assert.doesNotMatch(popupVisualMetrics.bodyFont, /mono/i);
   assert.equal(popupVisualMetrics.sentence.fontSize, 13);
   assert.ok(popupVisualMetrics.previous.width >= 40 && popupVisualMetrics.previous.height >= 40);
   assert.ok(popupVisualMetrics.play.width >= 48 && popupVisualMetrics.play.height >= 48);
