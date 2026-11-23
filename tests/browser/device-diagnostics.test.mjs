@@ -78,6 +78,8 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
   });
   await diagnostics.waitForSelector('#btn-run-engine-diagnostic', { timeout: 10000 });
   diagnostics.setDefaultTimeout(10000);
+  diagnostics.on('console', message => console.log('[diagnostics-page]', message.text()));
+  diagnostics.on('pageerror', error => console.log('[diagnostics-page-error]', error.message));
   console.log('[diagnostics-test] Diagnostics page loaded');
 
   const popup = await browser.newPage();
