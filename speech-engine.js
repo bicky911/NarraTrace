@@ -172,10 +172,10 @@ export async function detectAndSelectVoice(preference = null) {
   const byEngine = new Map();
   for (const v of voices) {
     if (!v.extensionId) continue;
-    // Map Piper voices to PIPER_EXTENSION_ID even if installed unpacked under a local dynamic ID
-    const targetEngineId = (v.voiceName && v.voiceName.startsWith('Piper '))
-      ? PIPER_EXTENSION_ID
-      : v.extensionId;
+    // Resolve provider aliases (including unpacked Piper installs with a
+    // dynamic extension ID) to the canonical registry ID for grouping. The
+    // original voice object and its extensionId remain untouched for speak().
+    const targetEngineId = getEngineSpec(v.extensionId, v)?.id || v.extensionId;
     if (!byEngine.has(targetEngineId)) byEngine.set(targetEngineId, []);
     byEngine.get(targetEngineId).push(v);
   }
@@ -217,7 +217,7 @@ export async function detectAndSelectVoice(preference = null) {
     const pinned = voices.find(v => v.voiceName === pref.voiceName.trim());
     if (pinned) {
       selectedVoice = pinned;
-      const spec = getEngineSpec(pinned.extensionId);
+      const spec = getEngineSpec(pinned.extensionId, pinned);
       statusMessage = spec
         ? `Using ${spec.label} voice "${pinned.voiceName}".`
         : `Using voice "${pinned.voiceName}".`;
@@ -252,7 +252,14 @@ export async function detectAndSelectVoice(preference = null) {
     }
   }
 
-  const activeEngine = engines.find(e => e.id === (selectedVoice && selectedVoice.extensionId)) || null;
+  // A maintained provider may advertise under a dynamic extension ID.
+  // Match its canonical group identity without rewriting the real ID carried
+  // by selectedVoice (which is required by chrome.tts.speak()).
+  const selectedEngineSpec = selectedVoice
+    ? getEngineSpec(selectedVoice.extensionId, selectedVoice)
+    : null;
+  const activeEngineId = selectedEngineSpec?.id || (selectedVoice?.extensionId || null);
+  const activeEngine = engines.find(e => e.id === activeEngineId) || null;
 
   return {
     selectedVoice,
@@ -263,7 +270,12 @@ export async function detectAndSelectVoice(preference = null) {
     engineVoices: activeEngine ? activeEngine.voices : [],
     engines,
     localSystemVoices,
-    otherVoices: voices.filter(v => v.extensionId && (!activeEngine || v.extensionId !== activeEngine.id)),
+    otherVoices: voices.filter(v => {
+      if (!v.extensionId) return false;
+      const spec = getEngineSpec(v.extensionId, v);
+      const id = spec?.id || v.extensionId;
+      return !activeEngine || id !== activeEngine.id;
+    }),
     allVoices: voices
   };
 }
