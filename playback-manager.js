@@ -616,7 +616,7 @@ class PlaybackManager {
    * it, so at worker start-up the voice list can still be empty (or contain
    * only the built-in Google voices). Chrome announces every change of the
    * voice list through chrome.tts.onVoicesChanged, and this runs again then —
-   * which is how the preferred engine (Kokoro) takes over as soon as it
+   * which is how the preferred engine (Piper) takes over as soon as it
    * appears.
    *
    * A voice the user picked themselves is never touched.
