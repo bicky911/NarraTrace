@@ -586,8 +586,9 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   assert.equal(popupControlSemantics.voiceStatusAtomic, 'true');
   assert.equal(popupControlSemantics.speedLabel, 'PLAYBACK SPEED');
   assert.equal(popupControlSemantics.volumeLabel, 'VOLUME');
-  assert.equal(popupControlSemantics.speedValueText, '1.0 times playback speed');
-  assert.equal(popupControlSemantics.volumeValueText, '100 percent volume');
+  // The popup must hydrate the settings changed earlier through the content-side controls.
+  assert.equal(popupControlSemantics.speedValueText, '1.4 times playback speed');
+  assert.equal(popupControlSemantics.volumeValueText, '35 percent volume');
   assert.equal(popupControlSemantics.speedChipGroup, 'Playback speed presets');
   assert.equal(popupControlSemantics.playName, 'Play reading');
   assert.equal(popupControlSemantics.playPressed, 'false');
