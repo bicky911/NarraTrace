@@ -81,6 +81,7 @@ If a provider does not expose dependable word offsets, sentence-level highlighti
 - [ ] Check memory after a 30-minute narration session for unbounded growth.
 - [ ] Confirm animations and observers stop when their UI/page lifecycle ends.
 - [ ] Review the selected voice provider's privacy policy. NarraTrace passes narration text to Chrome's TTS API; provider processing and retention depend on that provider.
+- [ ] Run the bundled [real-engine diagnostic workflow](DEVICE-DIAGNOSTICS.md) for each provider you use. Require both a clean Chrome `end` event and the manual **I Hear Audio** mark before recording an audible pass.
 
 ## Diagnostic report
 
