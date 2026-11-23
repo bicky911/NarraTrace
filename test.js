@@ -473,14 +473,14 @@ chrome.runtime.onMessage.addListener((message) => {
 
   switch (message.action) {
     case 'TTS_DIAGNOSTIC_EVENT': {
-      console.info('[NarraTrace diagnostics] Event received', {
+      console.info('[NarraTrace diagnostics] Event received ' + JSON.stringify({
         type: message.event?.type,
         elapsedMs: message.elapsedMs,
         hasReport: Boolean(diagnosticReport),
         messageRequestId: message.requestId,
         activeRequestId: activeDiagnosticRequestId,
         requestMatches: message.requestId === activeDiagnosticRequestId
-      });
+      }));
       if (!diagnosticReport || message.requestId !== activeDiagnosticRequestId || !message.event) break;
       const event = {
         type: String(message.event.type || 'unknown'),
@@ -497,14 +497,14 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
     }
     case 'TTS_DIAGNOSTIC_COMPLETE': {
-      console.info('[NarraTrace diagnostics] Completion received', {
+      console.info('[NarraTrace diagnostics] Completion received ' + JSON.stringify({
         resultType: message.resultType,
         success: message.success,
         hasReport: Boolean(diagnosticReport),
         messageRequestId: message.requestId,
         activeRequestId: activeDiagnosticRequestId,
         requestMatches: message.requestId === activeDiagnosticRequestId
-      });
+      }));
       if (!diagnosticReport || message.requestId !== activeDiagnosticRequestId) break;
       if (diagnosticTimeoutId) clearTimeout(diagnosticTimeoutId);
       diagnosticTimeoutId = null;
