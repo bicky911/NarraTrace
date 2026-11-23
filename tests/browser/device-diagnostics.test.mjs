@@ -90,6 +90,53 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
 
   // The popup exposes its visual toggle states to assistive technology.
   await popup.waitForFunction(() => document.body.classList.contains('is-hydrated'));
+
+  // The popup's compact instrument-panel identity must not come at the cost
+  // of legibility or undersized controls.
+  const popupVisualMetrics = await popup.evaluate(() => {
+    const measure = (selector) => {
+      const element = document.querySelector(selector);
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        fontSize: parseFloat(style.fontSize),
+        fontFamily: style.fontFamily,
+        outlineWidth: style.outlineWidth
+      };
+    };
+    return {
+      bodyWidth: Math.round(document.body.getBoundingClientRect().width),
+      bodyFont: getComputedStyle(document.body).fontFamily,
+      sentence: measure('#sentence-box'),
+      previous: measure('#ctrl-prev'),
+      play: measure('#ctrl-play'),
+      voice: measure('#popup-voice-select'),
+      speedChip: measure('.speed-chips .chip'),
+      footer: measure('#btn-toggle-pill')
+    };
+  });
+  assert.equal(popupVisualMetrics.bodyWidth, 360);
+  assert.match(popupVisualMetrics.bodyFont, /system-ui/i);
+  assert.equal(popupVisualMetrics.sentence.fontSize, 13);
+  assert.ok(popupVisualMetrics.previous.width >= 40 && popupVisualMetrics.previous.height >= 40);
+  assert.ok(popupVisualMetrics.play.width >= 48 && popupVisualMetrics.play.height >= 48);
+  assert.ok(popupVisualMetrics.voice.height >= 42);
+  assert.ok(popupVisualMetrics.speedChip.height >= 36);
+  assert.ok(popupVisualMetrics.footer.height >= 42);
+
+  // Keyboard focus must remain visibly discoverable after the visual refresh.
+  await popup.keyboard.press('Tab');
+  const popupFocus = await popup.evaluate(() => ({
+    id: document.activeElement?.id,
+    outlineStyle: getComputedStyle(document.activeElement).outlineStyle,
+    outlineWidth: parseFloat(getComputedStyle(document.activeElement).outlineWidth)
+  }));
+  assert.equal(popupFocus.id, 'theme-toggle');
+  assert.equal(popupFocus.outlineStyle, 'solid');
+  assert.ok(popupFocus.outlineWidth >= 3);
+
   const initialPopupState = await popup.evaluate(() => ({
     playPressed: document.getElementById('ctrl-play')?.getAttribute('aria-pressed'),
     speedGroupLabel: document.querySelector('.speed-chips')?.getAttribute('aria-label'),
