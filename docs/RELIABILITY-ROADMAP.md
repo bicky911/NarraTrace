@@ -17,6 +17,7 @@ Reliability, user-visible synchronization, privacy, accessibility, and repeatabl
 - [x] Stop a timed-out orphan utterance before worker recovery to prevent overlap.
 - [x] Route rate, volume, pitch, and voice updates through a guarded restart path.
 - [x] Exercise service-worker recovery with a deterministic Chromium TTS fixture.
+- [x] Include measured provider lead-in in adaptive sentence batching to reduce repeated utterance startup gaps.
 - [ ] Define all playback state-transition invariants explicitly.
 - [ ] Verify exactly-once advancement across completion, timeout, and provider errors on real providers.
 - [ ] Validate resume offsets and rapid control/tab-switch sequences with installed providers.
@@ -26,6 +27,7 @@ Reliability, user-visible synchronization, privacy, accessibility, and repeatabl
 - [x] Reject malformed native offsets without disabling fallback.
 - [x] De-duplicate repeated synthetic boundary events.
 - [x] Test grouped sentence mapping and full-source resume offsets.
+- [x] Apply Supertonic's provider-specific first-utterance lead-in correction and test that highlighting waits for audible playback.
 - [x] Test extraction and word/sentence range mapping in Chromium fixtures.
 - [ ] Validate partial, missing, delayed, and provider-specific boundary behavior with real voices.
 - [ ] Verify estimator recalibration, language/script routing, and mid-session voice changes on-device.
@@ -50,6 +52,7 @@ Reliability, user-visible synchronization, privacy, accessibility, and repeatabl
 - [x] Add Focus Reader dialog semantics, keyboard focus trapping, Escape behavior, focus restoration, and slider announcements to automated Chromium checks.
 - [x] Test focus restoration in mini/tucked player conditions.
 - [x] Add diagnostic privacy sanitization and access-control tests.
+- [x] Retry late Chrome TTS voice registration in the diagnostics page while preserving manual voice selection.
 - [x] Remove unused manifest permissions and test the privacy/permission contract.
 - [ ] Conduct manual screen-reader and assistive-technology checks.
 - [ ] Verify reduced-motion behavior, contrast, and keyboard navigation on real Chrome/OS combinations.
