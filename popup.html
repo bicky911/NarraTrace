@@ -516,6 +516,240 @@
         scroll-behavior: auto !important;
       }
     }
+
+    /* ── NT·1 visual foundation: readable, precise, and comfortably operable ── */
+    :root {
+      --ra-font-ui: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --ra-control-size: 40px;
+      --ra-control-radius: 11px;
+      --ra-focus-ring: 3px;
+    }
+
+    * {
+      font-family: var(--ra-font-ui);
+    }
+
+    body {
+      width: 360px;
+      max-width: calc(100vw - 16px);
+      padding: 16px;
+      line-height: 1.45;
+    }
+
+    .header {
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 14px;
+    }
+
+    .header-left {
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .header-logo {
+      width: 26px;
+      height: 26px;
+      flex: 0 0 auto;
+    }
+
+    .header-title,
+    .header-tagline,
+    .engine-badge,
+    .tab-title,
+    .progress-counter,
+    .form-label,
+    .form-val,
+    .voice-substatus {
+      font-family: var(--ra-font);
+    }
+
+    .header-title {
+      font-size: 12px;
+      letter-spacing: 0.1em;
+    }
+
+    .header-tagline {
+      font-size: 9px;
+      letter-spacing: 0.055em;
+      line-height: 1.35;
+    }
+
+    .engine-badge {
+      font-size: 9px;
+      padding: 5px 8px;
+      border-radius: 999px;
+    }
+
+    button.icon-toggle {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      font-size: 14px;
+      flex: 0 0 auto;
+    }
+
+    .card {
+      padding: 14px;
+      margin-bottom: 12px;
+      border-radius: 14px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .tab-info-row {
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .tab-title {
+      min-width: 0;
+      max-width: 220px;
+      font-size: 10px;
+      letter-spacing: 0.065em;
+    }
+
+    .progress-counter {
+      font-size: 10px;
+      padding: 3px 7px;
+    }
+
+    .sentence-box {
+      min-height: 60px;
+      max-height: 84px;
+      padding: 11px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.55;
+      user-select: text;
+    }
+
+    .progress-bar-wrap {
+      height: 6px;
+      margin-top: 12px;
+      border-radius: 3px;
+    }
+
+    .controls-row {
+      gap: 12px;
+      margin: 14px 0 4px;
+    }
+
+    button.ctrl-btn {
+      width: var(--ra-control-size);
+      height: var(--ra-control-size);
+      border-radius: var(--ra-control-radius);
+    }
+
+    button.ctrl-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    button.ctrl-btn.play-main {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+    }
+
+    button.ctrl-btn.play-main svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-label-row {
+      margin-bottom: 7px;
+    }
+
+    .form-label {
+      font-size: 10px;
+      letter-spacing: 0.09em;
+    }
+
+    .form-val {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    select.voice-select {
+      min-height: 42px;
+      padding: 9px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+    }
+
+    .voice-substatus {
+      margin-top: 6px;
+      font-size: 9px;
+      line-height: 1.4;
+      letter-spacing: 0.025em;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .speed-slider-wrap {
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    input[type="range"] {
+      height: 6px;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      width: 16px;
+      height: 16px;
+    }
+
+    .speed-chips {
+      gap: 8px;
+    }
+
+    button.chip {
+      min-height: 36px;
+      padding: 7px 0;
+      border-radius: 9px;
+      font-size: 11px;
+    }
+
+    .footer-actions {
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    button.footer-btn {
+      min-height: 42px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 10px;
+      letter-spacing: 0.075em;
+    }
+
+    button:focus-visible,
+    select:focus-visible,
+    input:focus-visible {
+      outline: var(--ra-focus-ring) solid var(--ra-accent) !important;
+      outline-offset: 3px !important;
+    }
+
+    @media (max-width: 360px) {
+      body {
+        padding: 12px;
+      }
+
+      .controls-row {
+        gap: 8px;
+      }
+
+      .footer-actions {
+        gap: 6px;
+      }
+    }
+
   </style>
 </head>
 <body>
