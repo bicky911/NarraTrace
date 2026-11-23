@@ -2,6 +2,8 @@
 
 ## Unreleased — reliability and provider scope
 
+- Add a bundled real-engine diagnostics page for the selected Chrome TTS voice, including event timing, manual first-audio confirmation, safe stop, and JSON export without sample text.
+- Restrict diagnostic speech and full session inspection to the bundled diagnostics page; prevent normal playback and diagnostics from overlapping.
 - Prioritize Piper and Supertonic as NarraTrace's maintained provider profiles.
 - Keep other Chrome TTS extensions discoverable through the generic provider path; provider-specific behavior is not assumed or release-gated.
 - Remove Kokoro-specific provider tuning from the current target implementation. Historical 1.3.0 notes below are retained as release history, not as a current support commitment.
