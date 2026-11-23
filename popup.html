@@ -964,10 +964,10 @@
       <div class="form-label-row">
         <label class="form-label" for="popup-voice-select">VOICE ENGINE</label>
       </div>
-      <select class="voice-select" id="popup-voice-select">
+      <select class="voice-select" id="popup-voice-select" aria-describedby="voice-substatus">
         <option value="">Scanning local voices…</option>
       </select>
-      <div class="voice-substatus" id="voice-substatus">Scanning local voices…</div>
+      <div class="voice-substatus" id="voice-substatus" role="status" aria-live="polite" aria-atomic="true">Scanning local voices…</div>
     </div>
 
     <!-- Speed -->
