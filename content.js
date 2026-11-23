@@ -1358,6 +1358,20 @@
       padding: 4px 7px;
     }
 
+    /* Keep the compact player keyboard-accessible after a modal closes. The
+       temporary class reveals the opener for the focus() call; :focus-within
+       keeps it visible only while keyboard focus remains inside the player. */
+    .player-pill.pill-mini.focus-restoring,
+    .player-pill.pill-mini:focus-within {
+      width: auto;
+      height: auto;
+      padding: 4px 7px;
+    }
+    .player-pill.pill-mini.focus-restoring:not(:hover) #ra-settings,
+    .player-pill.pill-mini:focus-within:not(:hover) #ra-settings {
+      display: flex !important;
+    }
+
     /* ── Samsung Galaxy S26 Ultra Edge Handle (Collapsed State) ── */
     .player-pill.collapsed {
       padding: 0 !important;
@@ -3959,9 +3973,16 @@
     // beaded state CSS hides the entire pill-body (including the opener), so
     // calling focus() on a connected button silently does nothing. Reveal the
     // player before restoring focus; untuck() also cancels a pending tuck.
-    if (returnFocus && container.contains(returnFocus) &&
-        container.classList.contains('beaded')) {
-      untuck();
+    if (returnFocus && container.contains(returnFocus)) {
+      if (container.classList.contains('beaded')) {
+        untuck();
+      }
+      // In mini layout, Settings is intentionally hidden until hover. Reveal
+      // it for the focus transfer, then let :focus-within keep it available
+      // for keyboard users without permanently changing the saved layout.
+      if (container.classList.contains('pill-mini')) {
+        container.classList.add('focus-restoring');
+      }
     }
 
     const canReceiveFocus = (element) => {
@@ -3986,6 +4007,7 @@
     ].find(canReceiveFocus);
 
     if (focusTarget) focusTarget.focus({ preventScroll: true });
+    container.classList.remove('focus-restoring');
   }
 
   readerOverlay.addEventListener('keydown', (event) => {
