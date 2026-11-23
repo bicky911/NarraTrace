@@ -51,10 +51,13 @@
   const GAZE_ANCHOR   = 0.38;   // fraction from viewport top
   const GAZE_FRICTION = 0.10;   // per-frame lerp coefficient (10% approach)
   const GAZE_EPSILON  = 0.5;    // px — stop ticking below this residual
+  const GAZE_USER_YIELD_MS = 1200;
 
   let _gazeRafId   = null;
   let _gazeTarget  = null;   // { y: number, container: Element|null }
   let _gazeVel     = 0;      // current scroll velocity (px/frame)
+  let _gazeResumeAt = 0;
+  let _gazeResumeTimer = null;
 
   /**
    * Schedule a Golden Gaze scroll toward targetY on the page (container=null)
@@ -65,6 +68,18 @@
    */
   function gazeScrollTo(targetY, container) {
     _gazeTarget = { y: targetY, container: container || null };
+    const resumeDelay = _gazeResumeAt - Date.now();
+    if (resumeDelay > 0) {
+      // Keep only the latest sentence target while the user is in control.
+      // Resume from the current scroll position after the quiet period.
+      if (_gazeResumeTimer === null) {
+        _gazeResumeTimer = setTimeout(() => {
+          _gazeResumeTimer = null;
+          if (_gazeTarget && !_gazeRafId) _gazeRafId = requestAnimationFrame(_gazeLoop);
+        }, resumeDelay);
+      }
+      return;
+    }
     if (!_gazeRafId) _gazeRafId = requestAnimationFrame(_gazeLoop);
   }
 
@@ -97,8 +112,40 @@
   /** Cancel any in-flight Golden Gaze scroll. */
   function gazeCancelScroll() {
     if (_gazeRafId) { cancelAnimationFrame(_gazeRafId); _gazeRafId = null; }
+    if (_gazeResumeTimer !== null) {
+      clearTimeout(_gazeResumeTimer);
+      _gazeResumeTimer = null;
+    }
     _gazeTarget = null;
     _gazeVel    = 0;
+  }
+
+  /**
+   * Yield automatic scrolling to direct user input. Wheel and touch gestures
+   * always count; pointer input counts only near the viewport edge where the
+   * native scrollbar lives; keyboard input counts only for document scrolling.
+   */
+  function gazeYieldToUser(event) {
+    if (!event) return;
+
+    if (event.type === 'wheel') {
+      if (event.deltaX === 0 && event.deltaY === 0) return;
+    } else if (event.type === 'pointerdown') {
+      if (event.button !== 0) return;
+      const edgeDistance = Math.min(event.clientX, window.innerWidth - event.clientX);
+      if (edgeDistance > 24) return;
+    } else if (event.type === 'keydown') {
+      const scrollKeys = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+      if (!scrollKeys.has(event.key)) return;
+      const target = event.target;
+      if (target && (
+        target.isContentEditable ||
+        (target.closest && target.closest('input, textarea, select, button, a, [role="slider"]'))
+      )) return;
+    }
+
+    gazeCancelScroll();
+    _gazeResumeAt = Date.now() + GAZE_USER_YIELD_MS;
   }
 
   // Per-property spring state
@@ -141,11 +188,11 @@
     const squishX = 1 + Math.tanh(vxNorm * 0.14) * 0.09;  // ±9% max stretch
     const squishY = 1 / (squishX || 1);                    // volume-preserve
 
+    const widthScale = _sp.w.tgt > 0 ? Math.max(0, _sp.w.cur) / _sp.w.tgt : 1;
+    const heightScale = _sp.h.tgt > 0 ? Math.max(0, _sp.h.cur) / _sp.h.tgt : 1;
     wordBoxEl.style.transform =
       `translate3d(${_sp.x.cur.toFixed(2)}px, ${_sp.y.cur.toFixed(2)}px, 0) ` +
-      `scaleX(${squishX.toFixed(4)}) scaleY(${squishY.toFixed(4)})`;
-    wordBoxEl.style.width  = `${Math.max(0, _sp.w.cur).toFixed(2)}px`;
-    wordBoxEl.style.height = `${Math.max(0, _sp.h.cur).toFixed(2)}px`;
+      `scale3d(${(widthScale * squishX).toFixed(4)}, ${(heightScale * squishY).toFixed(4)}, 1)`;
 
     if (xAlive || yAlive || wAlive || hAlive) {
       _springRafId = requestAnimationFrame(_springLoop);
@@ -155,8 +202,6 @@
       _sp.w.cur = _sp.w.tgt; _sp.h.cur = _sp.h.tgt;
       wordBoxEl.style.transform =
         `translate3d(${_sp.x.tgt.toFixed(2)}px, ${_sp.y.tgt.toFixed(2)}px, 0)`;
-      wordBoxEl.style.width  = `${_sp.w.tgt}px`;
-      wordBoxEl.style.height = `${_sp.h.tgt}px`;
       _springRunning = false;
       _lastRafTime = null;
     }
@@ -177,14 +222,21 @@
       _sp.w.cur = _sp.w.tgt = w; _sp.w.vel = 0;
       _sp.h.cur = _sp.h.tgt = h; _sp.h.vel = 0;
       if (wordBoxEl) {
-        wordBoxEl.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-        wordBoxEl.style.width  = `${w}px`;
+        wordBoxEl.style.width = `${w}px`;
         wordBoxEl.style.height = `${h}px`;
+        wordBoxEl.style.transform = `translate3d(${x}px, ${y}px, 0)`;
       }
       if (_springRafId) { cancelAnimationFrame(_springRafId); _springRafId = null; }
       _springRunning = false;
       _lastRafTime = null;
     } else {
+      // Width and height are fixed once per target change. The RAF loop
+      // animates their apparent geometry with scale3d(), avoiding per-frame
+      // layout and keeping the capsule transform compositor-friendly.
+      if (wordBoxEl) {
+        wordBoxEl.style.width = `${w}px`;
+        wordBoxEl.style.height = `${h}px`;
+      }
       _sp.x.tgt = x; _sp.y.tgt = y; _sp.w.tgt = w; _sp.h.tgt = h;
       if (!_springRunning) {
         _springRunning = true;
@@ -2506,9 +2558,9 @@
       transform: translate3d(0, 0, 0);
       /* Only opacity fades in CSS; spring handles geometry */
       transition: opacity 100ms ease-out;
-      will-change: transform, width, height, opacity;
+      will-change: transform, opacity;
       /* transform-origin centered so kinetic squish expands symmetrically */
-      transform-origin: left center;
+      transform-origin: left top;
     }
     .ra-word-box.visible {
       opacity: 1;
@@ -5441,6 +5493,15 @@
       }
     });
   }
+
+  // Manual scrolling always takes priority over Golden Gaze. Capture wheel
+  // and touch intent before the browser applies its scroll, and detect native
+  // scrollbar interaction through pointer input close to a viewport edge.
+  window.addEventListener('wheel', gazeYieldToUser, { capture: true, passive: true });
+  window.addEventListener('touchstart', gazeYieldToUser, { capture: true, passive: true });
+  window.addEventListener('touchmove', gazeYieldToUser, { capture: true, passive: true });
+  window.addEventListener('pointerdown', gazeYieldToUser, { capture: true, passive: true });
+  window.addEventListener('keydown', gazeYieldToUser, true);
 
   // Reposition floating word box and hide tooltips on window scroll or resize
   window.addEventListener('scroll', () => {
