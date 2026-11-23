@@ -224,6 +224,9 @@ class PlaybackManager {
     // "speaking normally" apart from "the worker was restarted mid-sentence and
     // the utterance's end event was lost".
     this.awaitingSpeech = false;
+    // True when a browser-owned utterance outlived its service worker. Persist
+    // this so a later worker waits for it to finish and advances exactly once.
+    this.recoveryPendingAdvance = false;
     this.consecutiveErrors = 0;
     // Word-offset tracking for pause/resume without rewinding, and for the
     // watchdog remainder re-queue. Absolute char index into the FULL sentence.
@@ -433,6 +436,7 @@ class PlaybackManager {
         tabId: this.tabId,
         options: this.options,
         resumeOffset: this.resumeOffset || 0,
+        recoveryPendingAdvance: this.recoveryPendingAdvance === true,
         timestamp: Date.now()
       };
       await chrome.storage.session.set({ [SESSION_STORAGE_KEY]: data });
@@ -465,6 +469,7 @@ class PlaybackManager {
         this.playbackState = data.playbackState || PlaybackState.IDLE;
         this.tabId = typeof data.tabId === 'number' ? data.tabId : null;
         this.resumeOffset = typeof data.resumeOffset === 'number' ? Math.max(0, data.resumeOffset) : 0;
+        this.recoveryPendingAdvance = data.recoveryPendingAdvance === true;
         if (data.options) {
           this.allVoices = [];
     this.options = { ...this.options, ...data.options };
@@ -492,6 +497,7 @@ class PlaybackManager {
     this.playbackState = PlaybackState.IDLE;
     this.tabId = null;
     this.awaitingSpeech = false;
+    this.recoveryPendingAdvance = false;
     this.isSwitchingSentence = false;
     this.consecutiveErrors = 0;
     this.stopEstimator();
@@ -543,35 +549,51 @@ class PlaybackManager {
 
     const speaking = await isSpeaking();
     if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
-    if (!speaking) {
+
+    if (!speaking && !this.recoveryPendingAdvance) {
+      // The worker died before Chrome accepted the utterance. Replaying the
+      // current sentence is safe because no browser-owned speech is active.
       console.log('[PlaybackManager] Recovering interrupted playback at sentence #', this.currentIndex + 1);
       this.isSwitchingSentence = false;
-      this.speakCurrentSentence(this.playbackRunId);
+      this.speakCurrentSentence(runId);
       return;
     }
 
-    console.warn('[PlaybackManager] Worker restarted mid-utterance — waiting for it to finish.');
-    const wentIdle = await this.waitForSpeechIdle(10000);
-    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
-    if (wentIdle) {
-      // The orphaned utterance completed; its event was lost, so advance here.
-      this.currentIndex++;
-      if (this.currentIndex >= this.queue.length) {
-        console.log('[PlaybackManager] Recovered queue finished after last sentence.');
-        this.playbackState = PlaybackState.STOPPED;
-        this.currentIndex = 0;
+    if (speaking) {
+      console.warn('[PlaybackManager] Worker restarted mid-utterance — waiting for it to finish.');
+      const wentIdle = await this.waitForSpeechIdle(10000);
+      if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
+
+      if (!wentIdle) {
+        // The browser still owns the old utterance. Do not cut it off or queue
+        // a duplicate. Persist the pending advance so a later alarm (possibly
+        // after another worker restart) can finish recovery when Chrome goes idle.
+        console.warn('[PlaybackManager] Orphaned utterance is still active — deferring recovery until the next alarm.');
+        this.recoveryPendingAdvance = true;
+        this.awaitingSpeech = false;
+        this.isSwitchingSentence = false;
         await this.saveToSession();
-        if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.STOPPED) return;
-        this.broadcast('PLAYBACK_COMPLETED');
         return;
       }
-    } else {
-      // Do not start a replacement utterance over an orphan that is still
-      // speaking. Stop it first; the current sentence is then replayed cleanly.
-      console.warn('[PlaybackManager] Orphaned utterance did not become idle; stopping it before replay.');
-      await stopSpeechAndWait();
-      if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
     }
+
+    // Either the orphan just became idle, or a prior worker persisted the
+    // pending marker and Chrome has since finished it. Its end event belonged
+    // to the old worker, so advance exactly once before starting the next item.
+    this.recoveryPendingAdvance = false;
+    this.currentIndex++;
+    if (this.currentIndex >= this.queue.length) {
+      console.log('[PlaybackManager] Recovered queue finished after last sentence.');
+      this.playbackState = PlaybackState.STOPPED;
+      this.currentIndex = 0;
+      this.awaitingSpeech = false;
+      this.isSwitchingSentence = false;
+      await this.saveToSession();
+      if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.STOPPED) return;
+      this.broadcast('PLAYBACK_COMPLETED');
+      return;
+    }
+
     await this.saveToSession();
     if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
     this.isSwitchingSentence = false;
@@ -769,6 +791,7 @@ class PlaybackManager {
     // Increment run ID to invalidate any prior speaking loop immediately
     const runId = (this.playbackRunId || 0) + 1;
     this.playbackRunId = runId;
+    this.recoveryPendingAdvance = false;
     this.isSwitchingSentence = true;
     this.awaitingSpeech = false;
     this.consecutiveErrors = 0;
@@ -1712,6 +1735,7 @@ class PlaybackManager {
 
     const runId = (this.playbackRunId || 0) + 1;
     this.playbackRunId = runId;
+    this.recoveryPendingAdvance = false;
     this.isSwitchingSentence = true;
     this.playbackState = PlaybackState.PAUSED;
     this.awaitingSpeech = false;
@@ -1734,6 +1758,7 @@ class PlaybackManager {
 
     const runId = (this.playbackRunId || 0) + 1;
     this.playbackRunId = runId;
+    this.recoveryPendingAdvance = false;
     this.playbackState = PlaybackState.PLAYING;
     await this.saveToSession();
     if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return false;
@@ -1749,6 +1774,7 @@ class PlaybackManager {
   async stop() {
     const runId = (this.playbackRunId || 0) + 1;
     this.playbackRunId = runId;
+    this.recoveryPendingAdvance = false;
     this.isSwitchingSentence = true;
     this.playbackState = PlaybackState.STOPPED;
     this.awaitingSpeech = false;
@@ -1770,6 +1796,7 @@ class PlaybackManager {
 
     const runId = (this.playbackRunId || 0) + 1;
     this.playbackRunId = runId;
+    this.recoveryPendingAdvance = false;
     this.isSwitchingSentence = true;
     if (this.currentIndex < this.queue.length - 1) {
       this.currentIndex++;
@@ -1799,6 +1826,7 @@ class PlaybackManager {
 
     const runId = (this.playbackRunId || 0) + 1;
     this.playbackRunId = runId;
+    this.recoveryPendingAdvance = false;
     this.isSwitchingSentence = true;
     if (this.currentIndex > 0) {
       this.currentIndex--;
@@ -1828,6 +1856,7 @@ class PlaybackManager {
 
     const runId = (this.playbackRunId || 0) + 1;
     this.playbackRunId = runId;
+    this.recoveryPendingAdvance = false;
     this.isSwitchingSentence = true;
     const targetIndex = Math.max(0, Math.min(index, this.queue.length - 1));
     this.currentIndex = targetIndex;
@@ -1856,6 +1885,7 @@ class PlaybackManager {
 
     if (shouldRestart) {
       this.playbackRunId = runId;
+      this.recoveryPendingAdvance = false;
       this.isSwitchingSentence = true;
     }
 
