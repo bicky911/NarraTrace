@@ -233,8 +233,11 @@ class PlaybackManager {
     // then index the rewritten text and can no longer be mapped reliably.
     this.wordEventsUsable = true;
     this.resumeOffset = 0;
-    // SW-side keep-alive interval handle (see _syncKeepAliveTick).
+    // Service-worker activity and recovery alarm are owned by active playback.
     this._keepAliveTimer = null;
+    this._keepAliveAlarmDesired = null;
+    this._keepAliveAlarmApplied = null;
+    this._keepAliveAlarmSyncPromise = null;
     // Explicit grouping override (0 = automatic).
     this.batchSize = 0;
     // True once the user has picked a voice themselves. Until then the voice is
@@ -355,6 +358,40 @@ class PlaybackManager {
    * that revives a dead worker; the content-script heartbeat remains as a
    * harmless second belt.
    */
+  _syncKeepAliveAlarm(want) {
+    this._keepAliveAlarmDesired = Boolean(want);
+    if (typeof chrome.alarms?.get !== 'function') return Promise.resolve();
+    if (this._keepAliveAlarmSyncPromise) return this._keepAliveAlarmSyncPromise;
+    if (this._keepAliveAlarmApplied === this._keepAliveAlarmDesired) return Promise.resolve();
+
+    this._keepAliveAlarmSyncPromise = (async () => {
+      try {
+        // Re-read the desired state after each awaited Chrome API call. Rapid
+        // pause/resume transitions therefore converge on the latest state
+        // instead of leaving an orphaned alarm behind.
+        while (this._keepAliveAlarmApplied !== this._keepAliveAlarmDesired) {
+          const shouldExist = this._keepAliveAlarmDesired;
+          const existing = await chrome.alarms.get('readAloudKeepAlive');
+          if (shouldExist && !existing) {
+            await chrome.alarms.create('readAloudKeepAlive', { periodInMinutes: 0.5 });
+          } else if (!shouldExist && existing) {
+            await chrome.alarms.clear('readAloudKeepAlive');
+          }
+          this._keepAliveAlarmApplied = shouldExist;
+        }
+      } catch (err) {
+        // Leave the applied state unknown so the next playback transition can
+        // retry reconciliation. A failed alarm API must not break playback.
+        this._keepAliveAlarmApplied = null;
+        console.warn('[PlaybackManager] Could not reconcile keep-alive alarm:', err?.message || err);
+      } finally {
+        this._keepAliveAlarmSyncPromise = null;
+      }
+    })();
+
+    return this._keepAliveAlarmSyncPromise;
+  }
+
   _syncKeepAliveTick() {
     const want = this.playbackState === PlaybackState.PLAYING;
     if (want && this._keepAliveTimer === null) {
@@ -367,6 +404,7 @@ class PlaybackManager {
       clearInterval(this._keepAliveTimer);
       this._keepAliveTimer = null;
     }
+    return this._syncKeepAliveAlarm(want);
   }
 
   /**
@@ -377,8 +415,8 @@ class PlaybackManager {
   async saveToSession() {
     // Called after EVERY playback-state transition (start, per-sentence,
     // pause, resume, stop, skip, error paths) — the one hook that reliably
-    // keeps the SW-side keep-alive tick in sync with the state.
-    this._syncKeepAliveTick();
+    // keeps worker activity and the recovery alarm in sync with playback.
+    await this._syncKeepAliveTick();
     try {
       // Cap persisted queue: 5000 sentences (matches sanitizeQueue) × ~100
       // chars ≈ 500 KB — well within the 10 MB session storage quota. The
@@ -435,6 +473,10 @@ class PlaybackManager {
       }
     } catch (err) {
       console.warn('[PlaybackManager] Failed to restore from chrome.storage.session:', err);
+    } finally {
+      // Clear any stale alarm on an idle/empty session, or recreate it for a
+      // restored PLAYING session before the worker starts recovery.
+      await this._syncKeepAliveTick();
     }
     return false;
   }
