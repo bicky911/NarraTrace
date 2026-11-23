@@ -687,14 +687,24 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   // Advance the in-page progress before stopping, then verify that both
   // page-level sliders clear their stale sentence announcement.
   await popupWorker.evaluate(async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) throw new Error('No active tab found for progress reset regression.');
-    await chrome.tabs.sendMessage(tab.id, {
+    const tabs = await chrome.tabs.query({});
+    const message = {
       action: 'SENTENCE_CHANGED',
       sentence: { text: 'A sentence used for page progress accessibility.' },
       index: 2,
       totalSentences: 10
-    });
+    };
+    let delivered = false;
+    for (const tab of tabs) {
+      if (typeof tab.id !== 'number') continue;
+      try {
+        await chrome.tabs.sendMessage(tab.id, message);
+        delivered = true;
+      } catch {
+        // Browser-created and extension pages without NarraTrace are expected.
+      }
+    }
+    if (!delivered) throw new Error('No NarraTrace content script received the sentence-progress fixture.');
   });
   await page.waitForFunction(() => {
     const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
