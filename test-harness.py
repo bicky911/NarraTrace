@@ -166,6 +166,16 @@ check(
     'Promise.allSettled' in popup_js and
     "classList.add('is-hydrated')" in popup_js,
 )
+_popup_controls_start = popup_js.find('// ── Control Event Handlers')
+_popup_controls_end = popup_js.find('// ── Background Broadcast Listener', _popup_controls_start)
+_popup_controls_source = popup_js[_popup_controls_start:_popup_controls_end] if _popup_controls_start >= 0 and _popup_controls_end > _popup_controls_start else ''
+check(
+    'popup.js: fire-and-forget control messages share rejection handling',
+    'function sendRuntimeMessage(message)' in popup_js and
+    bool(_popup_controls_source) and
+    'sendRuntimeMessage(' in _popup_controls_source and
+    'chrome.runtime.sendMessage(' not in _popup_controls_source,
+)
 check(
     'popup.html: first render stays hidden without removing layout until hydrated',
     'visibility: hidden' in popup_html and 'body.is-hydrated' in popup_html and 'visibility: visible' in popup_html,
