@@ -20,8 +20,26 @@ async function closeBrowser(browser) {
   if (process && process.exitCode === null) process.kill('SIGKILL');
 }
 
+async function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function send(page, message) {
-  return page.evaluate((payload) => chrome.runtime.sendMessage(payload), message);
+  return withTimeout(
+    page.evaluate((payload) => chrome.runtime.sendMessage(payload), message),
+    10000,
+    `Extension message ${message.action}`
+  );
 }
 
 async function waitForState(page, expected, timeout = 12000) {
@@ -49,6 +67,7 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
 
   t.after(async () => closeBrowser(browser));
 
+  console.log('[diagnostics-test] Installing extensions');
   const narraTraceId = await browser.installExtension(REPOSITORY_ROOT);
   const testEngineId = await browser.installExtension(ENGINE_DIR);
 
@@ -57,7 +76,9 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     waitUntil: 'domcontentloaded',
     timeout: 10000
   });
-  await diagnostics.waitForSelector('#btn-run-engine-diagnostic');
+  await diagnostics.waitForSelector('#btn-run-engine-diagnostic', { timeout: 10000 });
+  diagnostics.setDefaultTimeout(10000);
+  console.log('[diagnostics-test] Diagnostics page loaded');
 
   const popup = await browser.newPage();
   await popup.goto(`chrome-extension://${narraTraceId}/popup.html`, {
@@ -76,10 +97,12 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     lang: 'en-US',
     rate: 1
   });
+  console.log('[diagnostics-test] Popup diagnostic request rejected');
   assert.equal(deniedDiagnostic?.success, false);
   assert.match(deniedDiagnostic?.error || '', /restricted to the bundled diagnostics page/i);
 
   const deniedSessionInspection = await send(popup, { action: 'GET_SESSION_STORAGE' });
+  console.log('[diagnostics-test] Popup session inspection rejected');
   assert.equal(deniedSessionInspection?.success, false);
   assert.match(deniedSessionInspection?.error || '', /restricted to the bundled diagnostics page/i);
 
@@ -92,6 +115,7 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     );
   }, { timeout: 20000 }, TEST_VOICE, testEngineId);
   await diagnostics.select('#voice-select', TEST_VOICE);
+  console.log('[diagnostics-test] Test voice selected');
 
   const selected = await diagnostics.$eval('#voice-select option:checked', option => ({
     voiceName: option.value,
@@ -111,6 +135,7 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
   });
   assert.equal(started?.success, true);
   await waitForState(diagnostics, 'PLAYING');
+  console.log('[diagnostics-test] Normal queue entered PLAYING');
 
   const blockedByQueue = await send(diagnostics, {
     action: 'RUN_TTS_DIAGNOSTIC',
@@ -121,11 +146,13 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     lang: selected.lang,
     rate: 1
   });
+  console.log('[diagnostics-test] Diagnostic correctly blocked during normal playback');
   assert.equal(blockedByQueue?.success, false);
   assert.match(blockedByQueue?.error || '', /stop normal narratrace playback/i);
 
   await send(diagnostics, { action: 'STOP_PLAYBACK' });
   await waitForState(diagnostics, 'STOPPED');
+  console.log('[diagnostics-test] Normal queue stopped');
 
   // Run the actual diagnostics page workflow. The CI provider is deliberately
   // silent, so the report must not claim an audible pass without user marking.
@@ -134,10 +161,13 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     element.dispatchEvent(new Event('input', { bubbles: true }));
   }, SAMPLE);
   await diagnostics.click('#btn-run-engine-diagnostic');
+  console.log('[diagnostics-test] Diagnostic start clicked');
   await diagnostics.waitForFunction(() =>
     document.getElementById('btn-stop-engine-diagnostic')?.disabled === false,
     { timeout: 15000 }
   );
+
+  console.log('[diagnostics-test] Diagnostic request accepted by background');
 
   // A second diagnostic and normal queue playback must both be rejected while
   // the isolated utterance owns Chrome TTS.
@@ -150,6 +180,7 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     lang: selected.lang,
     rate: 1
   });
+  console.log('[diagnostics-test] Concurrent diagnostic rejected');
   assert.equal(overlappingDiagnostic?.success, false);
   assert.match(overlappingDiagnostic?.error || '', /already running/i);
 
@@ -157,6 +188,7 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     action: 'START_PLAYBACK',
     sentences: ['Normal playback must not overlap diagnostic speech.']
   });
+  console.log('[diagnostics-test] Normal queue blocked during diagnostic');
   assert.equal(blockedNormalPlayback?.success, false);
   assert.match(blockedNormalPlayback?.error || '', /diagnostic is active/i);
 
@@ -166,6 +198,7 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
     { timeout: 20000 }
   );
 
+  console.log('[diagnostics-test] Diagnostic completed without audible mark');
   const result = await diagnostics.evaluate(() => ({
     log: document.getElementById('engine-diagnostic-log')?.textContent || '',
     status: document.getElementById('engine-diagnostic-status')?.textContent || '',
@@ -182,4 +215,5 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
   assert.equal(result.report?.test?.sampleCharacterCount, SAMPLE.length);
   assert.equal(result.report?.success, false, 'silent CI output must not be reported as an audible pass');
   assert.equal(result.report?.test?.audibleStartMarkedMs, null, 'the test must not invent a human audible mark');
+  console.log('[diagnostics-test] Report privacy and audibility assertions passed');
 });
