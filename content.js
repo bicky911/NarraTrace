@@ -4625,7 +4625,15 @@
       rctrlPlayIcon.innerHTML = (currentPlaybackState === 'PLAYING') ? SVG_PAUSE : SVG_PLAY;
     }
     if (rctrlPlayBtn) {
-      rctrlPlayBtn.title = (currentPlaybackState === 'PLAYING') ? 'Pause (Alt+P)' : 'Play (Alt+P)';
+      const isPlaying = currentPlaybackState === 'PLAYING';
+      const playActionLabel = isPlaying
+        ? 'Pause reading'
+        : currentPlaybackState === 'PAUSED' ? 'Resume reading' : 'Play reading';
+      rctrlPlayBtn.title = isPlaying
+        ? 'Pause (Alt+P)'
+        : currentPlaybackState === 'PAUSED' ? 'Resume (Alt+P)' : 'Play (Alt+P)';
+      rctrlPlayBtn.setAttribute('aria-label', playActionLabel);
+      rctrlPlayBtn.setAttribute('aria-pressed', String(isPlaying));
     }
     if (rspeedBadge) {
       rspeedBadge.textContent = `${currentSpeed.toFixed(1)}x`;
