@@ -355,7 +355,7 @@ ctrlPlayBtn.addEventListener('click', async () => {
   if (currentPlaybackState === 'PLAYING') {
     sendRuntimeMessage({ action: 'PAUSE_PLAYBACK' });
   } else if (currentPlaybackState === 'PAUSED') {
-    chrome.runtime.sendMessage({ action: 'RESUME_PLAYBACK' });
+    sendRuntimeMessage({ action: 'RESUME_PLAYBACK' });
   } else {
     if (!activeTabId) {
       sentenceBoxEl.textContent = 'No active webpage found to read.';
@@ -380,17 +380,17 @@ ctrlPlayBtn.addEventListener('click', async () => {
 
 // Skip Backward
 ctrlPrevBtn.addEventListener('click', () => {
-  chrome.runtime.sendMessage({ action: 'SKIP_BACKWARD' });
+  sendRuntimeMessage({ action: 'SKIP_BACKWARD' });
 });
 
 // Skip Forward
 ctrlNextBtn.addEventListener('click', () => {
-  chrome.runtime.sendMessage({ action: 'SKIP_FORWARD' });
+  sendRuntimeMessage({ action: 'SKIP_FORWARD' });
 });
 
 // Stop
 ctrlStopBtn.addEventListener('click', () => {
-  chrome.runtime.sendMessage({ action: 'STOP_PLAYBACK' });
+  sendRuntimeMessage({ action: 'STOP_PLAYBACK' });
 });
 
 // Voice Select
@@ -402,7 +402,7 @@ voiceSelectEl.addEventListener('change', () => {
   const extensionId = opt.dataset.extensionId || null;
   const lang = opt.dataset.lang || null;
 
-  chrome.runtime.sendMessage({
+  sendRuntimeMessage({
     action: 'SET_VOICE',
     voiceName,
     extensionId: extensionId || undefined,
@@ -422,7 +422,7 @@ speedSliderEl.addEventListener('input', () => {
   updateSpeedDisplay(rate);
   if (rateSendTimer) clearTimeout(rateSendTimer);
   rateSendTimer = setTimeout(() => {
-    chrome.runtime.sendMessage({ action: 'SET_RATE', rate: currentSpeed });
+    sendRuntimeMessage({ action: 'SET_RATE', rate: currentSpeed });
   }, 200);
 });
 
@@ -434,7 +434,7 @@ if (volumeSliderEl) {
     updateVolumeDisplay(vol);
     if (volumeSendTimer) clearTimeout(volumeSendTimer);
     volumeSendTimer = setTimeout(() => {
-      chrome.runtime.sendMessage({ action: 'SET_VOLUME', volume: vol });
+      sendRuntimeMessage({ action: 'SET_VOLUME', volume: vol });
     }, 200);
   });
 }
@@ -445,7 +445,7 @@ speedChips.forEach(chip => {
     const rate = parseFloat(chip.dataset.speed);
     currentSpeed = rate;
     updateSpeedDisplay(rate);
-    chrome.runtime.sendMessage({ action: 'SET_RATE', rate });
+    sendRuntimeMessage({ action: 'SET_RATE', rate });
   });
 });
 
@@ -461,7 +461,7 @@ btnTogglePill.addEventListener('click', () => {
   isPillVisible = !isPillVisible;
   updatePillToggleText();
   chrome.storage.local.set({ readAloud_pillVisible: isPillVisible }).catch(() => {});
-  chrome.runtime.sendMessage({
+  sendRuntimeMessage({
     action: 'SET_PLAYER_VISIBILITY',
     visible: isPillVisible
   });
