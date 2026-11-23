@@ -10,7 +10,7 @@
       {
         "voice_name": "NarraTrace Test Voice",
         "lang": "en-US",
-        "event_types": ["start", "word", "sentence", "end"]
+        "event_types": ["start", "word", "sentence", "end", "error"]
       }
     ]
   }
