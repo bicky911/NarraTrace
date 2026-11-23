@@ -515,6 +515,15 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       play.getAttribute('aria-pressed') === 'false';
   });
 
+  await page.waitForFunction(() => {
+    const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
+    const controls = [root?.getElementById('ra-play'), root?.getElementById('ra-rctrl-play')];
+    return controls.every(control =>
+      control?.getAttribute('aria-label') === 'Resume reading' &&
+      control.getAttribute('aria-pressed') === 'false'
+    );
+  });
+
   await popupWorker.evaluate(async () => {
     await chrome.runtime.sendMessage({ action: 'PLAYBACK_RESUMED' }).catch(() => {});
   });
@@ -524,6 +533,15 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       play.getAttribute('aria-pressed') === 'true';
   });
 
+  await page.waitForFunction(() => {
+    const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
+    const controls = [root?.getElementById('ra-play'), root?.getElementById('ra-rctrl-play')];
+    return controls.every(control =>
+      control?.getAttribute('aria-label') === 'Pause reading' &&
+      control.getAttribute('aria-pressed') === 'true'
+    );
+  });
+
   await popupWorker.evaluate(async () => {
     await chrome.runtime.sendMessage({ action: 'PLAYBACK_STOPPED' }).catch(() => {});
   });
@@ -531,6 +549,15 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     const play = document.getElementById('ctrl-play');
     return play.getAttribute('aria-label') === 'Play reading' &&
       play.getAttribute('aria-pressed') === 'false';
+  });
+
+  await page.waitForFunction(() => {
+    const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
+    const controls = [root?.getElementById('ra-play'), root?.getElementById('ra-rctrl-play')];
+    return controls.every(control =>
+      control?.getAttribute('aria-label') === 'Play reading' &&
+      control.getAttribute('aria-pressed') === 'false'
+    );
   });
 
   await popupPage.$eval('#popup-speed-slider', slider => {
