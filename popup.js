@@ -330,12 +330,30 @@ function updateSpeedDisplay(rate) {
   });
 }
 
+// Route fire-and-forget control messages through one rejection boundary.
+// Callback-based requests (hydration and active-tab extraction) keep their
+// explicit lastError handling in chromeCallbackPromise / their callbacks.
+function sendRuntimeMessage(message) {
+  try {
+    const pending = chrome.runtime.sendMessage(message);
+    if (pending && typeof pending.catch === 'function') {
+      pending.catch((err) => {
+        console.warn(`[Popup] ${message.action || 'Runtime'} message failed:`, err?.message || err);
+      });
+    }
+    return pending;
+  } catch (err) {
+    console.warn(`[Popup] ${message.action || 'Runtime'} message failed:`, err?.message || err);
+    return null;
+  }
+}
+
 // ── Control Event Handlers ───────────────────────────────────────────
 
 // Play / Pause Button
 ctrlPlayBtn.addEventListener('click', async () => {
   if (currentPlaybackState === 'PLAYING') {
-    chrome.runtime.sendMessage({ action: 'PAUSE_PLAYBACK' });
+    sendRuntimeMessage({ action: 'PAUSE_PLAYBACK' });
   } else if (currentPlaybackState === 'PAUSED') {
     chrome.runtime.sendMessage({ action: 'RESUME_PLAYBACK' });
   } else {
