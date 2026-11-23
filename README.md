@@ -59,6 +59,8 @@ node --test tests/sentence-tokenizer.test.mjs
 node --test tests/resource-lifecycle.test.mjs
 node --test tests/manifest-contract.test.mjs
 python test-harness.py
+python -m unittest discover -s tests -p "test_build_release.py"
+python build-release.py
 ```
 
 The Chromium integration suite uses Puppeteer and a deterministic test-only TTS engine. It tests Readability extraction, content-block filtering, references cutoff, DOM sentence/word mapping, and Manifest V3 worker recovery:
@@ -70,7 +72,7 @@ node --test tests/browser/performance-profile.test.mjs
 node --test tests/browser/extension-runtime-profile.test.mjs
 ```
 
-GitHub Actions runs the static, Chromium integration, and performance layers on pull requests. The deterministic TTS fixture exercises Chrome's TTS event API but does not measure the audio quality or timing of installed neural voice engines.
+GitHub Actions runs the unit/static, package-validation, Chromium integration, and performance layers on pull requests. It also builds and uploads a 14-day release-candidate ZIP and checksum artifact. The deterministic TTS fixture exercises Chrome's TTS event API but does not measure the audio quality or timing of installed neural voice engines.
 
 ### Release candidate packaging
 
