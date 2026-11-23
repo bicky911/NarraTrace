@@ -55,6 +55,7 @@ NarraTrace uses layered checks. Core regression tests require Node.js 22 or late
 
 ```bash
 node --test tests/speech-engine.test.mjs
+node --test tests/tts-diagnostic-privacy.test.mjs
 node --test tests/playback-manager.test.mjs
 node --test tests/sentence-tokenizer.test.mjs
 node --test tests/resource-lifecycle.test.mjs
