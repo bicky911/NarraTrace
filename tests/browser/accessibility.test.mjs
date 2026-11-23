@@ -77,11 +77,31 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   await browser.installExtension(REPOSITORY_ROOT);
   const page = await browser.newPage();
   page.setDefaultTimeout(10000);
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
   await page.goto(`http://127.0.0.1:${address.port}/article`, {
     waitUntil: 'domcontentloaded',
     timeout: 10000
   });
   await waitForShadow(page, root => Boolean(root.getElementById('ra-settings')));
+
+  // Reduced motion must disable decorative CSS animation and transitions
+  // throughout the Shadow DOM, not only on the word indicator and waveform.
+  const reducedMotionStyles = await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    const player = root.querySelector('.player-pill');
+    const play = root.getElementById('ra-play');
+    player.classList.add('is-playing');
+    return {
+      playerTransition: getComputedStyle(player).transitionDuration,
+      playAnimation: getComputedStyle(play).animationName,
+      playTransition: getComputedStyle(play).transitionDuration,
+      waveformAnimation: getComputedStyle(root.querySelector('.ra-audio-wave .bar')).animationName
+    };
+  });
+  assert.equal(reducedMotionStyles.playerTransition, '0s');
+  assert.equal(reducedMotionStyles.playAnimation, 'none');
+  assert.equal(reducedMotionStyles.playTransition, '0s');
+  assert.equal(reducedMotionStyles.waveformAnimation, 'none');
   await page.bringToFront();
 
   // Open settings from the real Shadow DOM trigger. Keyboard navigation is
