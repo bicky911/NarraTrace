@@ -898,8 +898,12 @@ class PlaybackManager {
       offsets.push(acc);
       acc += norm.text.length + 1; // +1 for the joining space
 
-      // Rewritten text can no longer be matched to the original offsets.
-      if (norm.changed) {
+      // Word boundaries index the exact string sent to Chrome TTS. Any
+      // character-changing cleanup (citations, URLs, whitespace), cadence
+      // insertion, or pronunciation override makes those offsets unsafe to
+      // apply directly to the source DOM. Prefer sentence-level highlighting
+      // rather than showing a confidently incorrect word capsule.
+      if (clean !== source || cadence !== clean || norm.changed) {
         pronunciationChanged = true;
         break;
       }
