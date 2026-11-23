@@ -337,26 +337,54 @@ export function safeSpeak(text, options = {}, onEvent = null) {
 
     let watchdogTimer = null;
     let speechStarted = false;
-    const armWatchdog = (ms) => {
-      if (watchdogTimer) {
-        clearTimeout(watchdogTimer);
-      }
-      watchdogTimer = setTimeout(() => {
-        console.warn(`[SpeechEngine] Speech exceeded ${Math.round(ms / 1000)}s without TTS end event; advancing to avoid stall.`);
-        resolve({ type: 'timeout' });
-      }, ms);
-    };
+    let settled = false;
+
     const cleanupWatchdog = () => {
-      if (watchdogTimer) {
+      if (watchdogTimer !== null) {
         clearTimeout(watchdogTimer);
         watchdogTimer = null;
       }
+    };
+
+    // Chrome TTS events may arrive after an utterance has completed, timed
+    // out, or been interrupted. Settle exactly once and make every later
+    // callback inert so an old utterance cannot leak events into a new run.
+    const settle = (handler, value) => {
+      if (settled) return false;
+      settled = true;
+      cleanupWatchdog();
+      handler(value);
+      return true;
+    };
+
+    const armWatchdog = (ms) => {
+      cleanupWatchdog();
+      watchdogTimer = setTimeout(() => {
+        if (settled) return;
+
+        console.warn(`[SpeechEngine] Speech exceeded ${Math.round(ms / 1000)}s without TTS end event; stopping the stalled utterance.`);
+
+        // Mark settled BEFORE stopping: chrome.tts.stop() can synchronously
+        // trigger an interrupted event in some providers.
+        settled = true;
+        cleanupWatchdog();
+        try {
+          chrome.tts.stop();
+          void chrome.runtime.lastError;
+        } catch (_) {
+          // The extension context may be shutting down; the promise still
+          // needs a deterministic terminal result.
+        }
+        resolve({ type: 'timeout' });
+      }, ms);
     };
 
     // The preparation budget runs until the engine says a word.
     armWatchdog(prepareWatchdogMs);
 
     ttsOptions.onEvent = (event) => {
+      if (settled || !event || typeof event.type !== 'string') return;
+
       // The first boundary means the engine is actually speaking — from now
       // on the speaking budget applies.
       if (!speechStarted && (event.type === 'sentence' || event.type === 'word')) {
@@ -365,30 +393,39 @@ export function safeSpeak(text, options = {}, onEvent = null) {
       }
 
       if (onEvent) {
-        onEvent(event);
+        try {
+          onEvent(event);
+        } catch (err) {
+          console.warn('[SpeechEngine] TTS event consumer failed:', err && err.message);
+        }
       }
+
       if (event.type === 'end') {
-        cleanupWatchdog();
-        resolve(event);
+        settle(resolve, event);
       } else if (event.type === 'error') {
-        cleanupWatchdog();
         const errorMsg = event.errorMessage || 'Unknown TTS error occurred during speech.';
         console.warn('[SpeechEngine] TTS error event:', errorMsg);
-        reject(new Error(errorMsg));
+        settle(reject, new Error(errorMsg));
       } else if (event.type === 'interrupted' || event.type === 'cancelled') {
-        cleanupWatchdog();
-        resolve(event);
+        settle(resolve, event);
       }
     };
 
-    chrome.tts.speak(text, ttsOptions, () => {
-      if (chrome.runtime.lastError) {
-        cleanupWatchdog();
-        const err = new Error(chrome.runtime.lastError.message);
-        console.warn('[SpeechEngine] chrome.tts.speak API call failed:', err);
-        reject(err);
-      }
-    });
+    try {
+      chrome.tts.speak(text, ttsOptions, () => {
+        if (settled) {
+          void chrome.runtime.lastError;
+          return;
+        }
+        if (chrome.runtime.lastError) {
+          const err = new Error(chrome.runtime.lastError.message);
+          console.warn('[SpeechEngine] chrome.tts.speak API call failed:', err);
+          settle(reject, err);
+        }
+      });
+    } catch (err) {
+      settle(reject, err instanceof Error ? err : new Error(String(err)));
+    }
   });
 }
 
