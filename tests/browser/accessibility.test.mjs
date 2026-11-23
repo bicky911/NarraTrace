@@ -420,6 +420,26 @@ test('Focus Reader and player controls support keyboard navigation and focus res
       !player.classList.contains('focus-restoring');
   });
 
+  // In-page play controls must announce the action available in each state.
+  const inPageWorkerTarget = await browser.waitForTarget((target) =>
+    target.type() === 'service_worker' &&
+    target.url().startsWith(`chrome-extension://${extensionId}/`)
+  , { timeout: 10000 });
+  const inPageWorker = await inPageWorkerTarget.worker();
+  const assertInPagePlayNames = async (action, expected) => {
+    await inPageWorker.evaluate(async (playbackAction) => {
+      await chrome.runtime.sendMessage({ action: playbackAction }).catch(() => {});
+    }, action);
+    await page.waitForFunction((label) => {
+      const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
+      return root?.getElementById('ra-play')?.getAttribute('aria-label') === label &&
+        root?.getElementById('ra-rctrl-play')?.getAttribute('aria-label') === label;
+    }, { timeout: 5000 }, expected);
+  };
+  await assertInPagePlayNames('PLAYBACK_PAUSED', 'Resume reading');
+  await assertInPagePlayNames('PLAYBACK_RESUMED', 'Pause reading');
+  await assertInPagePlayNames('PLAYBACK_STOPPED', 'Play reading');
+
   // Both ready and warning engine badges must remain legible in the light theme.
   // Its status color is text, so test the rendered foreground against the
   // composited translucent badge surface rather than checking token values.
