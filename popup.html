@@ -48,7 +48,12 @@
       overflow-x: hidden;
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 14px;
+      visibility: hidden;
       transition: background 150ms ease, color 150ms ease;
+    }
+
+    body.is-hydrated {
+      visibility: visible;
     }
 
     /* ── Header ─────────────────────────────────────────── */
@@ -501,6 +506,15 @@
     button:focus-visible, select:focus-visible, input:focus-visible {
       outline: 2px solid var(--ra-accent) !important;
       outline-offset: 2px !important;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
     }
   </style>
 </head>
