@@ -607,6 +607,37 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     );
   });
 
+  // Opening Focus Reader while paused must preserve the correct next action;
+  // the overlay is created on demand and synchronizes from playback state.
+  await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    root.getElementById('ra-settings').click();
+  });
+  await page.waitForFunction(() => {
+    const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
+    return root?.getElementById('ra-settings-panel')?.getAttribute('aria-hidden') === 'false';
+  });
+  await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    root.getElementById('ra-settings-reader').click();
+  });
+  await page.waitForFunction(() => {
+    const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
+    const reader = root?.getElementById('ra-reader-overlay');
+    const play = root?.getElementById('ra-rctrl-play');
+    return reader?.getAttribute('aria-hidden') === 'false' &&
+      play?.getAttribute('aria-label') === 'Resume reading' &&
+      play.getAttribute('aria-pressed') === 'false';
+  });
+  await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    root.getElementById('ra-reader-close').click();
+  });
+  await page.waitForFunction(() => {
+    const root = document.getElementById('read-aloud-player-host')?.shadowRoot;
+    return root?.getElementById('ra-reader-overlay')?.getAttribute('aria-hidden') === 'true';
+  });
+
   await dispatchPlaybackState('PLAYBACK_RESUMED');
   await popupPage.waitForFunction(() => {
     const play = document.getElementById('ctrl-play');
