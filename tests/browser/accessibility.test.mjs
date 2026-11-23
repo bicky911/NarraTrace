@@ -432,31 +432,77 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   await popupPage.waitForFunction(() => document.body.classList.contains('is-hydrated'));
   await popupPage.click('#theme-toggle');
   await popupPage.waitForFunction(() => document.body.classList.contains('light'));
-  const popupStatusContrast = await popupPage.evaluate(() => {
+  const popupStatusContrasts = await popupPage.evaluate(() => {
     const badge = document.querySelector('.engine-badge');
     const body = document.body;
-    const foreground = getComputedStyle(badge).color.match(/[0-9.]+/g).map(Number);
-    const overlay = getComputedStyle(badge).backgroundColor.match(/[0-9.]+/g).map(Number);
-    const surface = getComputedStyle(body).backgroundColor.match(/[0-9.]+/g).map(Number);
-    const alpha = overlay[3] ?? 1;
-    const background = surface.slice(0, 3).map((channel, index) =>
-      overlay[index] * alpha + channel * (1 - alpha)
+    const measureContrast = (warning) => {
+      badge.classList.toggle('warning', warning);
+      const foreground = getComputedStyle(badge).color.match(/[0-9.]+/g).map(Number);
+      const overlay = getComputedStyle(badge).backgroundColor.match(/[0-9.]+/g).map(Number);
+      const surface = getComputedStyle(body).backgroundColor.match(/[0-9.]+/g).map(Number);
+      const alpha = overlay[3] ?? 1;
+      const background = surface.slice(0, 3).map((channel, index) =>
+        overlay[index] * alpha + channel * (1 - alpha)
+      );
+      const luminance = channels => channels.map(channel => {
+        const value = channel / 255;
+        return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+      }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+      const a = luminance(foreground);
+      const b = luminance(background);
+      return {
+        state: warning ? 'warning' : 'ready',
+        foreground: getComputedStyle(badge).color,
+        background: getComputedStyle(badge).backgroundColor,
+        contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+      };
+    };
+    return [measureContrast(false), measureContrast(true)];
+  });
+  for (const status of popupStatusContrasts) {
+    assert.ok(
+      status.contrast >= 4.5,
+      `Light-theme ${status.state} engine status text must meet WCAG AA contrast; got ${status.contrast.toFixed(2)}:1 (${status.foreground} on ${status.background})`
     );
-    const luminance = channels => channels.map(channel => {
-      const value = channel / 255;
-      return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
-    }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
-    const a = luminance(foreground);
-    const b = luminance(background);
+  }
+
+  // Every range control must expose a human-readable value, not an ambiguous
+  // bare number, while retaining its native associated form label.
+  const popupControlSemantics = await popupPage.evaluate(() => {
+    const labelFor = id => Array.from(document.querySelectorAll(`label[for="${id}"]`))
+      .map(label => label.textContent.trim()).join(' ');
     return {
-      foreground: getComputedStyle(badge).color,
-      background: getComputedStyle(badge).backgroundColor,
-      contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+      voiceLabel: labelFor('popup-voice-select'),
+      speedLabel: labelFor('popup-speed-slider'),
+      volumeLabel: labelFor('popup-volume-slider'),
+      speedValueText: document.getElementById('popup-speed-slider').getAttribute('aria-valuetext'),
+      volumeValueText: document.getElementById('popup-volume-slider').getAttribute('aria-valuetext'),
+      speedChipGroup: document.querySelector('.speed-chips').getAttribute('aria-label'),
+      playName: document.getElementById('ctrl-play').getAttribute('aria-label'),
+      playPressed: document.getElementById('ctrl-play').getAttribute('aria-pressed')
     };
   });
-  assert.ok(
-    popupStatusContrast.contrast >= 4.5,
-    `Light-theme engine status text must meet WCAG AA contrast; got ${popupStatusContrast.contrast.toFixed(2)}:1 (${popupStatusContrast.foreground} on ${popupStatusContrast.background})`
+  assert.equal(popupControlSemantics.voiceLabel, 'VOICE ENGINE');
+  assert.equal(popupControlSemantics.speedLabel, 'PLAYBACK SPEED');
+  assert.equal(popupControlSemantics.volumeLabel, 'VOLUME');
+  assert.equal(popupControlSemantics.speedValueText, '1.0 times playback speed');
+  assert.equal(popupControlSemantics.volumeValueText, '100 percent volume');
+  assert.equal(popupControlSemantics.speedChipGroup, 'Playback speed presets');
+  assert.equal(popupControlSemantics.playName, 'Play reading');
+  assert.equal(popupControlSemantics.playPressed, 'false');
+
+  await popupPage.$eval('#popup-speed-slider', slider => {
+    slider.value = '1.5';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await popupPage.$eval('#popup-volume-slider', slider => {
+    slider.value = '0.4';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await popupPage.waitForFunction(() =>
+    document.getElementById('popup-speed-slider').getAttribute('aria-valuetext') === '1.5 times playback speed' &&
+    document.getElementById('popup-volume-slider').getAttribute('aria-valuetext') === '40 percent volume' &&
+    document.querySelector('.chip[data-speed="1.5"]').getAttribute('aria-pressed') === 'true'
   );
   await popupPage.close();
 });
