@@ -513,6 +513,23 @@ check(
     'prefers-reduced-motion: reduce' in content_js,
 )
 
+# The spring may update visual geometry only through transforms on each RAF.
+_spring_start = content_js.find('function _springLoop')
+_spring_end = content_js.find('function _springMoveTo', _spring_start)
+_spring_loop_source = content_js[_spring_start:_spring_end] if _spring_start >= 0 and _spring_end > _spring_start else ''
+check(
+    'content.js: spring RAF does not mutate layout width/height',
+    bool(_spring_loop_source) and
+    'scale3d(' in _spring_loop_source and
+    'style.width' not in _spring_loop_source and
+    'style.height' not in _spring_loop_source,
+)
+check(
+    'content.js: word capsule promotes only transform/opacity',
+    'will-change: transform, opacity;' in content_js and
+    'will-change: transform, width, height, opacity;' not in content_js,
+)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 12. Semantic Noise Stripper
 # ─────────────────────────────────────────────────────────────────────────────
@@ -597,6 +614,21 @@ check(
 check(
     'content.js: golden gaze cancels on stop (gazeCancelScroll in clearWordHighlight)',
     'gazeCancelScroll' in content_js,
+)
+check(
+    'content.js: Golden Gaze yields to wheel, touch, scrollbar, and document keys',
+    'function gazeYieldToUser' in content_js and
+    "addEventListener('wheel', gazeYieldToUser" in content_js and
+    "addEventListener('touchstart', gazeYieldToUser" in content_js and
+    "addEventListener('touchmove', gazeYieldToUser" in content_js and
+    "addEventListener('pointerdown', gazeYieldToUser" in content_js and
+    "addEventListener('keydown', gazeYieldToUser" in content_js,
+)
+check(
+    'content.js: Golden Gaze resumes only after the manual-input quiet period',
+    'GAZE_USER_YIELD_MS = 1200' in content_js and
+    '_gazeResumeTimer' in content_js and
+    'const resumeDelay = _gazeResumeAt - Date.now()' in content_js,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
