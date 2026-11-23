@@ -336,7 +336,8 @@ test('Golden Gaze detects scrollbar pointer input but ignores ordinary pointer c
   state.api.gazeYieldToUser({
     type: 'keydown',
     key: 'ArrowDown',
-    target: { isContentEditable: false, closest: () => ({ tagName: 'INPUT' }) }
+    target: { tagName: 'DIV', isContentEditable: false },
+    composedPath: () => [{ tagName: 'INPUT', isContentEditable: false }, { tagName: 'DIV' }]
   });
-  assert.equal(state.api.state.resumeAt, 0, 'typing and form controls must not trigger scroll yielding');
+  assert.equal(state.api.state.resumeAt, 0, 'controls inside Shadow DOM must not trigger scroll yielding');
 });
