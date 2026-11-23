@@ -683,5 +683,27 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     document.getElementById('popup-volume-slider').getAttribute('aria-valuetext') === '40 percent volume' &&
     document.querySelector('.chip[data-speed="1.5"]').getAttribute('aria-pressed') === 'true'
   );
+  // Reading progress should be announced in the same sentence units shown
+  // by the visible sentence counter, while the numeric percentage remains intact.
+  await popupWorker.evaluate(async () => {
+    await chrome.runtime.sendMessage({
+      action: 'SENTENCE_CHANGED',
+      sentence: { text: 'A sentence used for progress accessibility.' },
+      index: 2,
+      totalSentences: 10
+    }).catch(() => {});
+  });
+  await popupPage.waitForFunction(() => {
+    const progress = document.querySelector('.progress-bar-wrap');
+    return progress.getAttribute('aria-valuetext') === 'Sentence 3 of 10' &&
+      progress.getAttribute('aria-valuenow') === '30';
+  });
+
+  await dispatchPlaybackState('PLAYBACK_STOPPED');
+  await popupPage.waitForFunction(() => {
+    const progress = document.querySelector('.progress-bar-wrap');
+    return progress.getAttribute('aria-valuetext') === 'No reading progress' &&
+      progress.getAttribute('aria-valuenow') === '0';
+  });
   await popupPage.close();
 });
