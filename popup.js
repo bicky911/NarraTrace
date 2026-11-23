@@ -85,7 +85,10 @@ function updateVolumeDisplay(vol) {
  */
 function updatePlayState(state, currentSentence = null, currentIndex = 0, totalSentences = 0) {
   currentPlaybackState = state;
-  ctrlPlayBtn.setAttribute('aria-label', state === 'PLAYING' ? 'Pause reading' : 'Play reading');
+  const playControlLabel = state === 'PLAYING'
+    ? 'Pause reading'
+    : state === 'PAUSED' ? 'Resume reading' : 'Play reading';
+  ctrlPlayBtn.setAttribute('aria-label', playControlLabel);
   ctrlPlayBtn.setAttribute('aria-pressed', String(state === 'PLAYING'));
 
   if (state === 'PLAYING') {
