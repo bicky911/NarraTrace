@@ -13,6 +13,14 @@ NarraTrace injects its reader content scripts on pages matching `<all_urls>`. Th
 
 NarraTrace's core extension code does not implement an HTTP, WebSocket, or analytics client for sending page text to a NarraTrace-operated server. However, the selected TTS provider is a separate component. A local neural engine can process text on-device, while another engine or a system voice may use a network service. NarraTrace cannot guarantee the processing location or retention policy of a third-party engine; users should review that engine's own documentation and privacy policy.
 
+## Real-engine diagnostics
+
+The bundled device diagnostics page can send a short sample (maximum 500 characters) to the selected Chrome TTS voice after the user explicitly starts a test. The sample follows the same Chrome TTS/provider data path described above; it is not an article extraction and is not stored by NarraTrace.
+
+The exported diagnostic JSON contains browser/provider metadata, the sample character count, event types, elapsed times, character offsets, completion status, and the user's manual first-audio confirmation. It excludes the sample text and audio. The diagnostics page does not use the microphone. The selected voice provider still receives the sample text and may apply its own processing, logging, or retention policy.
+
+The diagnostic and session-inspection message routes accept requests only from NarraTrace's bundled diagnostics page. Diagnostic speech cannot overlap normal NarraTrace playback, and normal playback cannot start while a diagnostic utterance is active.
+
 ## Extension storage
 
 - `chrome.storage.session` stores the active sentence queue, current position, tab association, and playback options so a service-worker restart can recover playback.
