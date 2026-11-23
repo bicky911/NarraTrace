@@ -79,7 +79,8 @@ async function loadPlaybackManager(stopGates, options = {}) {
     isSpeaking: options.isSpeaking || (async () => false),
     detectAndSelectVoice: async () => ({ allVoices: [], selectedVoice: null }),
     detectScript: () => 'en',
-    findBestVoiceForLang: () => null
+    findBestVoiceForLang: () => null,
+    SUPERTONIC_EXTENSION_ID: 'mdoplmghlkjcnegkdhocjbjcncocbdhk'
   };
 
   vm.runInNewContext(executable, context, { filename: 'playback-manager.js' });
@@ -215,6 +216,58 @@ test('overlapping rate changes restart speech only once with the latest option',
   assert.equal(loaded.safeSpeakCallCount(), 1, 'only one replacement utterance should be started');
 });
 
+
+
+test('Supertonic first-utterance highlighting respects its measured audible lead-in', async () => {
+  const loaded = await loadPlaybackManager([]);
+  const { manager } = loaded;
+  const spoken = 'Alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike november.';
+  manager.options.extensionId = 'mdoplmghlkjcnegkdhocjbjcncocbdhk';
+  manager.options.rate = 1;
+  manager.queue = [{ index: 0, text: spoken }];
+  manager.currentIndex = 0;
+  manager.playbackState = 'PLAYING';
+
+  const batch = {
+    firstIndex: 0,
+    offsets: [0],
+    spokenLengths: [spoken.length],
+    spokenTexts: [spoken],
+    text: spoken,
+    resumeOffset: 0,
+    sawWords: false,
+    sawSentences: true,
+    currentSentence: 0,
+    anchorChar: 0,
+    anchorTime: Date.now() - 1000,
+    anchorEnd: null,
+    segmentIndex: 0,
+    requestedAt: Date.now() - 1000,
+    startedAt: Date.now() - 1000,
+    firstBoundaryDelay: 0,
+    firstBoundaryTime: Date.now() - 1000,
+    lastEstimatedWordStart: null
+  };
+  manager.activeBatch = batch;
+
+  const profile = manager.engineProfile();
+  assert.equal(profile.leadInMs, 3200, 'Supertonic should start with its measured provider-specific lead-in');
+  manager.startEstimator(batch);
+  loaded.intervalCallbacks()[0]();
+
+  const wordEvents = loaded.runtimeMessages()
+    .filter(message => message.action === 'TTS_EVENT' && message.event?.type === 'word');
+  assert.equal(wordEvents.length, 1);
+  assert.equal(wordEvents[0].event.charIndex, 0,
+    'the first utterance must not advance the highlight during the known pre-audio window');
+  manager.stopEstimator();
+});
+
+test('generic engines do not inherit Supertonic lead-in assumptions', async () => {
+  const { manager } = await loadPlaybackManager([]);
+  manager.options.extensionId = 'generic-third-party-engine';
+  assert.equal(manager.engineProfile().leadInMs, 0);
+});
 
 test('sparse native word events are bridged by the estimator after the grace period', async () => {
   const loaded = await loadPlaybackManager([]);
