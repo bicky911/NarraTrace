@@ -748,6 +748,73 @@ test('Focus Reader and player controls support keyboard navigation and focus res
     document.getElementById('popup-volume-slider').getAttribute('aria-valuetext') === '40 percent volume' &&
     document.querySelector('.chip[data-speed="1.5"]').getAttribute('aria-pressed') === 'true'
   );
+
+  // Light-theme controls retain visible boundaries, readable labels, and
+  // a focus indicator with sufficient contrast against the warm surface.
+  await popupPage.focus('#popup-voice-select');
+  await popupPage.keyboard.press('Tab');
+  const lightControlContrast = await popupPage.evaluate(() => {
+    const speed = document.getElementById('popup-speed-slider');
+    const voice = document.getElementById('popup-voice-select');
+    const chip = document.querySelector('.chip[data-speed="1.5"]');
+    const value = document.getElementById('popup-speed-display');
+    const rgb = value => value.match(/[0-9.]+/g).slice(0, 3).map(Number);
+    const luminance = channels => channels.map(channel => {
+      const value = channel / 255;
+      return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+    }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+    const ratio = (foreground, background) => {
+      const a = luminance(rgb(foreground));
+      const b = luminance(rgb(background));
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    };
+    const thumb = getComputedStyle(speed, '::-webkit-slider-thumb');
+    const option = voice.options[0];
+    return {
+      speedTrack: getComputedStyle(speed).backgroundColor,
+      speedThumb: thumb.backgroundColor,
+      speedThumbContrast: ratio(thumb.backgroundColor, getComputedStyle(document.body).backgroundColor),
+      selectBorder: getComputedStyle(voice).borderTopColor,
+      selectSurface: getComputedStyle(voice).backgroundColor,
+      selectBorderContrast: ratio(getComputedStyle(voice).borderTopColor, getComputedStyle(voice).backgroundColor),
+      optionText: getComputedStyle(option).color,
+      optionSurface: getComputedStyle(option).backgroundColor,
+      optionTextContrast: ratio(getComputedStyle(option).color, getComputedStyle(option).backgroundColor),
+      selectedChipText: getComputedStyle(chip).color,
+      selectedChipSurface: getComputedStyle(chip).backgroundColor,
+      selectedChipTextContrast: ratio(getComputedStyle(chip).color, getComputedStyle(chip).backgroundColor),
+      valueText: getComputedStyle(value).color,
+      valueContrast: ratio(getComputedStyle(value).color, getComputedStyle(document.body).backgroundColor),
+      focusOutline: getComputedStyle(speed).outlineColor,
+      focusOutlineContrast: ratio(getComputedStyle(speed).outlineColor, getComputedStyle(document.body).backgroundColor),
+      focusedControl: document.activeElement?.id
+    };
+  });
+  assert.ok(
+    lightControlContrast.speedThumbContrast >= 3,
+    `Light-theme speed thumb must meet 3:1 non-text contrast; got ${lightControlContrast.speedThumbContrast.toFixed(2)}:1`
+  );
+  assert.ok(
+    lightControlContrast.selectBorderContrast >= 3,
+    `Light-theme voice selector border must meet 3:1 non-text contrast; got ${lightControlContrast.selectBorderContrast.toFixed(2)}:1`
+  );
+  assert.ok(
+    lightControlContrast.optionTextContrast >= 4.5,
+    `Light-theme voice option text must meet WCAG AA; got ${lightControlContrast.optionTextContrast.toFixed(2)}:1`
+  );
+  assert.ok(
+    lightControlContrast.selectedChipTextContrast >= 4.5,
+    `Light-theme selected speed preset text must meet WCAG AA; got ${lightControlContrast.selectedChipTextContrast.toFixed(2)}:1`
+  );
+  assert.ok(
+    lightControlContrast.valueContrast >= 4.5,
+    `Light-theme speed value text must meet WCAG AA; got ${lightControlContrast.valueContrast.toFixed(2)}:1`
+  );
+  assert.equal(lightControlContrast.focusedControl, 'popup-speed-slider');
+  assert.ok(
+    lightControlContrast.focusOutlineContrast >= 3,
+    `Light-theme focus indicator must meet 3:1 non-text contrast; got ${lightControlContrast.focusOutlineContrast.toFixed(2)}:1`
+  );
   // Reading progress should be announced in the same sentence units shown
   // by the visible sentence counter, while the numeric percentage remains intact.
   await popupWorker.evaluate(async () => {
