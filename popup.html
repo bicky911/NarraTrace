@@ -939,14 +939,12 @@
       color: #302925;
     }
 
-    body.light button.chip.active {
-      color: #1A1A1A;
-    }
-
-    body.light button.chip.active:hover {
+    /* aria-pressed is the authoritative selected state for speed presets. */
+    body.light button.chip[aria-pressed="true"],
+    body.light button.chip[aria-pressed="true"]:hover {
       background: var(--ra-accent);
       border-color: var(--ra-accent);
-      color: #1A1A1A;
+      color: #FFFFFF;
     }
 
     body.light .progress-counter,
