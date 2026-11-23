@@ -177,6 +177,78 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   assert.equal(dialog.activeId, 'ra-reader-close');
   assert.ok(dialog.focusableIds.length >= 5, 'reader dialog should expose its controls to keyboard users');
 
+  // Editorial design quality contract: restrained type system, readable body,
+  // genuine visual hierarchy, named theme controls, and accessible selected state.
+  const readerVisual = await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    const body = root.getElementById('ra-reader-body');
+    const title = root.getElementById('ra-reader-title');
+    const panel = root.getElementById('ra-reader-overlay');
+    const firstTheme = root.querySelector('.reader-th-btn[data-rtheme="cream"]');
+    const wordStyle = getComputedStyle(root.querySelector('.reader-word-active') || body);
+    return {
+      fontSize: parseFloat(getComputedStyle(body).fontSize),
+      lineHeight: parseFloat(getComputedStyle(body).lineHeight),
+      bodyFont: getComputedStyle(body).fontFamily,
+      titleFont: getComputedStyle(title).fontFamily,
+      titleSize: parseFloat(getComputedStyle(title).fontSize),
+      readerWidth: parseFloat(getComputedStyle(root.querySelector('.reader-content-card')).maxWidth),
+      themeName: firstTheme.getAttribute('aria-label'),
+      themePressed: firstTheme.getAttribute('aria-pressed'),
+      headerMinHeight: parseFloat(getComputedStyle(root.querySelector('.reader-header')).minHeight),
+      controlSize: Math.round(root.getElementById('ra-rctrl-play').getBoundingClientRect().width)
+    };
+  });
+  assert.equal(readerVisual.fontSize, 20);
+  assert.ok(readerVisual.lineHeight >= 36, 'reading text should retain generous line spacing');
+  assert.match(readerVisual.bodyFont, /sans-serif/i);
+  assert.match(readerVisual.titleFont, /serif/i);
+  assert.ok(readerVisual.titleSize >= 32, 'article title should establish a clear editorial hierarchy');
+  assert.equal(readerVisual.readerWidth, 680);
+  assert.equal(readerVisual.themeName, 'Warm paper theme');
+  assert.equal(readerVisual.themePressed, 'true');
+  assert.ok(readerVisual.controlSize >= 44);
+
+  // Each reading palette exposes a distinct accessible name and selected state.
+  await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    root.querySelector('.reader-th-btn[data-rtheme="sepia"]').click();
+  });
+  await page.waitForFunction(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    return root.querySelector('.reader-th-btn[data-rtheme="sepia"]')?.getAttribute('aria-pressed') === 'true';
+  });
+  const selectedThemeState = await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    return Array.from(root.querySelectorAll('.reader-th-btn'), button => button.getAttribute('aria-pressed'));
+  });
+  assert.deepEqual(selectedThemeState, ['false', 'false', 'true', 'false']);
+  await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    root.querySelector('.reader-th-btn[data-rtheme="cream"]').click();
+  });
+
+  // A narrow viewport must keep the reader bar within the visible screen width.
+  await page.setViewport({ width: 390, height: 844 });
+  const narrowReader = await page.evaluate(() => {
+    const root = document.getElementById('read-aloud-player-host').shadowRoot;
+    const overlay = root.getElementById('ra-reader-overlay');
+    const bar = root.querySelector('.reader-bar');
+    const headerRight = root.querySelector('.reader-header-right');
+    return {
+      viewport: window.innerWidth,
+      barLeft: Math.round(bar.getBoundingClientRect().left),
+      barRight: Math.round(bar.getBoundingClientRect().right),
+      headerRightWidth: Math.round(headerRight.getBoundingClientRect().width),
+      readerVisible: getComputedStyle(overlay).pointerEvents !== 'none'
+    };
+  });
+  assert.ok(narrowReader.barLeft >= 0, 'reader controls should not clip beyond the left edge on narrow screens');
+  assert.ok(narrowReader.barRight <= narrowReader.viewport, 'reader controls should remain inside narrow screens');
+  assert.equal(narrowReader.readerVisible, true);
+  await page.setViewport({ width: 800, height: 600 });
+
+
   // Tab and Shift+Tab must remain inside the reader dialog.
   const first = dialog.focusableIds[0];
   const last = dialog.focusableIds[dialog.focusableIds.length - 1];
