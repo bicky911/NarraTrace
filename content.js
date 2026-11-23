@@ -2717,6 +2717,18 @@
         animation: none !important;
       }
     }
+
+    /* Respect reduced-motion preferences across every animated player and reader control.
+       The spring renderer already bypasses its RAF loop when this preference is active. */
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+      }
+    }
   `;
 
   const container = document.createElement('div');
