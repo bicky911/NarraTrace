@@ -3328,7 +3328,7 @@
         <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
       </button>
 
-      <button class="icon-btn play-btn" id="ra-play" title="Play / Pause (Alt+P)" aria-label="Play reading" aria-controls="ra-reader-body">
+      <button class="icon-btn play-btn" id="ra-play" title="Play / Pause (Alt+P)" aria-label="Play reading">
         <svg id="ra-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       </button>
 
@@ -3578,7 +3578,7 @@
       </button>
 
       <button type="button" class="reader-ctrl-btn reader-play-main" id="ra-rctrl-play"
-        title="Play / Pause (Alt+P)" aria-label="Play or pause reading">
+        title="Play / Pause (Alt+P)" aria-label="Play reading" aria-controls="ra-reader-body">
         <svg id="ra-rctrl-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       </button>
 
