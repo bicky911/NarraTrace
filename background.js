@@ -424,12 +424,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         diagnosticSpeechActive = true;
         diagnosticRequestId = requestId;
         const startedAt = Date.now();
-        console.info('[TTS Diagnostic] Started', {
-          requestId,
-          voiceName: selectedVoice.voiceName,
-          extensionId: selectedVoice.extensionId || null,
-          rate
-        });
         sendResponse({
           success: true,
           requestId,
@@ -454,7 +448,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             },
             (event) => {
               // Telemetry deliberately excludes the sample text.
-              console.info('[TTS Diagnostic] Provider event', requestId, event.type);
               chrome.runtime.sendMessage({
                 action: 'TTS_DIAGNOSTIC_EVENT',
                 requestId,
@@ -472,7 +465,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
           );
 
-          console.info('[TTS Diagnostic] Completed', requestId, result?.type || 'unknown', Date.now() - startedAt);
           chrome.runtime.sendMessage({
             action: 'TTS_DIAGNOSTIC_COMPLETE',
             requestId,
@@ -481,7 +473,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             durationMs: Date.now() - startedAt
           }).catch(() => {});
         } catch (error) {
-          console.warn('[TTS Diagnostic] Provider request failed', requestId, String(error?.message || error).slice(0, 500));
           chrome.runtime.sendMessage({
             action: 'TTS_DIAGNOSTIC_COMPLETE',
             requestId,
