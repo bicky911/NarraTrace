@@ -491,6 +491,40 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   assert.equal(popupControlSemantics.playName, 'Play reading');
   assert.equal(popupControlSemantics.playPressed, 'false');
 
+  // Playback state changes must describe the action that will happen next.
+  // Send the same broadcast used by the background worker during real playback.
+  const popupWorkerTarget = await browser.waitForTarget((target) =>
+    target.type() === 'service_worker' &&
+    target.url().startsWith(`chrome-extension://${extensionId}/`)
+  , { timeout: 10000 });
+  const popupWorker = await popupWorkerTarget.worker();
+  await popupWorker.evaluate(async () => {
+    await chrome.runtime.sendMessage({ action: 'PLAYBACK_PAUSED' }).catch(() => {});
+  });
+  await popupPage.waitForFunction(() => {
+    const play = document.getElementById('ctrl-play');
+    return play.getAttribute('aria-label') === 'Resume reading' &&
+      play.getAttribute('aria-pressed') === 'false';
+  });
+
+  await popupWorker.evaluate(async () => {
+    await chrome.runtime.sendMessage({ action: 'PLAYBACK_RESUMED' }).catch(() => {});
+  });
+  await popupPage.waitForFunction(() => {
+    const play = document.getElementById('ctrl-play');
+    return play.getAttribute('aria-label') === 'Pause reading' &&
+      play.getAttribute('aria-pressed') === 'true';
+  });
+
+  await popupWorker.evaluate(async () => {
+    await chrome.runtime.sendMessage({ action: 'PLAYBACK_STOPPED' }).catch(() => {});
+  });
+  await popupPage.waitForFunction(() => {
+    const play = document.getElementById('ctrl-play');
+    return play.getAttribute('aria-label') === 'Play reading' &&
+      play.getAttribute('aria-pressed') === 'false';
+  });
+
   await popupPage.$eval('#popup-speed-slider', slider => {
     slider.value = '1.5';
     slider.dispatchEvent(new Event('input', { bubbles: true }));
