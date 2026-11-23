@@ -3507,6 +3507,7 @@
   selectionPlayBtn.className = 'selection-play-btn';
   selectionPlayBtn.id = 'ra-selection-play';
   selectionPlayBtn.title = 'Listen to selection';
+  selectionPlayBtn.setAttribute('aria-label', 'Read selected text aloud');
   selectionPlayBtn.innerHTML = `
     <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
     <span>LISTEN</span>
