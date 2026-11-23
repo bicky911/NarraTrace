@@ -13,7 +13,7 @@ The exported JSON records:
 - NarraTrace version, Chrome version, platform, language, timezone, and capture time.
 - Provider group, exact voice name, actual Chrome extension ID, language, and a manually entered provider version if supplied.
 - Selected speech rate and sample character count.
-- Chrome TTS event types, elapsed times, character offsets and lengths, and bounded provider error messages.
+- Chrome TTS event types, elapsed times, character offsets and lengths, and a generic provider-error classification. Raw provider error strings are redacted because they may echo the sample text.
 - Whether Chrome returned a clean `end` event, request duration, and a human-marked first-audio time.
 
 The report intentionally excludes the sample text and any audio recording. The page does not use the microphone.
