@@ -823,7 +823,12 @@ class PlaybackManager {
     }
 
     const profile = this.engineProfile();
-    const prepareMs = profile.prepareMs || 0;
+    // Include the full request-to-audio setup cost. Some providers (notably
+    // Supertonic) announce a sentence boundary before audio is audible, so
+    // their measured lead-in is separate from request-to-boundary preparation.
+    const prepareMs = Math.max(0, profile.prepareMs || 0);
+    const leadInMs = Math.max(0, profile.leadInMs || 0);
+    const setupCostMs = prepareMs + leadInMs;
     if (profile.starving) {
       // The engine cannot synthesise as fast as it plays, so it goes silent
       // between the sentences of one utterance. A long group would be a long
@@ -842,7 +847,7 @@ class PlaybackManager {
       : DEFAULT_CHARS_PER_SECOND;
     const speechPerSentence = TYPICAL_SENTENCE_CHARS / cps;   // seconds
     const sentences = Math.ceil(
-      (prepareMs / 1000 / PREPARE_BUDGET_RATIO) / speechPerSentence
+      (setupCostMs / 1000 / PREPARE_BUDGET_RATIO) / speechPerSentence
     );
     return Math.max(1, Math.min(MAX_BATCH_SENTENCES, sentences));
   }
