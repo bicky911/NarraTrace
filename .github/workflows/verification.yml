@@ -5,8 +5,8 @@ on:
   # Only main pushes need a separate push-triggered run.
   push:
     branches: ["main"]
+  # Validate stacked engineering PRs as well as release PRs targeting main.
   pull_request:
-    branches: ["main"]
   workflow_dispatch:
 
 concurrency:
