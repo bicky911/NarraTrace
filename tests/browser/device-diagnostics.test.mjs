@@ -7,7 +7,9 @@ import puppeteer from 'puppeteer';
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(TEST_DIR, '../..');
 const ENGINE_DIR = path.join(TEST_DIR, 'fixtures', 'tts-engine');
+const ERROR_ENGINE_DIR = path.join(TEST_DIR, 'fixtures', 'tts-error-engine');
 const TEST_VOICE = 'NarraTrace Test Voice';
+const ERROR_TEST_VOICE = 'NarraTrace Echo-Error Test Voice';
 const SAMPLE = 'CONFIDENTIAL DIAGNOSTIC SAMPLE MUST NOT LEAK. Check Chrome TTS timing.';
 
 async function closeBrowser(browser) {
@@ -70,6 +72,7 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
   console.log('[diagnostics-test] Installing extensions');
   const narraTraceId = await browser.installExtension(REPOSITORY_ROOT);
   const testEngineId = await browser.installExtension(ENGINE_DIR);
+  const errorEngineId = await browser.installExtension(ERROR_ENGINE_DIR);
 
   const diagnostics = await browser.newPage();
   await diagnostics.goto(`chrome-extension://${narraTraceId}/test.html`, {
@@ -241,16 +244,15 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
   assert.equal(result.report?.test?.audibleStartMarkedMs, null, 'the test must not invent a human audible mark');
   console.log('[diagnostics-test] Report privacy and audibility assertions passed');
 
-  // Adversarial failure case: a provider error deliberately echoes the sample.
-  // The exported report and event log must still remain text-free.
-  const engineTarget = await browser.waitForTarget(candidate =>
-    candidate.type() === 'service_worker' &&
-    candidate.url().startsWith(`chrome-extension://${testEngineId}/`)
-  , { timeout: 10000 });
-  const engineWorker = await engineTarget.worker();
-  await engineWorker.evaluate(async () => {
-    await chrome.storage.local.set({ narraTraceTestEchoError: true });
-  });
+  // Adversarial failure case: a separate deterministic provider always
+  // echoes the utterance in its error event. The exported report must redact it.
+  await diagnostics.waitForFunction((voiceName, extensionId) => {
+    const select = document.getElementById('voice-select');
+    return Array.from(select?.options || []).some(option =>
+      option.value === voiceName && option.dataset.extensionId === extensionId
+    );
+  }, { timeout: 20000, polling: 100 }, ERROR_TEST_VOICE, errorEngineId);
+  await diagnostics.select('#voice-select', ERROR_TEST_VOICE);
 
   const ERROR_SAMPLE = 'PRIVATE-ERROR-ECHO-SAMPLE-DO-NOT-EXPORT';
   await withTimeout(diagnostics.evaluate((value) => {
