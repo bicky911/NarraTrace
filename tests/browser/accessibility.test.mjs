@@ -823,7 +823,7 @@ test('Focus Reader and player controls support keyboard navigation and focus res
   );
   assert.ok(
     lightControlContrast.selectedChipTextContrast >= 4.5,
-    `Light-theme selected speed preset text must meet WCAG AA; got ${lightControlContrast.selectedChipTextContrast.toFixed(2)}:1`
+    `Light-theme selected speed preset text must meet WCAG AA; got ${lightControlContrast.selectedChipTextContrast.toFixed(2)}:1 (${lightControlContrast.selectedChipText} on ${lightControlContrast.selectedChipSurface}; aria-pressed=${lightControlContrast.selectedChipPressed})`
   );
   assert.equal(lightControlContrast.selectedChipHovered, true);
   assert.equal(lightControlContrast.selectedChipPressed, 'true');
