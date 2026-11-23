@@ -156,11 +156,19 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
 
   // Run the actual diagnostics page workflow. The CI provider is deliberately
   // silent, so the report must not claim an audible pass without user marking.
-  await diagnostics.$eval('#diagnostic-sample-text', (element, value) => {
+  await withTimeout(diagnostics.evaluate((value) => {
+    const element = document.getElementById('diagnostic-sample-text');
+    if (!element) throw new Error('Diagnostic sample textarea is missing.');
     element.value = value;
     element.dispatchEvent(new Event('input', { bubbles: true }));
-  }, SAMPLE);
-  await diagnostics.click('#btn-run-engine-diagnostic');
+  }, SAMPLE), 8000, 'Populate diagnostic sample');
+  console.log('[diagnostics-test] Diagnostic sample populated');
+
+  await withTimeout(diagnostics.evaluate(() => {
+    const button = document.getElementById('btn-run-engine-diagnostic');
+    if (!button || button.disabled) throw new Error('Run Audible Test button is unavailable.');
+    button.click();
+  }), 8000, 'Activate Run Audible Test');
   console.log('[diagnostics-test] Diagnostic start clicked');
   await diagnostics.waitForFunction(() =>
     document.getElementById('btn-stop-engine-diagnostic')?.disabled === false,
