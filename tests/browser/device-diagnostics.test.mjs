@@ -235,6 +235,7 @@ test('bundled diagnostics are isolated, verify audibility, and never export samp
   assert.equal(result.log.includes(SAMPLE), false, 'event log must never include the diagnostic sample');
   assert.equal(result.exportEnabled, true, 'a completed diagnostic report should be exportable');
   assert.equal(result.report?.test?.sampleTextIncluded, false);
+  assert.equal(JSON.stringify(result.report).includes(SAMPLE), false, 'the diagnostic report must not contain the spoken sample text');
   assert.equal(result.report?.test?.sampleCharacterCount, SAMPLE.length);
   assert.equal(result.report?.success, false, 'silent CI output must not be reported as an audible pass');
   assert.equal(result.report?.test?.audibleStartMarkedMs, null, 'the test must not invent a human audible mark');
