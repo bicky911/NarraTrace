@@ -43,7 +43,7 @@ test('Piper is the first maintained profile and dynamic IDs retain canonical ide
   const api = await loadSpeechEngine(voices);
 
   assert.deepEqual(
-    api.TTS_ENGINES.map(engine => engine.label),
+    Array.from(api.TTS_ENGINES, engine => engine.label),
     ['Piper', 'Supertonic']
   );
 
