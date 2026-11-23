@@ -1,6 +1,6 @@
-// Long enough for the diagnostic page to receive its acknowledgement and
-// exercise overlap guards before the synthetic utterance reaches `end`.
-const SPEECH_DURATION_MS = 12000;
+// Long enough for the diagnostic page to exercise playback isolation,
+// while short enough to avoid relying on a long-lived test TTS worker.
+const SPEECH_DURATION_MS = 5000;
 const activeTimers = new Set();
 
 async function record(event) {
