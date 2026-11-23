@@ -652,6 +652,46 @@ check(
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Real-engine diagnostics security and privacy contract
+# ─────────────────────────────────────────────────────────────────────────────
+bg = read(os.path.join(os.path.dirname(__file__), 'background.js'))
+diag_js = read(os.path.join(os.path.dirname(__file__), 'test.js'))
+diag_html = read(os.path.join(os.path.dirname(__file__), 'test.html'))
+
+check(
+    'background.js: diagnostic sender is restricted to bundled test.html',
+    "function isDiagnosticsPageSender(sender)" in bg and "url.pathname === '/test.html'" in bg,
+)
+check(
+    'background.js: real TTS diagnostic validates the selected installed voice',
+    "case 'RUN_TTS_DIAGNOSTIC'" in bg and 'getAllVoices()' in bg and 'voice.voiceName === voiceName' in bg,
+)
+check(
+    'background.js: diagnostic text and speech rate are bounded',
+    'text.length > 500' in bg and 'rate < 0.5' in bg and 'rate > 2.0' in bg,
+)
+check(
+    'background.js: session inspection is restricted to diagnostics page',
+    "case 'GET_SESSION_STORAGE'" in bg and "Session inspection is restricted" in bg,
+)
+check(
+    'background.js: normal playback cannot start during diagnostic speech',
+    "case 'START_PLAYBACK'" in bg and "if (diagnosticSpeechActive)" in bg,
+)
+check(
+    'test.js: diagnostic report records sample character count but omits sample text',
+    'sampleCharacterCount: sampleText.length' in diag_js and 'sampleTextIncluded: false' in diag_js,
+)
+check(
+    'test.js: audible pass requires manual first-audio confirmation',
+    'audibleWasMarked' in diag_js and 'message.success === true && audibleWasMarked' in diag_js,
+)
+check(
+    'test.html: manual I Hear Audio control is present',
+    'id="btn-mark-audible"' in diag_html and 'I Hear Audio' in diag_html,
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Summary
 # ─────────────────────────────────────────────────────────────────────────────
 print('\n' + '─' * 67)
