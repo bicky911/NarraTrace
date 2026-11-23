@@ -211,7 +211,7 @@ async function runEngineDiagnostic() {
     btnClearDiagnostic.disabled = false;
     diagnosticReport.success = false;
     diagnosticReport.resultType = 'message-error';
-    diagnosticReport.error = String(error?.message || error);
+    diagnosticReport.error = 'The diagnostic request could not be delivered to Chrome. Refresh the page and try again.';
     btnExportDiagnostic.disabled = false;
     setDiagnosticStatus(diagnosticReport.error, 'danger');
   }
