@@ -17,7 +17,7 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 **Distribution license:** Not yet selected; no redistribution license is published in this repository.
 
 ![Manifest: V3](https://img.shields.io/badge/Manifest-V3-orange.svg)
-![NarraTrace verification](https://github.com/bicky911/NarraTrace/actions/workflows/verification.yml/badge.svg?branch=reliability%2Fstage-1-baseline)
+![NarraTrace verification](https://github.com/bicky911/NarraTrace/actions/workflows/verification.yml/badge.svg?branch=main)
 
 ---
 
