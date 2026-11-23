@@ -38,10 +38,9 @@ const PREFS_STORAGE_KEY = 'readAloud_userPreferences';
 const MAX_CONSECUTIVE_ERRORS = 3;
 
 // How many consecutive sentences may share ONE utterance.
-// chrome.tts speaks one utterance at a time. An engine that has to prepare
-// before it can speak (a network voice, or Kokoro rebuilding its model) pays
-// that preparation on EVERY utterance, so one sentence per utterance costs a
-// visible dead-air gap at every sentence boundary. Grouping turns N
+// chrome.tts speaks one utterance at a time. Some providers perform
+// noticeable preparation before each utterance; one sentence per utterance
+// can therefore create visible dead-air gaps at sentence boundaries. Grouping turns N
 // preparations into one and the sentences run into each other with no gap.
 const MAX_BATCH_SENTENCES = 12;
 const DEFAULT_REMOTE_BATCH = 3;
@@ -50,9 +49,9 @@ const DEFAULT_REMOTE_BATCH = 3;
 // measured preparation time into a sensible group size.
 const TYPICAL_SENTENCE_CHARS = 65;
 
-// The preparation time may cost at most this fraction of the speech it
-// precedes. With a 10 s setup and ~4.6 s of speech per sentence this asks for
-// ~14 sentences per utterance, i.e. one setup per ~60 s of reading.
+// The measured preparation time may cost at most this fraction of the speech
+// it precedes. The resulting group size adapts to each provider's observed
+// setup latency while preserving reasonable seek responsiveness.
 const PREPARE_BUDGET_RATIO = 0.15;
 
 // Fallback speaking speed used until we have measured the real one (~135-140 WPM).
@@ -63,19 +62,15 @@ const ESTIMATOR_INTERVAL_MS = 45;
 // estimator temporarily fills a gap. Native events remain authoritative;
 // this only prevents engines with sparse/partial word events from freezing.
 const ESTIMATOR_GRACE_MS = 700;
-// How long to wait for the engine's first SENTENCE boundary before assuming
-// this engine reports no boundaries at all. Measured against the real engines:
-// Supertonic reaches 7.2 s and Kokoro needs ~10 s on a CPU-only machine (and
-// ~24 s the very first time, while its 92 MB model downloads), so this has to
-// be comfortably above that.
+// How long to wait for a provider's first SENTENCE boundary before treating
+// its event stream as boundary-sparse and enabling timed estimation. Keep a
+// generous ceiling for cold starts, model preparation and provider latency.
 const ESTIMATOR_BOUNDARY_WAIT = 45000;
 
-// An engine that announces its first sentence boundary within this many
-// milliseconds of the 'start' event is announcing the boundary BEFORE the
-// voice starts (Supertonic: 'start' and 'sentence(0)' arrive together while
-// the voice only becomes audible ~3.2 s later). Such an engine needs the
-// lead-in correction; an engine whose first boundary arrives later (Kokoro:
-// ~10 s, right when the first sentence actually starts playing) does not.
+// A provider that announces its first sentence boundary immediately after
+// 'start' may be reporting synthesis progress before audible output begins.
+// The measured lead-in correction accounts for this provider-specific delay;
+// later boundary streams are handled without assuming an early announcement.
 const BOUNDARY_ANNOUNCED_EARLY_MS = 500;
 
 // ─── Semantic Noise Stripper ────────────────────────────────────────────────
@@ -240,8 +235,8 @@ class PlaybackManager {
     // Explicit grouping override (0 = automatic).
     this.batchSize = 0;
     // True once the user has picked a voice themselves. Until then the voice is
-    // resolved automatically (highest-priority engine, Kokoro first), which is
-    // what migrates a legacy Supertonic preference over to Kokoro.
+    // resolved automatically using the maintained provider priority (Piper
+    // before Supertonic), rather than preserving a legacy automatic default.
     this.voicePinned = false;
     // Measured speaking speed in characters per second, used by the position
     // estimator when the engine does not emit word/sentence events.
@@ -260,9 +255,8 @@ class PlaybackManager {
     //                       becoming audible (Supertonic only).
     //   boundariesSeen      how many boundaries the engine has reported.
     //
-    // Keeping this per engine matters: the two engines behave completely
-    // differently (Kokoro rebuilds its model per utterance, Supertonic waits on
-    // a network round-trip), so their measurements must never be mixed.
+    // Keeping this per engine matters: provider latency and event behavior differ,
+    // so measurements must never be mixed across extension IDs.
     this.engineProfiles = new Map();
     // Active utterance descriptor + estimator timer.
     this.activeBatch = null;
@@ -555,8 +549,8 @@ class PlaybackManager {
         if (prefs.extensionId) this.options.extensionId = prefs.extensionId;
         if (prefs.lang) this.options.lang = prefs.lang;
         // voicePinned was added together with multi-engine support. Preferences
-        // saved before that have no such flag, so their voice was merely the
-        // old automatic default (Supertonic) — not a choice the user made.
+        // saved before that have no such flag, so re-resolve them using the
+        // current automatic provider priority rather than treating them as pinned.
         this.voicePinned = prefs.voicePinned === true;
         if (typeof prefs.pronunciationText === 'string') {
           this.pronunciationRules = PlaybackManager.parsePronunciations(prefs.pronunciationText);
@@ -567,8 +561,8 @@ class PlaybackManager {
 
       // Resolve the voice against the engines that are actually installed.
       // A voice the user picked themselves always wins; otherwise the
-      // highest-priority engine does (Kokoro before Supertonic), which is what
-      // moves a legacy Supertonic preference over to Kokoro.
+      // current maintained provider priority (Piper before Supertonic), which
+      // resolves older automatic selections against the installed providers.
       const report = await detectAndSelectVoice({
         voiceName: this.options.voiceName,
         pinned: this.voicePinned
@@ -813,16 +807,14 @@ class PlaybackManager {
    * How many consecutive sentences share one utterance.
    *
    * An engine that has to prepare before it can speak pays that preparation on
-   * EVERY utterance. Measured against the real engines: Kokoro rebuilds its
-   * ONNX model and its offscreen document for every utterance, which costs
-   * ~10 s on a CPU-only machine (~24 s the very first time, while its 92 MB
-   * model downloads); Supertonic waits on a network round-trip. One sentence
-   * per utterance would therefore put a long gap between every sentence.
+   * EVERY utterance. Provider setup may include local model initialization,
+   * remote synthesis latency, or another per-utterance cost. One sentence per
+   * utterance can therefore introduce repeated dead-air gaps.
    *
-   * So the group size follows the engine's MEASURED preparation time: the
-   * preparation may cost at most ~15% of the speech it precedes. A fast engine
-   * (Kokoro with WebGPU, ~1 s setup) gets short groups and stays responsive for
-   * skipping; a slow one gets long groups and reads almost seamlessly.
+   * The group size follows the engine's MEASURED preparation time: preparation
+   * may cost at most the configured fraction of the speech it precedes. A
+   * provider with short setup gets smaller groups for responsive seeking;
+   * a slower provider gets longer groups to reduce repeated preparation.
    */
   resolveBatchSize() {
     if (typeof this.batchSize === 'number' && this.batchSize > 0) {
@@ -980,10 +972,8 @@ class PlaybackManager {
   /**
    * Remember how long the engine needed before its first boundary.
    *
-   * That delay is the engine's preparation cost for this utterance (measured:
-   * ~10 s per utterance for Kokoro on a CPU-only machine, ~24 s while its
-   * 92 MB model downloads, ~3.2 s for Supertonic's network round-trip).
-   * It decides two things: the lead-in correction and the group size.
+   * That delay is the engine's preparation cost for this utterance. It
+   * determines the lead-in correction and the adaptive group size.
    */
   noteFirstBoundary(batch, now) {
     if (!batch || batch.firstBoundaryDelay !== null) return;
@@ -1032,10 +1022,9 @@ class PlaybackManager {
       const charIndex = event.charIndex || 0;
       const profile = this.engineProfile();
 
-      // How long is the sentence the engine just announced? Some engines
-      // report it (Supertonic sends charIndex + length), others do not
-      // (Kokoro sends only the charIndex). When it is known, the estimator
-      // uses the ENGINE's sentence extent as its ceiling — see startEstimator().
+      // How long is the sentence the engine just announced? Some providers
+      // include a sentence length; others report only the starting offset.
+      // When the extent is known, the estimator uses it as its ceiling.
       //
       // The engine's sentences do not have to be ours: Supertonic merges our
       // title with the sentence after it (the title has no terminating
@@ -1063,9 +1052,8 @@ class PlaybackManager {
       //   same instant and only becomes audible ~3.2 s later, so its first
       //   boundary interval is slower than the real speaking rate.
       //
-      //   Kokoro announces the boundary when that sentence actually starts
-      //   playing — ~10 s after 'start', because it rebuilds its model for
-      //   every utterance — so its intervals are pure playback.
+      //   Providers that delay the first boundary until playback begins produce
+      //   intervals that more closely reflect audible playback duration.
       //
       // A lead-in can only make an interval SLOWER, never faster, so the
       // fastest interval observed is the cleanest rate measurement and the
@@ -1184,9 +1172,9 @@ class PlaybackManager {
     }
 
     if (event.type === 'end') {
-      // Where the utterance ended. Kokoro reports how much it spoke; Supertonic
-      // does not (it sends charIndex 0), and then the end of the text we handed
-      // to the engine IS the end of the utterance.
+      // Where the utterance ended. Some providers report a final character offset;
+      // others omit it or send zero. When no usable offset exists, the end of
+      // the text we handed to the engine is the utterance end.
       const now = Date.now();
       const profile = this.engineProfile();
       const reportedEnd = (typeof event.charIndex === 'number' && event.charIndex > 0)
@@ -1204,12 +1192,9 @@ class PlaybackManager {
         // measurement of the engine's real reading speed — and therefore the
         // best predictor for the next utterance.
         //
-        // For Kokoro this is what recovers the true reading speed when its
-        // synthesis lags behind its own playback. For Supertonic it matters
-        // even more: the distance between two boundaries is NOT the reading
-        // speed there, because the engine announces a boundary several seconds
-        // away from the moment the voice gets there — a rate learned from that
-        // distance alone leaves the estimate ~40 characters behind the voice.
+        // Measuring the final boundary-to-end interval avoids mixing preparation
+        // and announcement lead-in with audible speech. This is particularly
+        // important for providers whose boundary events precede the audio.
         const seconds = (now - batch.anchorTime) / 1000;
         const cps = (endChar - batch.anchorChar) / seconds;
         if (cps > 1 && cps < 200) {
@@ -1264,11 +1249,10 @@ class PlaybackManager {
    * How long the engine may still be PREPARING before the estimator starts
    * extrapolating.
    *
-   * The wait is the engine's own measured setup cost — Kokoro rebuilds its
-   * neural model for every utterance (~21 s on a CPU-only machine), Supertonic
-   * needs a few seconds before it announces anything. Extrapolating during
-   * that window is what puts the highlight seconds ahead of the voice, so the
-   * highlight parks at the first word until the preparation is over.
+   * The wait is based on the provider's measured preparation cost. Extrapolating
+   * during model initialization or remote synthesis can put the highlight
+   * ahead of audible speech, so the highlight parks at the first word until
+   * the preparation window has elapsed.
    *
    * An engine we have never measured gets a short default window.
    *
@@ -1379,11 +1363,9 @@ class PlaybackManager {
       } else if (this.options.extensionId &&
                  (now - (batch.requestedAt || batch.startedAt)) < this.preparationWindowMs(profile)) {
         // The engine has accepted the utterance but has not started speaking
-        // yet. Preparing can take a long time — measured: ~10 s for Kokoro on a
-        // CPU-only machine, ~24 s while its model downloads, ~7 s for Supertonic.
-        // Park the highlight at the beginning of the utterance instead of
-        // extrapolating — extrapolating here is what put the highlight seconds
-        // ahead of the voice.
+        // yet. Provider preparation can take several seconds, especially on
+        // cold starts. Park the highlight at the beginning of the utterance
+        // instead of extrapolating ahead of audible speech.
         pos = 0;
       } else {
         // This engine reports no boundaries at all — fall back to a straight
@@ -1576,7 +1558,7 @@ class PlaybackManager {
       anchorTime: null,
       // The extent of the sentence the engine just announced: charIndex plus
       // the length the engine reported for it (null when the engine reports
-      // no length, e.g. Kokoro).
+      // no length).
       anchorEnd: null,
       segmentIndex: 0,
       firstBoundaryDelay: null,
@@ -1947,7 +1929,7 @@ class PlaybackManager {
     this.options.lang = lng.length > 0 ? lng : null;
     // An explicit choice sticks: from now on the automatic engine priority
     // must not override it (that is what keeps Supertonic usable as a
-    // deliberate fallback next to Kokoro).
+    // deliberate fallback next to Piper).
     this.voicePinned = true;
 
     return this._commitPlaybackOptionChange('sentence');
