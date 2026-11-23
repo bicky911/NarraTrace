@@ -138,11 +138,20 @@
     } else if (event.type === 'keydown') {
       const scrollKeys = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
       if (!scrollKeys.has(event.key)) return;
-      const target = event.target;
-      if (target && (
-        target.isContentEditable ||
-        (target.closest && target.closest('input, textarea, select, button, a, [role="slider"]'))
-      )) return;
+      // Event targets are retargeted at Shadow DOM boundaries. Inspect the
+      // composed path so keyboard use inside the player and Focus Reader's
+      // existing controls is never mistaken for page-scroll intent.
+      const path = typeof event.composedPath === 'function'
+        ? event.composedPath()
+        : [event.target];
+      const isInteractiveTarget = (node) => {
+        if (!node || typeof node !== 'object') return false;
+        const tag = typeof node.tagName === 'string' ? node.tagName.toLowerCase() : '';
+        return node.isContentEditable === true ||
+          ['input', 'textarea', 'select', 'button', 'a'].includes(tag) ||
+          (typeof node.getAttribute === 'function' && node.getAttribute('role') === 'slider');
+      };
+      if (path.some(isInteractiveTarget)) return;
     }
 
     gazeCancelScroll();
