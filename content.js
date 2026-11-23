@@ -3328,7 +3328,7 @@
         <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
       </button>
 
-      <button class="icon-btn play-btn" id="ra-play" title="Play / Pause (Alt+P)" aria-label="Play or pause reading">
+      <button class="icon-btn play-btn" id="ra-play" title="Play / Pause (Alt+P)" aria-label="Play reading" aria-pressed="false">
         <svg id="ra-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       </button>
 
@@ -3578,7 +3578,7 @@
       </button>
 
       <button type="button" class="reader-ctrl-btn reader-play-main" id="ra-rctrl-play"
-        title="Play / Pause (Alt+P)" aria-label="Play or pause reading">
+        title="Play / Pause (Alt+P)" aria-label="Play reading" aria-pressed="false" aria-controls="ra-reader-body">
         <svg id="ra-rctrl-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       </button>
 
@@ -4468,10 +4468,21 @@
 
   function updatePlayState(state) {
     currentPlaybackState = state;
-    if (state === 'PLAYING') {
+    const isPlaying = state === 'PLAYING';
+    const playActionLabel = isPlaying
+      ? 'Pause reading'
+      : state === 'PAUSED' ? 'Resume reading' : 'Play reading';
+
+    playBtn.setAttribute('aria-label', playActionLabel);
+    playBtn.setAttribute('aria-pressed', String(isPlaying));
+    if (rctrlPlayBtn) {
+      rctrlPlayBtn.setAttribute('aria-label', playActionLabel);
+      rctrlPlayBtn.setAttribute('aria-pressed', String(isPlaying));
+    }
+
+    if (isPlaying) {
       playIcon.innerHTML = SVG_PAUSE;
       playBtn.title = 'Pause';
-      playBtn.setAttribute('aria-label', 'Pause reading');
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PAUSE;
       if (rctrlPlayBtn) rctrlPlayBtn.title = 'Pause (Alt+P)';
       container.classList.add('is-playing');
@@ -4479,10 +4490,9 @@
       startHeartbeat();
     } else {
       playIcon.innerHTML = SVG_PLAY;
-      playBtn.title = 'Play';
-      playBtn.setAttribute('aria-label', 'Play or pause reading');
+      playBtn.title = state === 'PAUSED' ? 'Resume' : 'Play';
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PLAY;
-      if (rctrlPlayBtn) rctrlPlayBtn.title = 'Play (Alt+P)';
+      if (rctrlPlayBtn) rctrlPlayBtn.title = state === 'PAUSED' ? 'Resume (Alt+P)' : 'Play (Alt+P)';
       container.classList.remove('is-playing');
       stopHeartbeat();
       if (state === 'STOPPED' || state === 'IDLE') {
