@@ -34,6 +34,8 @@ jobs:
           node-version: "22"
       - name: Run speech-provider registry regression tests
         run: node --test tests/speech-engine.test.mjs
+      - name: Run TTS diagnostic privacy regression tests
+        run: node --test tests/tts-diagnostic-privacy.test.mjs
       - name: Run playback transition regression tests
         run: node --test tests/playback-manager.test.mjs
       - name: Run sentence tokenizer regression tests
