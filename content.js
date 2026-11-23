@@ -3189,7 +3189,16 @@
     settingsPanel.inert = true;
     settingsPanel.setAttribute('aria-hidden', 'true');
     settingsTriggerBtn?.setAttribute('aria-expanded', 'false');
-    if (restoreFocus && settingsTriggerBtn) settingsTriggerBtn.focus();
+    if (restoreFocus && settingsTriggerBtn) {
+      // In mini layout the Settings control is hidden until the player is
+      // hovered or owns focus. Settings itself is outside the player subtree,
+      // so focus must be restored while a temporary reveal class is active.
+      if (container.classList.contains('pill-mini')) {
+        container.classList.add('focus-restoring');
+      }
+      settingsTriggerBtn.focus({ preventScroll: true });
+      container.classList.remove('focus-restoring');
+    }
   }
 
   /**
