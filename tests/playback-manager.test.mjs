@@ -18,6 +18,9 @@ async function loadPlaybackManager(stopGates, options = {}) {
   let stopSpeechAndWaitCalls = 0;
   const runtimeMessages = [];
   const intervalCallbacks = new Map();
+  const alarms = new Map();
+  if (options.preexistingAlarm) alarms.set('readAloudKeepAlive', { periodInMinutes: 0.5 });
+  const alarmEvents = [];
   let nextIntervalId = 0;
   const source = await readFile(new URL('../playback-manager.js', import.meta.url), 'utf8');
 
@@ -36,7 +39,7 @@ async function loadPlaybackManager(stopGates, options = {}) {
   const chrome = {
     storage: {
       session: {
-        get: async () => ({}),
+        get: async () => options.sessionData || {},
         set: async () => undefined
       },
       local: {
@@ -46,6 +49,18 @@ async function loadPlaybackManager(stopGates, options = {}) {
     },
     tabs: {
       sendMessage: () => Promise.resolve(undefined)
+    },
+    alarms: {
+      get: async name => alarms.has(name) ? { name, ...alarms.get(name) } : null,
+      create: async (name, info) => {
+        alarms.set(name, info);
+        alarmEvents.push({ action: 'create', name, info });
+      },
+      clear: async name => {
+        const existed = alarms.delete(name);
+        alarmEvents.push({ action: 'clear', name, existed });
+        return existed;
+      }
     },
     runtime: {
       sendMessage: message => {
@@ -89,9 +104,64 @@ async function loadPlaybackManager(stopGates, options = {}) {
     safeSpeakCallCount: () => safeSpeakCalls,
     stopSpeechAndWaitCallCount: () => stopSpeechAndWaitCalls,
     runtimeMessages: () => runtimeMessages,
-    intervalCallbacks: () => [...intervalCallbacks.values()]
+    intervalCallbacks: () => [...intervalCallbacks.values()],
+    alarms: () => new Map(alarms),
+    alarmEvents: () => [...alarmEvents]
   };
 }
+
+test('the recovery alarm exists only during active playback', async () => {
+  const loaded = await loadPlaybackManager([]);
+  const { manager } = loaded;
+
+  manager.playbackState = 'IDLE';
+  await manager.saveToSession();
+  assert.equal(loaded.alarms().has('readAloudKeepAlive'), false,
+    'idle playback must not schedule a recurring wake-up alarm');
+
+  manager.playbackState = 'PLAYING';
+  await manager.saveToSession();
+  assert.equal(loaded.alarms().has('readAloudKeepAlive'), true,
+    'active playback must retain the service-worker recovery alarm');
+  assert.equal(loaded.intervalCallbacks().length, 1,
+    'the worker-side keep-alive tick should be active during playback');
+
+  manager.playbackState = 'PAUSED';
+  await manager.saveToSession();
+  assert.equal(loaded.alarms().has('readAloudKeepAlive'), false,
+    'pausing must clear the recovery alarm');
+  assert.equal(loaded.intervalCallbacks().length, 0,
+    'pausing must clear the worker-side keep-alive interval');
+
+  manager.playbackState = 'PLAYING';
+  await manager.saveToSession();
+  manager.playbackState = 'STOPPED';
+  await manager.saveToSession();
+  assert.equal(loaded.alarms().has('readAloudKeepAlive'), false,
+    'stopping must leave no recovery alarm behind');
+});
+
+test('worker startup reconciles stale alarms and restores active-session alarms', async () => {
+  const idle = await loadPlaybackManager([], { preexistingAlarm: true });
+  assert.equal(await idle.manager.restoreFromSession(), false);
+  assert.equal(idle.alarms().has('readAloudKeepAlive'), false,
+    'an idle/empty restored session must clear a stale alarm');
+
+  const active = await loadPlaybackManager([], {
+    sessionData: {
+      readAloud_sessionState: {
+        queue: ['Continue the restored session.'],
+        currentIndex: 0,
+        playbackState: 'PLAYING',
+        tabId: 77
+      }
+    }
+  });
+  assert.equal(await active.manager.restoreFromSession(), true);
+  assert.equal(active.alarms().has('readAloudKeepAlive'), true,
+    'a restored active session must recreate its recovery alarm');
+  assert.equal(active.intervalCallbacks().length, 1);
+});
 
 test('a superseded start cannot overwrite the newer queue', async () => {
   const olderStop = deferred();
