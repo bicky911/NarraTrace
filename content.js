@@ -3518,6 +3518,7 @@
   hoverPlayBtn.className = 'hover-play-btn';
   hoverPlayBtn.id = 'ra-hover-play';
   hoverPlayBtn.title = 'Play this paragraph';
+  hoverPlayBtn.setAttribute('aria-label', 'Read this paragraph aloud');
   hoverPlayBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
   shadow.appendChild(hoverPlayBtn);
 
