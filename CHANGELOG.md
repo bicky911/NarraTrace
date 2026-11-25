@@ -2,6 +2,7 @@
 
 ## Unreleased — reliability and provider scope
 
+- Declare Chrome 120 as the minimum supported version so the MV3 session-storage recovery path and 30-second alarm cadence match the browser compatibility contract.
 - Add a bundled real-engine diagnostics page for the selected Chrome TTS voice, including event timing, manual first-audio confirmation, safe stop, and JSON export without sample text.
 - Restrict diagnostic speech and full session inspection to the bundled diagnostics page; prevent normal playback and diagnostics from overlapping.
 - Redact raw provider error strings before diagnostics export; an adversarial Chromium test verifies that provider errors cannot echo the spoken sample into the report.

@@ -38,6 +38,8 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 
 ## 🚀 Installation & Local Development
 
+**Browser requirement:** Chrome 120 or later. Playback recovery uses `chrome.storage.session` (available in MV3 from Chrome 102) and a 30-second `chrome.alarms` interval (supported from Chrome 120).
+
 1. Clone this repository:
    ```bash
    git clone https://github.com/bicky911/NarraTrace.git
