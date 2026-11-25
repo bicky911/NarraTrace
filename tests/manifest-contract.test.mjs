@@ -63,6 +63,6 @@ test('minimum Chrome version covers the playback recovery APIs', () => {
     'manifest must require Chrome 120+ for chrome.storage.session and 30-second alarms'
   );
   assert.match(readme, /Browser requirement:\*\* Chrome 120 or later/i);
-  assert.match(runtime, /chrome\\.storage\\.session/);
-  assert.match(runtime, /periodInMinutes:\\s*0\\.5/);
+  assert.match(runtime, /chrome\.storage\.session/);
+  assert.match(runtime, /periodInMinutes:\s*0\.5/);
 });
