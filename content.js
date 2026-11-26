@@ -5154,7 +5154,8 @@
 
     // --- Stage 2: Readability word-frequency filter ---
     // Guard: skip Readability on very large documents where cloneNode(true)
-    // would spike memory (>5 MB of raw HTML → likely 30 MB+ clone).
+    // would spike memory. The bounded DOM estimate avoids serializing outerHTML
+    // and stops as soon as the 5 MB clone budget is exceeded.
     const MAX_CLONE_BYTES = 5 * 1024 * 1024;
     const docSizeBytes = estimateDocumentCloneBytes(document.documentElement, MAX_CLONE_BYTES);
     if (typeof window.Readability !== 'undefined' && docSizeBytes <= MAX_CLONE_BYTES) {
