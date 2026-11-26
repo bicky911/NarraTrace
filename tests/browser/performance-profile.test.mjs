@@ -21,12 +21,17 @@ const helpers = {
   getContentElements: extractSource(
     CONTENT_SOURCE,
     '  function getContentElements(container) {',
-    '  /**\n   * Find the best set of article elements'
+    '  /**\\n   * Find the best set of article elements'
   ),
   textIndexAndRanges: extractSource(
     CONTENT_SOURCE,
     '  function buildTextIndex(element) {',
-    '  /**\n   * Build a whitespace-normalised view of a DOM Range'
+    '  /**\\n   * Build a whitespace-normalised view of a DOM Range'
+  ),
+  documentCloneSize: extractSource(
+    CONTENT_SOURCE,
+    '  function estimateDocumentCloneBytes(root, maxBytes) {',
+    '  /**\\n   * Find the best set of article elements'
   )
 };
 
@@ -67,6 +72,25 @@ test('profiles production extraction and DOM range mapping on a large article', 
       '<main><article><h1>Annual watershed monitoring baseline</h1>' +
       paragraphs +
       '</article><aside><p>Sponsored monitoring equipment and related products.</p></aside></main>';
+
+    const estimateDocumentCloneBytes = new Function('document',
+      functions.documentCloneSize + '\\nreturn estimateDocumentCloneBytes;'
+    )(document);
+    const template = document.createElement('template');
+    template.innerHTML = '<section><p>Detached template content must count toward clone size.</p></section>';
+    document.body.appendChild(template);
+
+    const documentRoot = document.documentElement;
+    Object.defineProperty(documentRoot, 'outerHTML', {
+      configurable: true,
+      get() { throw new Error('clone-size estimation must not serialize outerHTML'); }
+    });
+    const cloneSizeStarted = performance.now();
+    const estimatedCloneBytes = estimateDocumentCloneBytes(documentRoot, 5 * 1024 * 1024);
+    const cloneSizeEstimateMs = performance.now() - cloneSizeStarted;
+    template.remove();
+    const withoutTemplateBytes = estimateDocumentCloneBytes(documentRoot, 5 * 1024 * 1024);
+    delete documentRoot.outerHTML;
 
     const host = document.createElement('div');
     const getContentElements = new Function('host', 'window',
@@ -113,6 +137,9 @@ test('profiles production extraction and DOM range mapping on a large article', 
       selectionMs,
       mappingMs,
       totalMs: selectionMs + mappingMs,
+      estimatedCloneBytes,
+      cloneSizeEstimateMs,
+      templateContentCounted: estimatedCloneBytes > withoutTemplateBytes,
       firstRangeText,
       lastRangeText,
       excludedSidebar: !blocks.some(block => block.textContent.includes('Sponsored monitoring equipment'))
@@ -145,6 +172,11 @@ test('profiles production extraction and DOM range mapping on a large article', 
   assert.ok(profile.sentenceCount >= 2400);
   assert.ok(profile.totalTextChars > 150000);
   assert.equal(profile.excludedSidebar, true);
+  assert.ok(profile.estimatedCloneBytes > 0);
+  assert.ok(profile.cloneSizeEstimateMs < 1000,
+    `bounded DOM clone-size estimation exceeded 1000 ms (${profile.cloneSizeEstimateMs.toFixed(1)} ms)`);
+  assert.equal(profile.templateContentCounted, true,
+    'detached template contents must be included in the clone estimate');
 
   // Initial CI guard: observed baseline is ~42 ms on the GitHub Chromium
   // runner. A 1 s ceiling leaves substantial room for runner variance while
