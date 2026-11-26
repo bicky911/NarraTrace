@@ -21,17 +21,17 @@ const helpers = {
   getContentElements: extractSource(
     CONTENT_SOURCE,
     '  function getContentElements(container) {',
-    '  /**\\n   * Find the best set of article elements'
+    '  /**\n   * Find the best set of article elements'
   ),
   textIndexAndRanges: extractSource(
     CONTENT_SOURCE,
     '  function buildTextIndex(element) {',
-    '  /**\\n   * Build a whitespace-normalised view of a DOM Range'
+    '  /**\n   * Build a whitespace-normalised view of a DOM Range'
   ),
   documentCloneSize: extractSource(
     CONTENT_SOURCE,
     '  function estimateDocumentCloneBytes(root, maxBytes) {',
-    '  /**\\n   * Find the best set of article elements'
+    '  /**\n   * Find the best set of article elements'
   )
 };
 
@@ -74,7 +74,7 @@ test('profiles production extraction and DOM range mapping on a large article', 
       '</article><aside><p>Sponsored monitoring equipment and related products.</p></aside></main>';
 
     const estimateDocumentCloneBytes = new Function('document',
-      functions.documentCloneSize + '\\nreturn estimateDocumentCloneBytes;'
+      functions.documentCloneSize + '\nreturn estimateDocumentCloneBytes;'
     )(document);
     const template = document.createElement('template');
     template.innerHTML = '<section><p>Detached template content must count toward clone size.</p></section>';
