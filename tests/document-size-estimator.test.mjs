@@ -19,8 +19,9 @@ vm.runInNewContext(
 );
 const estimateDocumentCloneBytes = sandbox.__estimateDocumentCloneBytes;
 
-function makeRoot(children = []) {
+function makeRoot(children = [], extraTrees = new Map()) {
   let nextCalls = 0;
+  let walkerCreations = 0;
   const root = {
     nodeType: 1,
     tagName: 'HTML',
@@ -33,18 +34,24 @@ function makeRoot(children = []) {
   });
   root.ownerDocument = {
     createTreeWalker(walkRoot, whatToShow) {
-      assert.equal(walkRoot, root);
+      assert.ok(walkRoot === root || extraTrees.has(walkRoot));
       assert.equal(whatToShow, 0xFFFFFFFF);
+      walkerCreations++;
+      const nodes = walkRoot === root ? children : extraTrees.get(walkRoot);
       let index = 0;
       return {
         nextNode() {
           nextCalls++;
-          return children[index++] || null;
+          return nodes[index++] || null;
         }
       };
     }
   };
-  return { root, nextCalls: () => nextCalls };
+  return {
+    root,
+    nextCalls: () => nextCalls,
+    walkerCreations: () => walkerCreations
+  };
 }
 
 test('estimates element, attribute, and text-node size without reading outerHTML', () => {
@@ -74,6 +81,24 @@ test('stops walking as soon as the configured clone budget is exceeded', () => {
   const estimate = estimateDocumentCloneBytes(root, 100);
   assert.ok(estimate > 100);
   assert.equal(nextCalls(), 1, 'the walker must stop immediately after crossing the budget');
+});
+
+test('includes detached template contents in the clone estimate', () => {
+  const templateContent = { nodeType: 11 };
+  const template = {
+    nodeType: 1,
+    tagName: 'TEMPLATE',
+    attributes: [],
+    content: templateContent
+  };
+  const templateText = { nodeType: 3, nodeValue: 'hidden' };
+  const { root, walkerCreations } = makeRoot(
+    [template],
+    new Map([[templateContent, [templateText]]])
+  );
+
+  assert.equal(estimateDocumentCloneBytes(root, 10000), 256);
+  assert.equal(walkerCreations(), 2, 'template content must be traversed separately');
 });
 
 test('invalid roots and unavailable DOM traversal fail safely', () => {
