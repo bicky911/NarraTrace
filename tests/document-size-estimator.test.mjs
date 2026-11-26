@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const source = await readFile(new URL('../content.js', import.meta.url), 'utf8');
 const startMarker = '  function estimateDocumentCloneBytes(root, maxBytes) {';
-const endMarker = '  /**\\n   * Find the best set of article elements';
+const endMarker = '  /**\n   * Find the best set of article elements';
 const start = source.indexOf(startMarker);
 const end = source.indexOf(endMarker, start);
 assert.ok(start >= 0 && end > start, 'production document-size estimator should be present');
@@ -13,7 +13,7 @@ assert.ok(start >= 0 && end > start, 'production document-size estimator should 
 const helperSource = source.slice(start, end).trim();
 const sandbox = {};
 vm.runInNewContext(
-  helperSource + '\\nglobalThis.__estimateDocumentCloneBytes = estimateDocumentCloneBytes;',
+  helperSource + '\nglobalThis.__estimateDocumentCloneBytes = estimateDocumentCloneBytes;',
   sandbox,
   { filename: 'content.js#estimateDocumentCloneBytes' }
 );
