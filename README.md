@@ -61,6 +61,7 @@ node --test tests/tts-diagnostic-privacy.test.mjs
 node --test tests/playback-manager.test.mjs
 node --test tests/sentence-tokenizer.test.mjs
 node --test tests/resource-lifecycle.test.mjs
+node --test tests/document-size-estimator.test.mjs
 node --test tests/manifest-contract.test.mjs
 python test-harness.py
 python -m unittest discover -s tests -p "test_build_release.py"
