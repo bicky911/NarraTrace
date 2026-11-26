@@ -5077,10 +5077,32 @@
     addNodeEstimate(root);
     if (estimatedBytes > limit) return estimatedBytes;
 
-    let node;
-    while ((node = walker.nextNode())) {
+    // Template contents are held in a separate DocumentFragment and are not
+    // descendants of the <template> element for TreeWalker traversal, but
+    // cloneNode(true) and outerHTML both include them. Account for them too.
+    const walkers = [walker];
+    while (walkers.length > 0) {
+      const currentWalker = walkers[walkers.length - 1];
+      const node = currentWalker.nextNode();
+      if (!node) {
+        walkers.pop();
+        continue;
+      }
+
       addNodeEstimate(node);
       if (estimatedBytes > limit) return estimatedBytes;
+
+      if (node.nodeType === 1 && node.tagName === 'TEMPLATE' && node.content) {
+        estimatedBytes += 32; // DocumentFragment overhead
+        if (estimatedBytes > limit) return estimatedBytes;
+        try {
+          const templateWalker = doc.createTreeWalker(node.content, 0xFFFFFFFF);
+          if (!templateWalker || typeof templateWalker.nextNode !== 'function') return Infinity;
+          walkers.push(templateWalker);
+        } catch (_) {
+          return Infinity;
+        }
+      }
     }
 
     return estimatedBytes;
