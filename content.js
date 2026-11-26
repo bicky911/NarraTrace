@@ -5027,6 +5027,66 @@
   }
 
   /**
+   * Estimate the memory footprint of a potential Readability clone without
+   * serializing the entire live document through outerHTML. Walk the DOM in
+   * place, count text/attribute payload plus conservative per-node overhead,
+   * and stop as soon as the clone budget is exceeded.
+   *
+   * Returning Infinity when a TreeWalker is unavailable safely disables the
+   * optional clone path and leaves the normal extraction fallback intact.
+   */
+  function estimateDocumentCloneBytes(root, maxBytes) {
+    if (!root || typeof root.nodeType !== 'number') return 0;
+
+    const limit = Number.isFinite(maxBytes) && maxBytes >= 0
+      ? maxBytes
+      : 5 * 1024 * 1024;
+    const doc = root.nodeType === 9 ? root : root.ownerDocument;
+    if (!doc || typeof doc.createTreeWalker !== 'function') return Infinity;
+
+    let walker;
+    try {
+      walker = doc.createTreeWalker(root, 0xFFFFFFFF);
+    } catch (_) {
+      return Infinity;
+    }
+    if (!walker || typeof walker.nextNode !== 'function') return Infinity;
+
+    let estimatedBytes = 0;
+    const addNodeEstimate = (node) => {
+      if (node.nodeType === 1) {
+        const tagName = typeof node.tagName === 'string' ? node.tagName : '';
+        estimatedBytes += 64 + tagName.length * 2;
+
+        const attributes = node.attributes;
+        for (let i = 0; attributes && i < attributes.length; i++) {
+          const attribute = attributes[i];
+          if (!attribute) continue;
+          const name = typeof attribute.name === 'string' ? attribute.name : '';
+          const value = typeof attribute.value === 'string' ? attribute.value : '';
+          estimatedBytes += 16 + (name.length + value.length) * 2;
+        }
+      } else if (node.nodeType === 3 || node.nodeType === 8) {
+        const value = typeof node.nodeValue === 'string' ? node.nodeValue : '';
+        estimatedBytes += 32 + value.length * 2;
+      } else {
+        estimatedBytes += 32;
+      }
+    };
+
+    addNodeEstimate(root);
+    if (estimatedBytes > limit) return estimatedBytes;
+
+    let node;
+    while ((node = walker.nextNode())) {
+      addNodeEstimate(node);
+      if (estimatedBytes > limit) return estimatedBytes;
+    }
+
+    return estimatedBytes;
+  }
+
+  /**
    * Find the best set of article elements for this page using a three-stage cascade:
    *
    * Stage 1 — Exact container match: try well-known article wrappers in priority order.
@@ -5073,8 +5133,8 @@
     // --- Stage 2: Readability word-frequency filter ---
     // Guard: skip Readability on very large documents where cloneNode(true)
     // would spike memory (>5 MB of raw HTML → likely 30 MB+ clone).
-    const docSizeBytes = (document.documentElement.outerHTML || '').length * 2; // rough UTF-16
     const MAX_CLONE_BYTES = 5 * 1024 * 1024;
+    const docSizeBytes = estimateDocumentCloneBytes(document.documentElement, MAX_CLONE_BYTES);
     if (typeof window.Readability !== 'undefined' && docSizeBytes <= MAX_CLONE_BYTES) {
       try {
         const docClone = document.cloneNode(true);
