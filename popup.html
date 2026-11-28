@@ -29,6 +29,8 @@
       --ra-muted:     #686862;
       --ra-accent:    #FF5C00;
       --ra-accent-hover: #E65300;
+      /* Keep the engine status label readable against the light popup surface. */
+      --ra-led-green: #176B43;
     }
 
     * {
@@ -48,7 +50,12 @@
       overflow-x: hidden;
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 14px;
+      visibility: hidden;
       transition: background 150ms ease, color 150ms ease;
+    }
+
+    body.is-hydrated {
+      visibility: visible;
     }
 
     /* ── Header ─────────────────────────────────────────── */
@@ -502,6 +509,475 @@
       outline: 2px solid var(--ra-accent) !important;
       outline-offset: 2px !important;
     }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
+    /* ── NT·1 visual foundation: readable, precise, and comfortably operable ── */
+    :root {
+      --ra-font-ui: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --ra-control-size: 40px;
+      --ra-control-radius: 11px;
+      --ra-focus-ring: 3px;
+    }
+
+    * {
+      font-family: var(--ra-font-ui);
+    }
+
+    body {
+      width: 360px;
+      max-width: calc(100vw - 16px);
+      padding: 16px;
+      line-height: 1.45;
+    }
+
+    .header {
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 14px;
+    }
+
+    .header-left {
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .header-logo {
+      width: 26px;
+      height: 26px;
+      flex: 0 0 auto;
+    }
+
+    .header-title,
+    .header-tagline,
+    .engine-badge,
+    .tab-title,
+    .progress-counter,
+    .form-label,
+    .form-val,
+    .voice-substatus {
+      font-family: var(--ra-font);
+    }
+
+    .header-title {
+      font-size: 12px;
+      letter-spacing: 0.1em;
+    }
+
+    .header-tagline {
+      font-size: 9px;
+      letter-spacing: 0.055em;
+      line-height: 1.35;
+    }
+
+    .engine-badge {
+      font-size: 9px;
+      padding: 5px 8px;
+      border-radius: 999px;
+    }
+
+    button.icon-toggle {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      font-size: 14px;
+      flex: 0 0 auto;
+    }
+
+    .card {
+      padding: 14px;
+      margin-bottom: 12px;
+      border-radius: 14px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .tab-info-row {
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .tab-title {
+      min-width: 0;
+      max-width: 220px;
+      font-size: 10px;
+      letter-spacing: 0.065em;
+    }
+
+    .progress-counter {
+      font-size: 10px;
+      padding: 3px 7px;
+    }
+
+    .sentence-box {
+      min-height: 60px;
+      max-height: 84px;
+      padding: 11px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.55;
+      user-select: text;
+    }
+
+    .progress-bar-wrap {
+      height: 6px;
+      margin-top: 12px;
+      border-radius: 3px;
+    }
+
+    .controls-row {
+      gap: 12px;
+      margin: 14px 0 4px;
+    }
+
+    button.ctrl-btn {
+      width: var(--ra-control-size);
+      height: var(--ra-control-size);
+      border-radius: var(--ra-control-radius);
+    }
+
+    button.ctrl-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    button.ctrl-btn.play-main {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+    }
+
+    button.ctrl-btn.play-main svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-label-row {
+      margin-bottom: 7px;
+    }
+
+    .form-label {
+      font-size: 10px;
+      letter-spacing: 0.09em;
+    }
+
+    .form-val {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    select.voice-select {
+      min-height: 42px;
+      padding: 9px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+    }
+
+    .voice-substatus {
+      margin-top: 6px;
+      font-size: 9px;
+      line-height: 1.4;
+      letter-spacing: 0.025em;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .speed-slider-wrap {
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    input[type="range"] {
+      height: 6px;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      width: 16px;
+      height: 16px;
+    }
+
+    .speed-chips {
+      gap: 8px;
+    }
+
+    button.chip {
+      min-height: 36px;
+      padding: 7px 0;
+      border-radius: 9px;
+      font-size: 11px;
+    }
+
+    .footer-actions {
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    button.footer-btn {
+      min-height: 42px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 10px;
+      letter-spacing: 0.075em;
+    }
+
+    button:focus-visible,
+    select:focus-visible,
+    input:focus-visible {
+      outline: var(--ra-focus-ring) solid var(--ra-accent) !important;
+      outline-offset: 3px !important;
+    }
+
+    @media (max-width: 360px) {
+      body {
+        padding: 12px;
+      }
+
+      .controls-row {
+        gap: 8px;
+      }
+
+      .footer-actions {
+        gap: 6px;
+      }
+    }
+
+    /* ── Reading Atelier: quiet warmth, clear hierarchy, no visual clutter ── */
+    :root {
+      --ra-bg: #171419;
+      --ra-surface: #242027;
+      --ra-inner: #1B171D;
+      --ra-border: #403740;
+      --ra-text: #F2ECE6;
+      --ra-muted: #B4A8A1;
+      --ra-accent: #FF7043;
+      --ra-accent-hover: #F05A2A;
+      --ra-font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    }
+
+    body {
+      background:
+        radial-gradient(ellipse at 94% 0%, rgba(255, 112, 67, 0.07), transparent 44%),
+        linear-gradient(150deg, #1B171D 0%, var(--ra-bg) 64%);
+      border-color: rgba(239, 223, 210, 0.14);
+    }
+
+    body.light {
+      --ra-bg: #F3EEE6;
+      --ra-surface: #FCF9F3;
+      --ra-inner: #E9E1D7;
+      --ra-border: #D9CFC2;
+      --ra-text: #302925;
+      --ra-muted: #70645C;
+      --ra-accent: #A94D32;
+      --ra-accent-hover: #873B26;
+      background:
+        radial-gradient(ellipse at 94% 0%, rgba(169, 77, 50, 0.08), transparent 44%),
+        linear-gradient(150deg, #FAF7F1 0%, var(--ra-bg) 68%);
+      border-color: rgba(91, 72, 59, 0.16);
+    }
+
+
+    body.light .engine-badge:not(.warning) {
+      color: var(--ra-led-green);
+      background: #E2F0E6;
+      border-color: #B8D4C0;
+    }
+
+    body.light .engine-badge.warning {
+      /* Warning badges override the ready-state token; keep their text AA-readable too. */
+      color: #76351F;
+      background: #F4E3D9;
+      border-color: #D9B5A3;
+    }
+
+
+    .header {
+      position: relative;
+      padding-bottom: 15px;
+      border-bottom-color: rgba(220, 192, 174, 0.17);
+    }
+
+    .header::after {
+      content: "";
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      width: 72px;
+      height: 2px;
+      background: linear-gradient(90deg, var(--ra-accent), transparent);
+      border-radius: 99px;
+    }
+
+    .card {
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.02));
+      border-color: rgba(239, 223, 210, 0.15);
+      box-shadow: 0 9px 26px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+    }
+
+    body.light .card {
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.84), rgba(243, 236, 226, 0.72));
+      border-color: rgba(102, 78, 59, 0.14);
+      box-shadow: 0 8px 22px rgba(83, 63, 46, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    }
+
+    .sentence-box {
+      background: rgba(0, 0, 0, 0.18);
+      border-color: rgba(239, 223, 210, 0.11);
+      border-left-color: transparent;
+      font-family: var(--ra-font-ui);
+    }
+
+    body.light .sentence-box {
+      background: rgba(88, 65, 48, 0.055);
+      border-color: rgba(91, 72, 59, 0.13);
+      border-left-color: transparent;
+    }
+
+    .sentence-box.active {
+      background: rgba(255, 112, 67, 0.075);
+      border-left-color: var(--ra-accent);
+    }
+
+    body.light .sentence-box.active {
+      background: rgba(169, 77, 50, 0.07);
+    }
+
+    .progress-counter,
+    .form-val {
+      color: var(--ra-accent);
+      border-color: rgba(255, 112, 67, 0.23);
+      background: rgba(255, 112, 67, 0.085);
+    }
+
+    body.light .progress-counter,
+    body.light .form-val {
+      border-color: rgba(169, 77, 50, 0.22);
+      background: rgba(169, 77, 50, 0.075);
+    }
+
+    button.ctrl-btn.play-main {
+      background: linear-gradient(145deg, #FF825A, #E95E34);
+      color: #241611;
+      box-shadow: 0 5px 16px rgba(255, 112, 67, 0.3);
+    }
+
+    button.ctrl-btn.play-main svg {
+      fill: #241611;
+    }
+
+    button.chip.active {
+      background: var(--ra-accent);
+      border-color: var(--ra-accent);
+      color: #FFFFFF;
+      box-shadow: 0 3px 10px rgba(169, 77, 50, 0.18);
+    }
+
+    body:not(.light) button.chip.active {
+      color: #241611;
+    }
+
+    .footer-actions button {
+      font-family: var(--ra-font);
+    }
+
+    @media (max-width: 360px) {
+      .header-tagline {
+        white-space: normal;
+      }
+      .tab-title {
+        max-width: 180px;
+      }
+    }
+
+
+    /* Light mode: keep control boundaries, range tracks, and focus visible. */
+    body.light input[type="range"] {
+      background: #8C8A82;
+    }
+
+    body.light input[type="range"]::-webkit-slider-thumb {
+      background: #A94D32;
+      border-color: #F5F4F0;
+    }
+
+    body.light select.voice-select {
+      background: #FCF9F3;
+      border-color: #8C8A82;
+      color: #1A1A1A;
+    }
+
+    body.light select.voice-select:hover,
+    body.light select.voice-select:focus {
+      border-color: #A94D32;
+    }
+
+    body.light select.voice-select option {
+      background: #FCF9F3;
+      color: #1A1A1A;
+    }
+
+    body.light button.chip {
+      background: #FCF9F3;
+      border-color: #8C8A82;
+      color: #686862;
+    }
+
+    body.light button.chip:hover {
+      background: #F3EEE6;
+      border-color: #A94D32;
+      color: #302925;
+    }
+
+    /* aria-pressed is the authoritative selected state for speed presets. */
+    body.light button.chip[aria-pressed="true"],
+    body.light button.chip[aria-pressed="true"]:hover {
+      background: var(--ra-accent);
+      border-color: var(--ra-accent);
+      color: #FFFFFF;
+    }
+
+    body.light .progress-counter,
+    body.light .form-val {
+      color: #A94D32;
+      background: #FCF9F3;
+      border-color: #8C8A82;
+    }
+
+    body.light button:focus-visible,
+    body.light select:focus-visible,
+    body.light input:focus-visible {
+      outline: 3px solid #A94D32 !important;
+      outline-offset: 3px !important;
+    }
+
+    /* Give the remaining light-theme controls the same paper/ink treatment. */
+    body.light button.ctrl-btn:not(.play-main),
+    body.light button.icon-toggle,
+    body.light button.footer-btn {
+      background: #FCF9F3;
+      border-color: #8C8A82;
+      color: #302925;
+    }
+
+    body.light button.ctrl-btn:not(.play-main):hover,
+    body.light button.icon-toggle:hover,
+    body.light button.footer-btn:hover {
+      background: #F3EEE6;
+      border-color: #A94D32;
+      color: #302925;
+    }
+
   </style>
 </head>
 <body>
@@ -516,10 +992,10 @@
     </div>
     <div class="header-right">
       <span id="engine-badge" class="engine-badge">
-        <span id="status-dot" class="status-dot"></span>
+        <span id="status-dot" class="status-dot" aria-hidden="true"></span>
         <span id="badge-text">ENGINE</span>
       </span>
-      <button class="icon-toggle" id="theme-toggle" title="Toggle OP-1 Light / Dark mode" aria-label="Toggle light or dark theme">☼</button>
+      <button class="icon-toggle" id="theme-toggle" title="Toggle OP-1 Light / Dark mode" aria-label="Switch to light theme">☼</button>
     </div>
   </div>
 
@@ -535,7 +1011,7 @@
       Ready — NarraTrace will narrate this page and trace every word. Press play.
     </div>
 
-    <div class="progress-bar-wrap" role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <div class="progress-bar-wrap" role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="No reading progress">
       <div class="progress-bar-fill" id="progress-bar-fill"></div>
     </div>
 
@@ -545,7 +1021,7 @@
         <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
       </button>
 
-      <button class="ctrl-btn play-main" id="ctrl-play" title="Play / Pause (Alt+P)" aria-label="Play or pause reading">
+      <button class="ctrl-btn play-main" id="ctrl-play" title="Play / Pause (Alt+P)" aria-label="Play reading" aria-pressed="false">
         <svg id="ctrl-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       </button>
 
@@ -566,10 +1042,10 @@
       <div class="form-label-row">
         <label class="form-label" for="popup-voice-select">VOICE ENGINE</label>
       </div>
-      <select class="voice-select" id="popup-voice-select">
+      <select class="voice-select" id="popup-voice-select" aria-describedby="voice-substatus">
         <option value="">Scanning local voices…</option>
       </select>
-      <div class="voice-substatus" id="voice-substatus">Scanning local voices…</div>
+      <div class="voice-substatus" id="voice-substatus" role="status" aria-live="polite" aria-atomic="true">Scanning local voices…</div>
     </div>
 
     <!-- Speed -->
@@ -579,13 +1055,13 @@
         <span class="form-val" id="popup-speed-display">1.0×</span>
       </div>
       <div class="speed-slider-wrap">
-        <input type="range" id="popup-speed-slider" min="0.5" max="3.0" step="0.1" value="1.0">
+        <input type="range" id="popup-speed-slider" min="0.5" max="3.0" step="0.1" value="1.0" aria-valuetext="1.0 times playback speed">
       </div>
-      <div class="speed-chips">
-        <button class="chip active" data-speed="1.0">1.0×</button>
-        <button class="chip" data-speed="1.2">1.2×</button>
-        <button class="chip" data-speed="1.5">1.5×</button>
-        <button class="chip" data-speed="2.0">2.0×</button>
+      <div class="speed-chips" role="group" aria-label="Playback speed presets">
+        <button type="button" class="chip active" data-speed="1.0" aria-pressed="true">1.0×</button>
+        <button type="button" class="chip" data-speed="1.2" aria-pressed="false">1.2×</button>
+        <button type="button" class="chip" data-speed="1.5" aria-pressed="false">1.5×</button>
+        <button type="button" class="chip" data-speed="2.0" aria-pressed="false">2.0×</button>
       </div>
     </div>
 
@@ -596,14 +1072,14 @@
         <span class="form-val" id="popup-volume-display">100%</span>
       </div>
       <div class="speed-slider-wrap">
-        <input type="range" id="popup-volume-slider" min="0" max="1" step="0.05" value="1.0">
+        <input type="range" id="popup-volume-slider" min="0" max="1" step="0.05" value="1.0" aria-valuetext="100 percent volume">
       </div>
     </div>
   </div>
 
   <!-- Bottom Hardware Actions -->
   <div class="footer-actions">
-    <button class="footer-btn" id="btn-toggle-pill" title="Toggle floating on-screen pill module" aria-label="Toggle floating on-screen pill player">
+    <button class="footer-btn" id="btn-toggle-pill" title="Toggle floating on-screen pill module" aria-label="Hide floating player" aria-pressed="true">
       <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
       <span id="btn-toggle-text">HIDE SCREEN MODULE</span>
     </button>

@@ -1,135 +1,112 @@
-# NarraTrace 1.4.0 — 5-minute manual test checklist
+# NarraTrace — Real-engine manual validation
 
-Everything below was verified automatically in a real Chrome (19/19 engine checks,
-13/13 UI checks). This list is for the two things a headless browser cannot
-judge: **how it actually sounds on your machine** and **how it feels while you
-use it**.
+Use this checklist on the Windows/Chrome installation that will run NarraTrace. Automated tests verify queue state, event routing, extraction, focus behavior, and browser integration; they do not establish real audio quality or acoustic word alignment.
 
----
+## 0 · Install the candidate build
 
-## 0 · Install (30 s)
+1. Open `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Load the candidate extension folder containing `manifest.json`, or reload the existing unpacked installation.
+4. Refresh the article tab after reloading the extension.
+5. Open the NarraTrace popup and confirm it reports the expected build and voice provider.
 
-1. Open `chrome://extensions`
-2. Turn on **Developer mode** (top right)
-3. **Load unpacked** → select exactly this folder:
+Do not rely on a machine-specific folder path or extension ID in this checklist.
 
-   ```
-   C:\Users\bicky_local\Desktop\read-aloud
-   ```
+## 1 · Provider discovery and selection
 
-   *(Not the zip, not a parent folder — the folder that contains `manifest.json`.)*
-4. **Refresh every open tab** (Ctrl+R). A content script that was injected
-   before the reload keeps the old code.
+| Check | Action | Expected result |
+|---|---|---|
+| 1.1 | Open the voice selector | Piper and Supertonic appear when their providers are installed and advertising voices |
+| 1.2 | Inspect other installed Chrome TTS providers | They appear under a generic **Other engine** group; NarraTrace does not claim provider-specific tuning for them |
+| 1.3 | Start with automatic selection and Piper installed | Piper is preferred when its voice is available |
+| 1.4 | Explicitly select a Supertonic voice | The selection is remembered while that voice remains available |
+| 1.5 | Restart Chrome and reopen NarraTrace | The selected voice is resolved again after providers register their voices |
 
-> Chrome shows the extension as **NarraTrace · 1.4.0** with the id
-> `hbfbblacfbkjafmkjohjpbojhcfofpnp`.
+NarraTrace's maintained provider profiles are **Piper and Supertonic**. Other Chrome TTS extensions remain usable through the generic Chrome TTS path, but are not a release-validation dependency.
 
----
+## 2 · Audible output and continuity
 
-## 1 · The engine switched to Kokoro (60 s)
+- [ ] Start narration on a short article and confirm that sound is audible.
+- [ ] Confirm the popup badge names the provider actually selected.
+- [ ] Listen across at least ten sentence boundaries. There should be no unexplained long dead-air gaps.
+- [ ] Repeat with a longer article and note first-audio latency separately from inter-sentence gaps.
+- [ ] Repeat after a cold Chrome start and after a warm start.
+- [ ] Confirm no duplicate sentence, skipped sentence, or overlapping audio occurs.
+- [ ] Use Stop, then start a new article. The previous utterance must not continue.
 
-| # | Do this | Expected |
-|---|---------|----------|
-| 1.1 | Click the NarraTrace toolbar icon | The popup badge reads **KOKORO** |
-| 1.2 | Open the voice dropdown | Three groups: `★ Kokoro (local neural)` with 28 voices, `★ Supertonic (local neural)`, `Windows System Voices` |
-| 1.3 | The selected voice | **Kokoro Heart** |
-| 1.4 | Open a Wikipedia article and press play | It speaks with a Kokoro voice, not the Supertonic one |
+Record the Chrome version, provider/voice name, rate, first-audio latency, and any noticeable sentence gaps. Do not describe a provider as local or network-based unless its own current documentation confirms that behavior.
 
-> If the badge says `SUPERTONIC`, you have pinned a Supertonic voice in an
-> earlier session. That is intentional behaviour — pick any Kokoro voice in the
-> dropdown once and it sticks.
+## 3 · Speech-to-source synchronization
 
----
+- [ ] Words highlight in reading order and track the audible speech.
+- [ ] The highlight does not race ahead during provider preparation.
+- [ ] At sentence and batch boundaries, the next highlight starts when the corresponding audio begins.
+- [ ] Change playback speed during a sentence. The next spoken and highlighted positions must remain aligned.
+- [ ] Pause in the middle of a sentence, wait several seconds, then resume. Verify the resume position without a repeated or skipped word.
+- [ ] Skip forward and backward rapidly. Only the final requested sentence should continue speaking.
+- [ ] Change voice during playback. Verify the new voice is active and the queue does not restart from an unrelated position.
 
-## 2 · The first sentence takes a moment — that is normal (90 s)
+If a provider does not expose dependable word offsets, sentence-level highlighting is preferable to confidently highlighting the wrong word.
 
-Kokoro rebuilds its neural model **for every utterance**:
+## 4 · Focus Reader and keyboard accessibility
 
-| Situation | Wait before you hear sound |
-|-----------|---------------------------|
-| First utterance ever (92 MB model download) | ~25–35 s |
-| Every later utterance | ~10 s (CPU) / ~1–3 s (WebGPU) |
-| A group of 4–12 sentences | one wait for the whole group |
+- [ ] Open Focus Reader from the floating player.
+- [ ] Use Tab and Shift+Tab; focus remains within the reader dialog.
+- [ ] Use arrow keys, Home, and End on the progress control.
+- [ ] Press Escape. The reader closes and focus returns to its opener.
+- [ ] Repeat with the floating player in mini layout and in its auto-tucked/beaded state.
+- [ ] Open Settings, then press Escape. Focus returns to the Settings trigger even in mini layout.
+- [ ] Confirm focus indicators remain visible and that reduced-motion preference is respected.
 
-- [ ] The pause before the voice starts is **one** pause, not one per sentence.
-- [ ] While the pause happens, the highlight sits still on the first word
-      instead of racing ahead. *(This is the fix for the drifting highlight.)*
-- [ ] If your machine has a working WebGPU, the wait is much shorter. Check
-      `chrome://gpu`.
+### Popup and assistive-technology state checks
 
----
+- [ ] With a screen reader enabled, verify the popup play control announces **Play reading**, **Pause reading**, and **Resume reading** as playback changes state.
+- [ ] Verify the voice selector is named and that voice discovery/selection status is announced without forcing focus away from the control.
+- [ ] Verify playback speed and volume controls expose readable current values (for example, **1.5 times playback speed** and **40 percent volume**).
+- [ ] Verify the reading progress control announces the current sentence position and returns to **No reading progress** after playback stops.
+- [ ] Verify Focus Reader text-size, font, and theme controls have meaningful names, and selected themes/highlight colors expose their active state.
+- [ ] Switch among cream, dark, sepia, and OLED themes. Confirm body copy, metadata, and the active-word treatment remain comfortably legible.
 
-## 3 · The highlight stays on the spoken word (90 s)
+### Compact layout and motion
 
-- [ ] Words highlight **one at a time**, in order.
-- [ ] The highlighted word is the word being **spoken** — not 1–2 sentences ahead.
-- [ ] At the end of a group, the highlight jumps to the first word of the next
-      group exactly when the voice starts there.
-- [ ] Change the **speed** slider (0.5× → 2×). The highlight must keep up with
-      the new speed, not stay at the old rate.
-- [ ] Press **pause** in the middle of a sentence, wait 10 s, press **play**.
-      The voice resumes **at the same word** and the highlight continues there.
-      *(Kokoro has no native pause, so NarraTrace stops and resumes from the
-      exact offset — the word must not be skipped or repeated.)*
-- [ ] Press **next** / **previous**. The voice jumps a sentence and the
-      highlight jumps with it.
+- [ ] Set the browser viewport to 320 × 740 px while Focus Reader is open. The reader header and playback bar must remain inside the viewport without horizontal document scrolling.
+- [ ] Enable the operating system/browser reduced-motion preference. Confirm decorative transitions and animations are suppressed while playback and focus behavior remain functional.
 
----
+## 5 · Page extraction and dynamic content
 
-## 4 · The floating player (60 s)
+- [ ] Test a research article with headings, lists, captions, tables, and references.
+- [ ] Test a long-form news article with navigation, ads, related links, and footer content.
+- [ ] Confirm page chrome and repeated recommendation blocks are not narrated.
+- [ ] Replace or update a paragraph dynamically while narration is active. Highlighting must recover or safely fall back.
+- [ ] Test browser zoom at 100%, 150%, and 200%.
 
-- [ ] At rest, the player is a **thin 6 px vertical bar** docked flush against
-      the right screen edge — like the Samsung Galaxy S26 Ultra edge panel. It
-      should not cover any page text.
-- [ ] Click the bar → it opens to a **small 48 × 34 px block** (status LED +
-  play button only).
-- [ ] Hover the block → the full control row unfolds (previous, play, next,
-  speed, settings, collapse).
-- [ ] Move the mouse away → it folds back to the small block.
+## 6 · Failure and fallback behavior
 
----
+- [ ] Temporarily disable Piper. NarraTrace should use the next available supported provider or a system voice.
+- [ ] Temporarily disable Supertonic. Confirm a working alternative is selected.
+- [ ] Disable all extension-provided TTS providers. Confirm a compatible Chrome/system voice is selected when available.
+- [ ] Close the article tab during narration. Audio must not continue invisibly.
+- [ ] Navigate or refresh the active article tab. Playback must stop or recover according to the documented session behavior.
+- [ ] Force the service worker to stop during playback in the automated integration test. Confirm the queue advances without duplicate audio.
 
-## 5 · The player keeps its size when you zoom the page (60 s)
+## 7 · Performance and privacy checks
 
-- [ ] Press **Ctrl + +** until the page reaches 150–200 %.
-- [ ] The player stays exactly the same **physical** size — it does not grow
-      with the page.
-      *(Measured automatically: 0.0 % width drift between 100 % and 150 %.)*
-- [ ] Ctrl+0 back to 100 % → the player is still the same size.
-- [ ] Same on a HiDPI display — it should not be half or double size.
+- [ ] Compare the extension's idle behavior with active playback on the target CPU-only machine.
+- [ ] Check memory after a 30-minute narration session for unbounded growth.
+- [ ] Confirm animations and observers stop when their UI/page lifecycle ends.
+- [ ] Review the selected voice provider's privacy policy. NarraTrace passes narration text to Chrome's TTS API; provider processing and retention depend on that provider.
+- [ ] Run the bundled [real-engine diagnostic workflow](DEVICE-DIAGNOSTICS.md) for each provider you use. Require both a clean Chrome `end` event and the manual **I Hear Audio** mark before recording an audible pass.
 
----
+## Diagnostic report
 
-## 6 · Hover to play (30 s)
+When a check fails, capture:
 
-- [ ] Hover a paragraph in a page → a **play button appears** on it.
-- [ ] Click it → NarraTrace starts **from that paragraph**, not from the top of
-      the page.
-- [ ] Hover another paragraph while reading → the button follows the mouse.
+- Chrome version and operating system
+- NarraTrace version/commit
+- Provider and exact voice name
+- Selected speed and language
+- Whether the provider is cold-starting or already warm
+- Expected behavior and actual behavior
+- Relevant NarraTrace service-worker console messages
 
----
-
-## 7 · Fallback check (30 s)
-
-- [ ] Pick a **Supertonic** voice in the dropdown → the badge changes to
-  `SUPERTONIC` and Supertonic speaks. *(This proves the fallback still works
-  and that a pinned voice is never overridden.)*
-- [ ] Pick a Kokoro voice again → the badge returns to `KOKORO`.
-- [ ] Disable the Kokoro extension in `chrome://extensions` → NarraTrace falls
-  back to Supertonic, or to a Windows system voice if Supertonic is off too.
-
----
-
-## If something is wrong
-
-Open `chrome://extensions` → **NarraTrace** → **service worker** → the console
-log. The useful lines are:
-
-```
-[Background] NarraTrace service worker active.
-[SpeechEngine] Speech exceeded Ns without TTS end event; advancing to avoid stall.
-[Background] Voice refresh failed: ...
-```
-
-Copy that output and send it back — it identifies which of the seven sections
-above is misbehaving.
+Do not include private article text in diagnostic reports unless it is necessary and you explicitly choose to share it.

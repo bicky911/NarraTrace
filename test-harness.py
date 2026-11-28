@@ -160,6 +160,32 @@ check(
     'popup.js: updatePlayState updates aria-valuenow on progress bar',
     'aria-valuenow' in popup_js,
 )
+check(
+    'popup.js: preferences and live playback state settle before popup reveal',
+    'function chromeCallbackPromise' in popup_js and
+    'Promise.allSettled' in popup_js and
+    "classList.add('is-hydrated')" in popup_js,
+)
+_popup_controls_start = popup_js.find('// ── Control Event Handlers')
+_popup_controls_end = popup_js.find('// ── Background Broadcast Listener', _popup_controls_start)
+_popup_controls_source = popup_js[_popup_controls_start:_popup_controls_end] if _popup_controls_start >= 0 and _popup_controls_end > _popup_controls_start else ''
+check(
+    'popup.js: fire-and-forget control messages share rejection handling',
+    'function sendRuntimeMessage(message)' in popup_js and
+    bool(_popup_controls_source) and
+    'sendRuntimeMessage(' in _popup_controls_source and
+    'chrome.runtime.sendMessage(' not in _popup_controls_source,
+)
+check(
+    'popup.html: first render stays hidden without removing layout until hydrated',
+    'visibility: hidden' in popup_html and 'body.is-hydrated' in popup_html and 'visibility: visible' in popup_html,
+)
+check(
+    'popup.html: reduced-motion preference disables nonessential motion',
+    '@media (prefers-reduced-motion: reduce)' in popup_html and
+    'transition-duration: 0.01ms' in popup_html and
+    'animation-duration: 0.01ms' in popup_html,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. content.js — Shadow DOM A11y
@@ -265,24 +291,37 @@ check(
     bool(re.search(offset_pattern, pm, re.DOTALL)),
 )
 
-# setRate calls speakCurrentSentence with resumeFrom
-# Match by finding the resumeFrom computation pattern followed shortly by speakCurrentSentence call
-_rate_offset_ok = bool(re.search(
-    r'setRate[\s\S]{0,1200}speakCurrentSentence\(this\.playbackRunId,\s*resumeFrom\)', pm))
+# Option controls delegate to the shared generation-guarded restart helper.
+_option_restart_ok = bool(re.search(
+    r'async _commitPlaybackOptionChange[\s\S]{0,2500}speakCurrentSentence\(runId,\s*resumeFrom\)', pm))
 check(
-    'playback-manager.js: setRate calls speakCurrentSentence(runId, resumeFrom)',
-    _rate_offset_ok,
+    'playback-manager.js: shared option helper restarts with captured runId and resumeFrom',
+    _option_restart_ok,
 )
 
-_vol_offset_ok = bool(re.search(
-    r'setVolume[\s\S]{0,1200}speakCurrentSentence\(this\.playbackRunId,\s*resumeFrom\)', pm))
+_rate_delegates = bool(re.search(
+    r"async setRate\(rate\)[\s\S]{0,350}return this\._commitPlaybackOptionChange\('word'\)", pm))
 check(
-    'playback-manager.js: setVolume calls speakCurrentSentence(runId, resumeFrom)',
-    _vol_offset_ok,
+    'playback-manager.js: setRate delegates to guarded word-preserving restart',
+    _rate_delegates,
+)
+
+_vol_delegates = bool(re.search(
+    r"async setVolume\(volume\)[\s\S]{0,350}return this\._commitPlaybackOptionChange\('word'\)", pm))
+check(
+    'playback-manager.js: setVolume delegates to guarded word-preserving restart',
+    _vol_delegates,
+)
+
+_pitch_delegates = bool(re.search(
+    r"async setPitch\(pitch\)[\s\S]{0,350}return this\._commitPlaybackOptionChange\('offset'\)", pm))
+check(
+    'playback-manager.js: setPitch delegates to guarded offset-preserving restart',
+    _pitch_delegates,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 6. speech-engine.js — Engine Registry (Piper, Kokoro, Supertonic)
+# 6. speech-engine.js — Maintained Engine Profiles (Piper, Supertonic)
 # ─────────────────────────────────────────────────────────────────────────────
 print('\n── speech-engine.js Engine Registry ───────────────────────────────')
 se = read(SPEECH_JS)
@@ -295,6 +334,16 @@ check(
 check(
     'speech-engine.js: Piper is registered in TTS_ENGINES with highest priority (priority: 5)',
     bool(re.search(r'id:\s*PIPER_EXTENSION_ID[\s\S]*?priority:\s*5', se)),
+)
+
+check(
+    'speech-engine.js: Kokoro-specific integration is not in the maintained registry',
+    'KOKORO_EXTENSION_ID' not in se and 'Kokoro Heart' not in se,
+)
+
+check(
+    'speech-engine.js: Supertonic remains a maintained provider profile',
+    'SUPERTONIC_EXTENSION_ID' in se and bool(re.search(r'id:\s*SUPERTONIC_EXTENSION_ID[\s\S]*?priority:\s*20', se)),
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -490,6 +539,23 @@ check(
     'prefers-reduced-motion: reduce' in content_js,
 )
 
+# The spring may update visual geometry only through transforms on each RAF.
+_spring_start = content_js.find('function _springLoop')
+_spring_end = content_js.find('function _springMoveTo', _spring_start)
+_spring_loop_source = content_js[_spring_start:_spring_end] if _spring_start >= 0 and _spring_end > _spring_start else ''
+check(
+    'content.js: spring RAF does not mutate layout width/height',
+    bool(_spring_loop_source) and
+    'scale3d(' in _spring_loop_source and
+    'style.width' not in _spring_loop_source and
+    'style.height' not in _spring_loop_source,
+)
+check(
+    'content.js: word capsule promotes only transform/opacity',
+    'will-change: transform, opacity;' in content_js and
+    'will-change: transform, width, height, opacity;' not in content_js,
+)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 12. Semantic Noise Stripper
 # ─────────────────────────────────────────────────────────────────────────────
@@ -575,6 +641,21 @@ check(
     'content.js: golden gaze cancels on stop (gazeCancelScroll in clearWordHighlight)',
     'gazeCancelScroll' in content_js,
 )
+check(
+    'content.js: Golden Gaze yields to wheel, touch, scrollbar, and document keys',
+    'function gazeYieldToUser' in content_js and
+    "addEventListener('wheel', gazeYieldToUser" in content_js and
+    "addEventListener('touchstart', gazeYieldToUser" in content_js and
+    "addEventListener('touchmove', gazeYieldToUser" in content_js and
+    "addEventListener('pointerdown', gazeYieldToUser" in content_js and
+    "addEventListener('keydown', gazeYieldToUser" in content_js,
+)
+check(
+    'content.js: Golden Gaze resumes only after the manual-input quiet period',
+    'GAZE_USER_YIELD_MS = 1200' in content_js and
+    '_gazeResumeTimer' in content_js and
+    'const resumeDelay = _gazeResumeAt - Date.now()' in content_js,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Magnetic Edge-Docking Pill (24px Bead)
@@ -629,8 +710,89 @@ check(
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Real-engine diagnostics security and privacy contract
+# ─────────────────────────────────────────────────────────────────────────────
+bg = read(os.path.join(os.path.dirname(__file__), 'background.js'))
+diag_js = read(os.path.join(os.path.dirname(__file__), 'test.js'))
+diag_html = read(os.path.join(os.path.dirname(__file__), 'test.html'))
+diag_privacy = read(os.path.join(os.path.dirname(__file__), 'tts-diagnostic-privacy.js'))
+diag_keepalive = read(os.path.join(os.path.dirname(__file__), 'diagnostic-keepalive.js'))
+
+check(
+    'background.js: diagnostic sender is restricted to bundled test.html',
+    "function isDiagnosticsPageSender(sender)" in bg and "url.pathname === '/test.html'" in bg,
+)
+check(
+    'background.js: real TTS diagnostic validates the selected installed voice',
+    "case 'RUN_TTS_DIAGNOSTIC'" in bg and 'getAllVoices()' in bg and 'voice.voiceName === voiceName' in bg,
+)
+check(
+    'background.js: diagnostic text and speech rate are bounded',
+    'text.length > 500' in bg and 'rate < 0.5' in bg and 'rate > 2.0' in bg,
+)
+check(
+    'background.js: diagnostic events use the shared privacy sanitizer module',
+    "from './tts-diagnostic-privacy.js'" in bg and
+    'sanitizeTtsDiagnosticEvent' in bg and
+    'event: sanitizeTtsDiagnosticEvent(event)' in bg,
+)
+check(
+    'tts-diagnostic-privacy.js: raw provider error strings are replaced by a generic classification',
+    "event.errorMessage" not in diag_privacy and
+    'The selected TTS provider returned an error.' in diag_privacy and
+    'The selected TTS provider could not complete the diagnostic request.' in diag_privacy,
+)
+check(
+    'background.js: session inspection is restricted to diagnostics page',
+    "case 'GET_SESSION_STORAGE'" in bg and "Session inspection is restricted" in bg,
+)
+check(
+    'background.js: normal playback cannot start during diagnostic speech',
+    "case 'START_PLAYBACK'" in bg and "if (diagnosticSpeechActive)" in bg,
+)
+check(
+    'diagnostics: isolated speech keeps the MV3 worker alive using the existing session key',
+    "from './diagnostic-keepalive.js'" in bg and
+    'diagnosticKeepAlive.start()' in bg and
+    'diagnosticKeepAlive.stop()' in bg and
+    "const SESSION_STORAGE_KEY = 'readAloud_sessionState'" in diag_keepalive and
+    'KEEP_ALIVE_INTERVAL_MS = 15_000' in diag_keepalive,
+)
+check(
+    'test.js: diagnostic report records sample character count but omits sample text',
+    'sampleCharacterCount: sampleText.length' in diag_js and 'sampleTextIncluded: false' in diag_js,
+)
+check(
+    'test.js: audible pass requires manual first-audio confirmation',
+    'audibleWasMarked' in diag_js and 'message.success === true && audibleWasMarked' in diag_js,
+)
+check(
+    'test.html: manual I Hear Audio control is present',
+    'id="btn-mark-audible"' in diag_html and 'I Hear Audio' in diag_html,
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Summary
 # ─────────────────────────────────────────────────────────────────────────────
+check(
+    'playback-manager.js: recovery alarm is reconciled from active playback state',
+    '_syncKeepAliveAlarm(want)' in pm and
+    "chrome.alarms.get('readAloudKeepAlive')" in pm and
+    "chrome.alarms.create('readAloudKeepAlive'" in pm and
+    "chrome.alarms.clear('readAloudKeepAlive')" in pm and
+    'this._syncKeepAliveAlarm(want)' in pm,
+)
+check(
+    'playback-manager.js: restored sessions reconcile worker activity and recovery alarms',
+    bool(re.search(r'restoreFromSession[\s\S]{0,5000}finally[\s\S]{0,250}_syncKeepAliveTick\(\)', pm)),
+)
+check(
+    'background.js: no unconditional keep-alive alarm wakes idle workers',
+    'ensureKeepAliveAlarm' not in bg and
+    "chrome.alarms.create('readAloudKeepAlive'" not in bg and
+    'chrome.alarms.onAlarm.addListener' in bg,
+)
+
 print('\n' + '─' * 67)
 passed = sum(results)
 total  = len(results)

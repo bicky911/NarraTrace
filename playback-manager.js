@@ -11,6 +11,7 @@
  */
 
 import {
+  SUPERTONIC_EXTENSION_ID,
   safeSpeak,
   stopSpeech,
   stopSpeechAndWait,
@@ -38,10 +39,9 @@ const PREFS_STORAGE_KEY = 'readAloud_userPreferences';
 const MAX_CONSECUTIVE_ERRORS = 3;
 
 // How many consecutive sentences may share ONE utterance.
-// chrome.tts speaks one utterance at a time. An engine that has to prepare
-// before it can speak (a network voice, or Kokoro rebuilding its model) pays
-// that preparation on EVERY utterance, so one sentence per utterance costs a
-// visible dead-air gap at every sentence boundary. Grouping turns N
+// chrome.tts speaks one utterance at a time. Some providers perform
+// noticeable preparation before each utterance; one sentence per utterance
+// can therefore create visible dead-air gaps at sentence boundaries. Grouping turns N
 // preparations into one and the sentences run into each other with no gap.
 const MAX_BATCH_SENTENCES = 12;
 const DEFAULT_REMOTE_BATCH = 3;
@@ -50,31 +50,31 @@ const DEFAULT_REMOTE_BATCH = 3;
 // measured preparation time into a sensible group size.
 const TYPICAL_SENTENCE_CHARS = 65;
 
-// The preparation time may cost at most this fraction of the speech it
-// precedes. With a 10 s setup and ~4.6 s of speech per sentence this asks for
-// ~14 sentences per utterance, i.e. one setup per ~60 s of reading.
+// The measured preparation time may cost at most this fraction of the speech
+// it precedes. The resulting group size adapts to each provider's observed
+// setup latency while preserving reasonable seek responsiveness.
 const PREPARE_BUDGET_RATIO = 0.15;
 
 // Fallback speaking speed used until we have measured the real one (~135-140 WPM).
 const DEFAULT_CHARS_PER_SECOND = 13.5;
 // How often the position estimator runs when the engine gives no word events (~22 fps).
 const ESTIMATOR_INTERVAL_MS = 45;
-// How long to wait for the engine's own word boundaries before estimating.
+// How long to wait after the last valid native word event before the
+// estimator temporarily fills a gap. Native events remain authoritative;
+// this only prevents engines with sparse/partial word events from freezing.
 const ESTIMATOR_GRACE_MS = 700;
-// How long to wait for the engine's first SENTENCE boundary before assuming
-// this engine reports no boundaries at all. Measured against the real engines:
-// Supertonic reaches 7.2 s and Kokoro needs ~10 s on a CPU-only machine (and
-// ~24 s the very first time, while its 92 MB model downloads), so this has to
-// be comfortably above that.
+// How long to wait for a provider's first SENTENCE boundary before treating
+// its event stream as boundary-sparse and enabling timed estimation. Keep a
+// generous ceiling for cold starts, model preparation and provider latency.
 const ESTIMATOR_BOUNDARY_WAIT = 45000;
 
-// An engine that announces its first sentence boundary within this many
-// milliseconds of the 'start' event is announcing the boundary BEFORE the
-// voice starts (Supertonic: 'start' and 'sentence(0)' arrive together while
-// the voice only becomes audible ~3.2 s later). Such an engine needs the
-// lead-in correction; an engine whose first boundary arrives later (Kokoro:
-// ~10 s, right when the first sentence actually starts playing) does not.
+// A provider that announces its first sentence boundary immediately after
+// 'start' may be reporting synthesis progress before audible output begins.
+// The measured lead-in correction accounts for this provider-specific delay;
+// later boundary streams are handled without assuming an early announcement.
 const BOUNDARY_ANNOUNCED_EARLY_MS = 500;
+// Measured Supertonic delay between its early sentence event and audible audio.
+const DEFAULT_SUPERTONIC_LEAD_IN_MS = 3200;
 
 // ─── Semantic Noise Stripper ────────────────────────────────────────────────
 // Removes citation clutter, raw URLs, footnote markers, and other non-speech
@@ -224,31 +224,36 @@ class PlaybackManager {
     // "speaking normally" apart from "the worker was restarted mid-sentence and
     // the utterance's end event was lost".
     this.awaitingSpeech = false;
+    // True when a browser-owned utterance outlived its service worker. Persist
+    // this so a later worker waits for it to finish and advances exactly once.
+    this.recoveryPendingAdvance = false;
     this.consecutiveErrors = 0;
     // Word-offset tracking for pause/resume without rewinding, and for the
     // watchdog remainder re-queue. Absolute char index into the FULL sentence.
     this.lastWordCharIndex = 0;
     this.sawWordEvents = false;
-    // False when pronunciation overrides rewrote the sentence: word events
-    // then index the rewritten text and can no longer be mapped reliably.
+    // False when speech-only cleanup, prosody, or pronunciation overrides
+    // change character positions: TTS word offsets then cannot be mapped
+    // reliably back to the original source sentence.
     this.wordEventsUsable = true;
     this.resumeOffset = 0;
-    // SW-side keep-alive interval handle (see _syncKeepAliveTick).
+    // Service-worker activity and recovery alarm are owned by active playback.
     this._keepAliveTimer = null;
+    this._keepAliveAlarmDesired = null;
+    this._keepAliveAlarmApplied = null;
+    this._keepAliveAlarmSyncPromise = null;
     // Explicit grouping override (0 = automatic).
     this.batchSize = 0;
     // True once the user has picked a voice themselves. Until then the voice is
-    // resolved automatically (highest-priority engine, Kokoro first), which is
-    // what migrates a legacy Supertonic preference over to Kokoro.
+    // resolved automatically using the maintained provider priority (Piper
+    // before Supertonic), rather than preserving a legacy automatic default.
     this.voicePinned = false;
     // Measured speaking speed in characters per second, used by the position
     // estimator when the engine does not emit word/sentence events.
     this.charsPerSecond = 0;
-    // Lead-in delay: the seconds a network voice spends preparing the
-    // synthesis before the first word of an utterance is audible. Measured
-    // against the real Supertonic engine at ~3.2 s; learned and refined from
-    // the engine's own sentence boundaries as reading continues.
-    this.leadInMs = 3200;
+    // Do not assume an unmeasured lead-in for generic providers. Maintained
+    // provider defaults belong in their own engine profile below.
+    this.leadInMs = 0;
     // What we have learned about each TTS engine, keyed by extension id.
     //
     //   prepareMs          time from the engine's 'start' event to its first
@@ -258,9 +263,8 @@ class PlaybackManager {
     //                       becoming audible (Supertonic only).
     //   boundariesSeen      how many boundaries the engine has reported.
     //
-    // Keeping this per engine matters: the two engines behave completely
-    // differently (Kokoro rebuilds its model per utterance, Supertonic waits on
-    // a network round-trip), so their measurements must never be mixed.
+    // Keeping this per engine matters: provider latency and event behavior differ,
+    // so measurements must never be mixed across extension IDs.
     this.engineProfiles = new Map();
     // Active utterance descriptor + estimator timer.
     this.activeBatch = null;
@@ -278,7 +282,7 @@ class PlaybackManager {
       profile = {
         prepareMs: 0,
         baseCharsPerSecond: 0,
-        leadInMs: 0,
+        leadInMs: id === SUPERTONIC_EXTENSION_ID ? DEFAULT_SUPERTONIC_LEAD_IN_MS : 0,
         boundariesSeen: 0,
         // Average rate between sentence boundaries. It includes the gaps an
         // engine leaves when it cannot synthesise as fast as it plays, so it
@@ -358,6 +362,40 @@ class PlaybackManager {
    * that revives a dead worker; the content-script heartbeat remains as a
    * harmless second belt.
    */
+  _syncKeepAliveAlarm(want) {
+    this._keepAliveAlarmDesired = Boolean(want);
+    if (typeof chrome.alarms?.get !== 'function') return Promise.resolve();
+    if (this._keepAliveAlarmSyncPromise) return this._keepAliveAlarmSyncPromise;
+    if (this._keepAliveAlarmApplied === this._keepAliveAlarmDesired) return Promise.resolve();
+
+    this._keepAliveAlarmSyncPromise = Promise.resolve().then(async () => {
+      try {
+        // Re-read the desired state after each awaited Chrome API call. Rapid
+        // pause/resume transitions therefore converge on the latest state
+        // instead of leaving an orphaned alarm behind.
+        while (this._keepAliveAlarmApplied !== this._keepAliveAlarmDesired) {
+          const shouldExist = this._keepAliveAlarmDesired;
+          const existing = await chrome.alarms.get('readAloudKeepAlive');
+          if (shouldExist && !existing) {
+            await chrome.alarms.create('readAloudKeepAlive', { periodInMinutes: 0.5 });
+          } else if (!shouldExist && existing) {
+            await chrome.alarms.clear('readAloudKeepAlive');
+          }
+          this._keepAliveAlarmApplied = shouldExist;
+        }
+      } catch (err) {
+        // Leave the applied state unknown so the next playback transition can
+        // retry reconciliation. A failed alarm API must not break playback.
+        this._keepAliveAlarmApplied = null;
+        console.warn('[PlaybackManager] Could not reconcile keep-alive alarm:', err?.message || err);
+      } finally {
+        this._keepAliveAlarmSyncPromise = null;
+      }
+    });
+
+    return this._keepAliveAlarmSyncPromise;
+  }
+
   _syncKeepAliveTick() {
     const want = this.playbackState === PlaybackState.PLAYING;
     if (want && this._keepAliveTimer === null) {
@@ -370,6 +408,7 @@ class PlaybackManager {
       clearInterval(this._keepAliveTimer);
       this._keepAliveTimer = null;
     }
+    return this._syncKeepAliveAlarm(want);
   }
 
   /**
@@ -380,8 +419,8 @@ class PlaybackManager {
   async saveToSession() {
     // Called after EVERY playback-state transition (start, per-sentence,
     // pause, resume, stop, skip, error paths) — the one hook that reliably
-    // keeps the SW-side keep-alive tick in sync with the state.
-    this._syncKeepAliveTick();
+    // keeps worker activity and the recovery alarm in sync with playback.
+    await this._syncKeepAliveTick();
     try {
       // Cap persisted queue: 5000 sentences (matches sanitizeQueue) × ~100
       // chars ≈ 500 KB — well within the 10 MB session storage quota. The
@@ -397,6 +436,7 @@ class PlaybackManager {
         tabId: this.tabId,
         options: this.options,
         resumeOffset: this.resumeOffset || 0,
+        recoveryPendingAdvance: this.recoveryPendingAdvance === true,
         timestamp: Date.now()
       };
       await chrome.storage.session.set({ [SESSION_STORAGE_KEY]: data });
@@ -429,6 +469,7 @@ class PlaybackManager {
         this.playbackState = data.playbackState || PlaybackState.IDLE;
         this.tabId = typeof data.tabId === 'number' ? data.tabId : null;
         this.resumeOffset = typeof data.resumeOffset === 'number' ? Math.max(0, data.resumeOffset) : 0;
+        this.recoveryPendingAdvance = data.recoveryPendingAdvance === true;
         if (data.options) {
           this.allVoices = [];
     this.options = { ...this.options, ...data.options };
@@ -438,6 +479,10 @@ class PlaybackManager {
       }
     } catch (err) {
       console.warn('[PlaybackManager] Failed to restore from chrome.storage.session:', err);
+    } finally {
+      // Clear any stale alarm on an idle/empty session, or recreate it for a
+      // restored PLAYING session before the worker starts recovery.
+      await this._syncKeepAliveTick();
     }
     return false;
   }
@@ -452,6 +497,7 @@ class PlaybackManager {
     this.playbackState = PlaybackState.IDLE;
     this.tabId = null;
     this.awaitingSpeech = false;
+    this.recoveryPendingAdvance = false;
     this.isSwitchingSentence = false;
     this.consecutiveErrors = 0;
     this.stopEstimator();
@@ -495,36 +541,63 @@ class PlaybackManager {
     if (this.playbackState !== PlaybackState.PLAYING) return;
     if (this.queue.length === 0) return;
 
+    const runId = this.playbackRunId;
+
     // Hold the keep-alive heartbeat off while we recover, so it cannot start a
     // second recovery chain on top of this one during the awaits below.
     this.isSwitchingSentence = true;
 
     const speaking = await isSpeaking();
-    if (!speaking) {
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
+
+    if (!speaking && !this.recoveryPendingAdvance) {
+      // The worker died before Chrome accepted the utterance. Replaying the
+      // current sentence is safe because no browser-owned speech is active.
       console.log('[PlaybackManager] Recovering interrupted playback at sentence #', this.currentIndex + 1);
       this.isSwitchingSentence = false;
-      this.speakCurrentSentence(this.playbackRunId);
+      this.speakCurrentSentence(runId);
       return;
     }
 
-    console.warn('[PlaybackManager] Worker restarted mid-utterance — waiting for it to finish.');
-    const wentIdle = await this.waitForSpeechIdle(10000);
-    if (this.playbackState !== PlaybackState.PLAYING) return;
-    if (wentIdle) {
-      // The orphaned utterance completed; its event was lost, so advance here.
-      this.currentIndex++;
-      if (this.currentIndex >= this.queue.length) {
-        console.log('[PlaybackManager] Recovered queue finished after last sentence.');
-        this.playbackState = PlaybackState.STOPPED;
-        this.currentIndex = 0;
+    if (speaking) {
+      console.warn('[PlaybackManager] Worker restarted mid-utterance — waiting for it to finish.');
+      const wentIdle = await this.waitForSpeechIdle(10000);
+      if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
+
+      if (!wentIdle) {
+        // The browser still owns the old utterance. Do not cut it off or queue
+        // a duplicate. Persist the pending advance so a later alarm (possibly
+        // after another worker restart) can finish recovery when Chrome goes idle.
+        console.warn('[PlaybackManager] Orphaned utterance is still active — deferring recovery until the next alarm.');
+        this.recoveryPendingAdvance = true;
+        this.awaitingSpeech = false;
+        this.isSwitchingSentence = false;
         await this.saveToSession();
-        this.broadcast('PLAYBACK_COMPLETED');
         return;
       }
     }
+
+    // Either the orphan just became idle, or a prior worker persisted the
+    // pending marker and Chrome has since finished it. Its end event belonged
+    // to the old worker, so advance exactly once before starting the next item.
+    this.recoveryPendingAdvance = false;
+    this.currentIndex++;
+    if (this.currentIndex >= this.queue.length) {
+      console.log('[PlaybackManager] Recovered queue finished after last sentence.');
+      this.playbackState = PlaybackState.STOPPED;
+      this.currentIndex = 0;
+      this.awaitingSpeech = false;
+      this.isSwitchingSentence = false;
+      await this.saveToSession();
+      if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.STOPPED) return;
+      this.broadcast('PLAYBACK_COMPLETED');
+      return;
+    }
+
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return;
     this.isSwitchingSentence = false;
-    this.speakCurrentSentence(this.playbackRunId);
+    this.speakCurrentSentence(runId);
   }
 
   /**
@@ -542,8 +615,8 @@ class PlaybackManager {
         if (prefs.extensionId) this.options.extensionId = prefs.extensionId;
         if (prefs.lang) this.options.lang = prefs.lang;
         // voicePinned was added together with multi-engine support. Preferences
-        // saved before that have no such flag, so their voice was merely the
-        // old automatic default (Supertonic) — not a choice the user made.
+        // saved before that have no such flag, so re-resolve them using the
+        // current automatic provider priority rather than treating them as pinned.
         this.voicePinned = prefs.voicePinned === true;
         if (typeof prefs.pronunciationText === 'string') {
           this.pronunciationRules = PlaybackManager.parsePronunciations(prefs.pronunciationText);
@@ -554,8 +627,8 @@ class PlaybackManager {
 
       // Resolve the voice against the engines that are actually installed.
       // A voice the user picked themselves always wins; otherwise the
-      // highest-priority engine does (Kokoro before Supertonic), which is what
-      // moves a legacy Supertonic preference over to Kokoro.
+      // current maintained provider priority (Piper before Supertonic), which
+      // resolves older automatic selections against the installed providers.
       const report = await detectAndSelectVoice({
         voiceName: this.options.voiceName,
         pinned: this.voicePinned
@@ -603,18 +676,25 @@ class PlaybackManager {
    * it, so at worker start-up the voice list can still be empty (or contain
    * only the built-in Google voices). Chrome announces every change of the
    * voice list through chrome.tts.onVoicesChanged, and this runs again then —
-   * which is how the preferred engine (Kokoro) takes over as soon as it
+   * which is how the preferred engine (Piper) takes over as soon as it
    * appears.
    *
    * A voice the user picked themselves is never touched.
    */
-  async refreshVoice() {
-    if (this.voicePinned) return null;
+  async refreshVoice(expectedRunId = null) {
+    if (this.voicePinned ||
+        (expectedRunId !== null && expectedRunId !== this.playbackRunId)) return null;
 
     const report = await detectAndSelectVoice({
       voiceName: this.options.voiceName,
       pinned: false
     });
+
+    // A manual voice choice or newer start can supersede automatic detection
+    // while the engine registry is being queried.
+    if (this.voicePinned ||
+        (expectedRunId !== null && expectedRunId !== this.playbackRunId)) return null;
+
     this.allVoices = report.allVoices || [];
     this.engineLabel = report.engineLabel;
     this.engineBadge = report.engineBadge;
@@ -709,11 +789,18 @@ class PlaybackManager {
       this.playbackState === PlaybackState.PAUSED;
 
     // Increment run ID to invalidate any prior speaking loop immediately
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
+    this.recoveryPendingAdvance = false;
     this.isSwitchingSentence = true;
     this.awaitingSpeech = false;
     this.consecutiveErrors = 0;
     await stopSpeechAndWait();
+
+    // A newer playback command may have arrived while the browser was
+    // stopping the previous utterance. Never let this stale request install
+    // its queue after a newer run has taken ownership.
+    if (runId !== this.playbackRunId) return false;
 
     this.queue = queue;
     const safeStartIndex = typeof startIndex === 'number' && Number.isFinite(startIndex)
@@ -755,6 +842,7 @@ class PlaybackManager {
         voiceName: this.options.voiceName,
         pinned: this.voicePinned
       });
+      if (runId !== this.playbackRunId) return false;
       if (voiceReport.selectedVoice) {
         this.options.voiceName = voiceReport.selectedVoice.voiceName;
         this.options.extensionId = voiceReport.selectedVoice.extensionId || null;
@@ -769,14 +857,16 @@ class PlaybackManager {
       // Re-resolve right before the first utterance — this is the moment the
       // voice actually matters.
       try {
-        await this.refreshVoice();
+        await this.refreshVoice(runId);
+        if (runId !== this.playbackRunId) return false;
       } catch (err) {
         console.warn('[PlaybackManager] Voice refresh failed:', err && err.message);
       }
     }
 
     await this.saveToSession();
-    this.speakCurrentSentence(this.playbackRunId);
+    if (runId !== this.playbackRunId) return false;
+    this.speakCurrentSentence(runId);
     return true;
   }
 
@@ -784,16 +874,14 @@ class PlaybackManager {
    * How many consecutive sentences share one utterance.
    *
    * An engine that has to prepare before it can speak pays that preparation on
-   * EVERY utterance. Measured against the real engines: Kokoro rebuilds its
-   * ONNX model and its offscreen document for every utterance, which costs
-   * ~10 s on a CPU-only machine (~24 s the very first time, while its 92 MB
-   * model downloads); Supertonic waits on a network round-trip. One sentence
-   * per utterance would therefore put a long gap between every sentence.
+   * EVERY utterance. Provider setup may include local model initialization,
+   * remote synthesis latency, or another per-utterance cost. One sentence per
+   * utterance can therefore introduce repeated dead-air gaps.
    *
-   * So the group size follows the engine's MEASURED preparation time: the
-   * preparation may cost at most ~15% of the speech it precedes. A fast engine
-   * (Kokoro with WebGPU, ~1 s setup) gets short groups and stays responsive for
-   * skipping; a slow one gets long groups and reads almost seamlessly.
+   * The group size follows the engine's MEASURED preparation time: preparation
+   * may cost at most the configured fraction of the speech it precedes. A
+   * provider with short setup gets smaller groups for responsive seeking;
+   * a slower provider gets longer groups to reduce repeated preparation.
    */
   resolveBatchSize() {
     if (typeof this.batchSize === 'number' && this.batchSize > 0) {
@@ -876,8 +964,12 @@ class PlaybackManager {
       offsets.push(acc);
       acc += norm.text.length + 1; // +1 for the joining space
 
-      // Rewritten text can no longer be matched to the original offsets.
-      if (norm.changed) {
+      // Word boundaries index the exact string sent to Chrome TTS. Any
+      // character-changing cleanup (citations, URLs, whitespace), cadence
+      // insertion, or pronunciation override makes those offsets unsafe to
+      // apply directly to the source DOM. Prefer sentence-level highlighting
+      // rather than showing a confidently incorrect word capsule.
+      if (clean !== source || cadence !== clean || norm.changed) {
         pronunciationChanged = true;
         break;
       }
@@ -951,10 +1043,8 @@ class PlaybackManager {
   /**
    * Remember how long the engine needed before its first boundary.
    *
-   * That delay is the engine's preparation cost for this utterance (measured:
-   * ~10 s per utterance for Kokoro on a CPU-only machine, ~24 s while its
-   * 92 MB model downloads, ~3.2 s for Supertonic's network round-trip).
-   * It decides two things: the lead-in correction and the group size.
+   * That delay is the engine's preparation cost for this utterance. It
+   * determines the lead-in correction and the adaptive group size.
    */
   noteFirstBoundary(batch, now) {
     if (!batch || batch.firstBoundaryDelay !== null) return;
@@ -1003,10 +1093,9 @@ class PlaybackManager {
       const charIndex = event.charIndex || 0;
       const profile = this.engineProfile();
 
-      // How long is the sentence the engine just announced? Some engines
-      // report it (Supertonic sends charIndex + length), others do not
-      // (Kokoro sends only the charIndex). When it is known, the estimator
-      // uses the ENGINE's sentence extent as its ceiling — see startEstimator().
+      // How long is the sentence the engine just announced? Some providers
+      // include a sentence length; others report only the starting offset.
+      // When the extent is known, the estimator uses it as its ceiling.
       //
       // The engine's sentences do not have to be ours: Supertonic merges our
       // title with the sentence after it (the title has no terminating
@@ -1034,9 +1123,8 @@ class PlaybackManager {
       //   same instant and only becomes audible ~3.2 s later, so its first
       //   boundary interval is slower than the real speaking rate.
       //
-      //   Kokoro announces the boundary when that sentence actually starts
-      //   playing — ~10 s after 'start', because it rebuilds its model for
-      //   every utterance — so its intervals are pure playback.
+      //   Providers that delay the first boundary until playback begins produce
+      //   intervals that more closely reflect audible playback duration.
       //
       // A lead-in can only make an interval SLOWER, never faster, so the
       // fastest interval observed is the cleanest rate measurement and the
@@ -1101,14 +1189,33 @@ class PlaybackManager {
     }
 
     if (event.type === 'word') {
-      batch.sawWords = true;
-      const loc = this.locateInBatch(batch, event.charIndex || 0);
+      // A word event without a valid character index cannot be mapped to the
+      // source text. Do not treat it as proof that this engine provides usable
+      // word boundaries; the estimator must remain available as a fallback.
+      if (typeof event.charIndex !== 'number' ||
+          !Number.isFinite(event.charIndex) ||
+          event.charIndex < 0 ||
+          event.charIndex > batch.text.length) return;
+
+      const loc = this.locateInBatch(batch, Math.trunc(event.charIndex));
       if (!loc) return;
+
+      const now = Date.now();
+      const wordLength = (typeof event.length === 'number' && event.length > 0)
+        ? Math.trunc(event.length)
+        : ((typeof event.charLength === 'number' && event.charLength > 0)
+          ? Math.trunc(event.charLength)
+          : 0);
+
+      batch.sawWords = true;
+      batch.lastNativeWordAt = now;
+      batch.lastNativeWordCharIndex = Math.trunc(event.charIndex);
+      batch.lastNativeWordLength = wordLength;
+      batch.lastEstimatedWordStart = null;
 
       this.setCurrentSentence(loc.sentenceIndex, batch);
 
       const rel = loc.offset;
-      const now = Date.now();
       this.noteFirstBoundary(batch, now);
       if (!batch.firstWordAt) {
         batch.firstWordAt = now;
@@ -1120,10 +1227,6 @@ class PlaybackManager {
       // Absolute position inside the full sentence (used by pause/resume).
       this.lastWordCharIndex = (batch.resumeOffset || 0) + rel;
       this.sawWordEvents = true;
-
-      const wordLength = (typeof event.length === 'number' && event.length > 0)
-        ? event.length
-        : ((typeof event.charLength === 'number' && event.charLength > 0) ? event.charLength : 0);
 
       this.broadcast('TTS_EVENT', {
         event: {
@@ -1140,9 +1243,9 @@ class PlaybackManager {
     }
 
     if (event.type === 'end') {
-      // Where the utterance ended. Kokoro reports how much it spoke; Supertonic
-      // does not (it sends charIndex 0), and then the end of the text we handed
-      // to the engine IS the end of the utterance.
+      // Where the utterance ended. Some providers report a final character offset;
+      // others omit it or send zero. When no usable offset exists, the end of
+      // the text we handed to the engine is the utterance end.
       const now = Date.now();
       const profile = this.engineProfile();
       const reportedEnd = (typeof event.charIndex === 'number' && event.charIndex > 0)
@@ -1160,12 +1263,9 @@ class PlaybackManager {
         // measurement of the engine's real reading speed — and therefore the
         // best predictor for the next utterance.
         //
-        // For Kokoro this is what recovers the true reading speed when its
-        // synthesis lags behind its own playback. For Supertonic it matters
-        // even more: the distance between two boundaries is NOT the reading
-        // speed there, because the engine announces a boundary several seconds
-        // away from the moment the voice gets there — a rate learned from that
-        // distance alone leaves the estimate ~40 characters behind the voice.
+        // Measuring the final boundary-to-end interval avoids mixing preparation
+        // and announcement lead-in with audible speech. This is particularly
+        // important for providers whose boundary events precede the audio.
         const seconds = (now - batch.anchorTime) / 1000;
         const cps = (endChar - batch.anchorChar) / seconds;
         if (cps > 1 && cps < 200) {
@@ -1220,11 +1320,10 @@ class PlaybackManager {
    * How long the engine may still be PREPARING before the estimator starts
    * extrapolating.
    *
-   * The wait is the engine's own measured setup cost — Kokoro rebuilds its
-   * neural model for every utterance (~21 s on a CPU-only machine), Supertonic
-   * needs a few seconds before it announces anything. Extrapolating during
-   * that window is what puts the highlight seconds ahead of the voice, so the
-   * highlight parks at the first word until the preparation is over.
+   * The wait is based on the provider's measured preparation cost. Extrapolating
+   * during model initialization or remote synthesis can put the highlight
+   * ahead of audible speech, so the highlight parks at the first word until
+   * the preparation window has elapsed.
    *
    * An engine we have never measured gets a short default window.
    *
@@ -1259,19 +1358,40 @@ class PlaybackManager {
     this.stopEstimator();
     this.estimatorTimer = setInterval(() => {
       if (this.activeBatch !== batch) return;
-      // Native word events are more accurate — hand over to them completely.
-      if (batch.sawWords) {
-        this.stopEstimator();
-        return;
-      }
-
       const now = Date.now();
       let pos;
 
       const profile = this.engineProfile();
       const cps = this.effectiveCharsPerSecond();
 
-      if (batch.anchorTime !== null) {
+      // Prefer native word boundaries, but do not permanently disable the
+      // estimator after one event. Several engines emit sparse or partial
+      // boundaries. After a short silence, estimate from the last valid native
+      // word and cap the estimate at the current sentence/engine boundary.
+      const nativeWordStale = batch.sawWords &&
+        typeof batch.lastNativeWordAt === 'number' &&
+        now - batch.lastNativeWordAt >= ESTIMATOR_GRACE_MS;
+
+      if (batch.sawWords && !nativeWordStale) return;
+
+      if (nativeWordStale) {
+        const nativeAnchor = batch.lastNativeWordCharIndex || 0;
+        const elapsed = Math.max(0, (now - batch.lastNativeWordAt) / 1000);
+        pos = nativeAnchor + elapsed * cps;
+
+        let ceiling = null;
+        if (batch.anchorEnd !== null && batch.anchorEnd > nativeAnchor) {
+          ceiling = batch.anchorEnd;
+        } else {
+          const nativeLoc = this.locateInBatch(batch, nativeAnchor);
+          if (nativeLoc) {
+            const slot = nativeLoc.sentenceIndex - batch.firstIndex;
+            const sentenceEnd = (batch.offsets[slot] || 0) + (batch.spokenLengths[slot] || 0);
+            if (sentenceEnd > nativeAnchor) ceiling = sentenceEnd;
+          }
+        }
+        if (ceiling !== null) pos = Math.min(pos, ceiling);
+      } else if (batch.anchorTime !== null) {
         // Ground truth is available: the engine told us exactly where the
         // voice is. Extrapolate from that anchor, minus the lead-in delay
         // that opens every utterance (only engines that announce their first
@@ -1314,11 +1434,9 @@ class PlaybackManager {
       } else if (this.options.extensionId &&
                  (now - (batch.requestedAt || batch.startedAt)) < this.preparationWindowMs(profile)) {
         // The engine has accepted the utterance but has not started speaking
-        // yet. Preparing can take a long time — measured: ~10 s for Kokoro on a
-        // CPU-only machine, ~24 s while its model downloads, ~7 s for Supertonic.
-        // Park the highlight at the beginning of the utterance instead of
-        // extrapolating — extrapolating here is what put the highlight seconds
-        // ahead of the voice.
+        // yet. Provider preparation can take several seconds, especially on
+        // cold starts. Park the highlight at the beginning of the utterance
+        // instead of extrapolating ahead of audible speech.
         pos = 0;
       } else {
         // This engine reports no boundaries at all — fall back to a straight
@@ -1343,9 +1461,14 @@ class PlaybackManager {
       const match = spoken.substring(wordStart).match(/^\S+/);
       const len = match ? match[0].length : 1;
 
+      // Avoid broadcasting the same estimated word on every 45 ms tick.
+      // Native events remain free to repeat/correct the current word.
+      if (batch.lastEstimatedWordStart === wordStart) return;
+      batch.lastEstimatedWordStart = wordStart;
+
       // Feed the estimate into the pause/resume bookkeeping too, so pausing
-      // with an engine that reports no word boundaries still resumes near the
-      // right place instead of restarting the sentence.
+      // with an engine that has no recent word boundary resumes near the
+      // estimated position instead of rewinding to the previous native word.
       this.lastWordCharIndex = (batch.resumeOffset || 0) + wordStart;
       this.sawWordEvents = true;
 
@@ -1454,10 +1577,10 @@ class PlaybackManager {
       this.sawWordEvents = false;
     }
 
-    // Pronunciation overrides rewrite the SPOKEN text only; the queue and
-    // highlight always use the original. When they changed the text, word
-    // events can no longer be mapped onto the original — degrade to
-    // sentence-level highlight for that sentence.
+    // Speech-only cleanup, prosody, and pronunciation overrides may rewrite
+    // the spoken text while the queue and DOM highlight retain the original.
+    // When character positions changed, degrade to sentence-level highlighting
+    // rather than mapping TTS offsets onto the wrong source word.
     this.wordEventsUsable = !batch.pronunciationChanged;
 
     console.log(
@@ -1506,7 +1629,7 @@ class PlaybackManager {
       anchorTime: null,
       // The extent of the sentence the engine just announced: charIndex plus
       // the length the engine reported for it (null when the engine reports
-      // no length, e.g. Kokoro).
+      // no length).
       anchorEnd: null,
       segmentIndex: 0,
       firstBoundaryDelay: null,
@@ -1610,14 +1733,19 @@ class PlaybackManager {
       ? spoken
       : 0;
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
+    this.recoveryPendingAdvance = false;
     this.isSwitchingSentence = true;
     this.playbackState = PlaybackState.PAUSED;
     this.awaitingSpeech = false;
     this.stopEstimator();
     await stopSpeechAndWait();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PAUSED) return false;
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PAUSED) return false;
     this.broadcast('PLAYBACK_PAUSED');
+    return true;
   }
 
   /**
@@ -1628,27 +1756,36 @@ class PlaybackManager {
       return;
     }
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
+    this.recoveryPendingAdvance = false;
     this.playbackState = PlaybackState.PLAYING;
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return false;
     this.broadcast('PLAYBACK_RESUMED');
     const resumeFrom = this.resumeOffset || 0;
-    this.speakCurrentSentence(this.playbackRunId, resumeFrom);
+    this.speakCurrentSentence(runId, resumeFrom);
+    return true;
   }
 
   /**
    * Stop playback and reset to beginning.
    */
   async stop() {
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
+    this.recoveryPendingAdvance = false;
     this.isSwitchingSentence = true;
     this.playbackState = PlaybackState.STOPPED;
     this.awaitingSpeech = false;
     this.stopEstimator();
     await stopSpeechAndWait();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.STOPPED) return false;
     this.currentIndex = 0;
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.STOPPED) return false;
     this.broadcast('PLAYBACK_STOPPED');
+    return true;
   }
 
   /**
@@ -1657,18 +1794,21 @@ class PlaybackManager {
   async skipForward() {
     if (this.queue.length === 0) return;
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
+    this.recoveryPendingAdvance = false;
     this.isSwitchingSentence = true;
-    await stopSpeechAndWait();
-
     if (this.currentIndex < this.queue.length - 1) {
       this.currentIndex++;
     }
+    await stopSpeechAndWait();
+    if (runId !== this.playbackRunId) return false;
 
     await this.saveToSession();
+    if (runId !== this.playbackRunId) return false;
 
     if (this.playbackState === PlaybackState.PLAYING) {
-      this.speakCurrentSentence(this.playbackRunId);
+      this.speakCurrentSentence(runId);
     } else {
       this.broadcast('SENTENCE_CHANGED', {
         index: this.currentIndex,
@@ -1684,18 +1824,21 @@ class PlaybackManager {
   async skipBackward() {
     if (this.queue.length === 0) return;
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
+    this.recoveryPendingAdvance = false;
     this.isSwitchingSentence = true;
-    await stopSpeechAndWait();
-
     if (this.currentIndex > 0) {
       this.currentIndex--;
     }
+    await stopSpeechAndWait();
+    if (runId !== this.playbackRunId) return false;
 
     await this.saveToSession();
+    if (runId !== this.playbackRunId) return false;
 
     if (this.playbackState === PlaybackState.PLAYING) {
-      this.speakCurrentSentence(this.playbackRunId);
+      this.speakCurrentSentence(runId);
     } else {
       this.broadcast('SENTENCE_CHANGED', {
         index: this.currentIndex,
@@ -1711,16 +1854,68 @@ class PlaybackManager {
   async jumpToIndex(index) {
     if (this.queue.length === 0) return;
 
-    this.playbackRunId = (this.playbackRunId || 0) + 1;
+    const runId = (this.playbackRunId || 0) + 1;
+    this.playbackRunId = runId;
+    this.recoveryPendingAdvance = false;
     this.isSwitchingSentence = true;
-    await stopSpeechAndWait();
-
     const targetIndex = Math.max(0, Math.min(index, this.queue.length - 1));
     this.currentIndex = targetIndex;
+    await stopSpeechAndWait();
+    if (runId !== this.playbackRunId) return false;
+
     this.playbackState = PlaybackState.PLAYING;
     await this.saveToSession();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return false;
 
-    this.speakCurrentSentence(this.playbackRunId);
+    this.speakCurrentSentence(runId);
+    return true;
+  }
+
+  /**
+   * Persist an option update and, when speaking, restart only the latest
+   * playback run. The strategy preserves the position semantics of each
+   * control: rate/volume keep the last word, pitch keeps the pause offset,
+   * and voice changes restart the current sentence.
+   */
+  async _commitPlaybackOptionChange(resumeStrategy = 'word') {
+    const shouldRestart = this.playbackState === PlaybackState.PLAYING;
+    const runId = shouldRestart
+      ? (this.playbackRunId || 0) + 1
+      : this.playbackRunId;
+
+    if (shouldRestart) {
+      this.playbackRunId = runId;
+      this.recoveryPendingAdvance = false;
+      this.isSwitchingSentence = true;
+    }
+
+    await this.savePreferences();
+    if (shouldRestart &&
+        (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING)) return false;
+
+    await this.saveToSession();
+    if (shouldRestart &&
+        (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING)) return false;
+
+    if (!shouldRestart) {
+      this.broadcast('OPTIONS_CHANGED', { options: this.options });
+      return true;
+    }
+
+    let resumeFrom = 0;
+    if (resumeStrategy === 'word') {
+      resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0)
+        ? this.lastWordCharIndex
+        : (this.resumeOffset || 0);
+    } else if (resumeStrategy === 'offset') {
+      resumeFrom = this.resumeOffset || 0;
+    }
+
+    await stopSpeechAndWait();
+    if (runId !== this.playbackRunId || this.playbackState !== PlaybackState.PLAYING) return false;
+
+    this.speakCurrentSentence(runId, resumeFrom);
+    return true;
   }
 
   /**
@@ -1729,19 +1924,7 @@ class PlaybackManager {
   async setRate(rate) {
     const validRate = Math.max(0.5, Math.min(rate, 3.0));
     this.options.rate = validRate;
-    await this.savePreferences();
-    await this.saveToSession();
-
-    // If currently speaking, restart current sentence with the new rate immediately
-    if (this.playbackState === PlaybackState.PLAYING) {
-      this.playbackRunId = (this.playbackRunId || 0) + 1;
-      this.isSwitchingSentence = true;
-      await stopSpeechAndWait();
-      const resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0) ? this.lastWordCharIndex : (this.resumeOffset || 0);
-      this.speakCurrentSentence(this.playbackRunId, resumeFrom);
-    } else {
-      this.broadcast('OPTIONS_CHANGED', { options: this.options });
-    }
+    return this._commitPlaybackOptionChange('word');
   }
 
   /**
@@ -1750,19 +1933,7 @@ class PlaybackManager {
   async setVolume(volume) {
     const validVolume = Math.max(0.0, Math.min(volume, 1.0));
     this.options.volume = validVolume;
-    await this.savePreferences();
-    await this.saveToSession();
-
-    // If currently speaking, restart current sentence with the new volume immediately
-    if (this.playbackState === PlaybackState.PLAYING) {
-      this.playbackRunId = (this.playbackRunId || 0) + 1;
-      this.isSwitchingSentence = true;
-      await stopSpeechAndWait();
-      const resumeFrom = (this.wordEventsUsable && this.sawWordEvents && this.lastWordCharIndex > 0) ? this.lastWordCharIndex : (this.resumeOffset || 0);
-      this.speakCurrentSentence(this.playbackRunId, resumeFrom);
-    } else {
-      this.broadcast('OPTIONS_CHANGED', { options: this.options });
-    }
+    return this._commitPlaybackOptionChange('word');
   }
 
   /**
@@ -1771,17 +1942,7 @@ class PlaybackManager {
   async setPitch(pitch) {
     const validPitch = Math.max(0.5, Math.min(pitch, 2.0));
     this.options.pitch = validPitch;
-    await this.savePreferences();
-    await this.saveToSession();
-
-    if (this.playbackState === PlaybackState.PLAYING) {
-      this.playbackRunId = (this.playbackRunId || 0) + 1;
-      this.isSwitchingSentence = true;
-      await stopSpeechAndWait();
-      this.speakCurrentSentence(this.playbackRunId, this.resumeOffset || 0);
-    } else {
-      this.broadcast('OPTIONS_CHANGED', { options: this.options });
-    }
+    return this._commitPlaybackOptionChange('offset');
   }
 
   // ── Pronunciation overrides ("zea mays = zee-a mays", one per line) ──
@@ -1846,21 +2007,10 @@ class PlaybackManager {
     this.options.lang = lng.length > 0 ? lng : null;
     // An explicit choice sticks: from now on the automatic engine priority
     // must not override it (that is what keeps Supertonic usable as a
-    // deliberate fallback next to Kokoro).
+    // deliberate fallback next to Piper).
     this.voicePinned = true;
 
-    await this.savePreferences();
-    await this.saveToSession();
-
-    // If currently speaking, restart current sentence with the new voice immediately
-    if (this.playbackState === PlaybackState.PLAYING) {
-      this.playbackRunId = (this.playbackRunId || 0) + 1;
-      this.isSwitchingSentence = true;
-      await stopSpeechAndWait();
-      this.speakCurrentSentence(this.playbackRunId);
-    } else {
-      this.broadcast('OPTIONS_CHANGED', { options: this.options });
-    }
+    return this._commitPlaybackOptionChange('sentence');
   }
 
   /**

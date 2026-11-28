@@ -51,10 +51,13 @@
   const GAZE_ANCHOR   = 0.38;   // fraction from viewport top
   const GAZE_FRICTION = 0.10;   // per-frame lerp coefficient (10% approach)
   const GAZE_EPSILON  = 0.5;    // px — stop ticking below this residual
+  const GAZE_USER_YIELD_MS = 1200;
 
   let _gazeRafId   = null;
   let _gazeTarget  = null;   // { y: number, container: Element|null }
   let _gazeVel     = 0;      // current scroll velocity (px/frame)
+  let _gazeResumeAt = 0;
+  let _gazeResumeTimer = null;
 
   /**
    * Schedule a Golden Gaze scroll toward targetY on the page (container=null)
@@ -65,6 +68,18 @@
    */
   function gazeScrollTo(targetY, container) {
     _gazeTarget = { y: targetY, container: container || null };
+    const resumeDelay = _gazeResumeAt - Date.now();
+    if (resumeDelay > 0) {
+      // Keep only the latest sentence target while the user is in control.
+      // Resume from the current scroll position after the quiet period.
+      if (_gazeResumeTimer === null) {
+        _gazeResumeTimer = setTimeout(() => {
+          _gazeResumeTimer = null;
+          if (_gazeTarget && !_gazeRafId) _gazeRafId = requestAnimationFrame(_gazeLoop);
+        }, resumeDelay);
+      }
+      return;
+    }
     if (!_gazeRafId) _gazeRafId = requestAnimationFrame(_gazeLoop);
   }
 
@@ -97,8 +112,50 @@
   /** Cancel any in-flight Golden Gaze scroll. */
   function gazeCancelScroll() {
     if (_gazeRafId) { cancelAnimationFrame(_gazeRafId); _gazeRafId = null; }
+    if (_gazeResumeTimer !== null) {
+      clearTimeout(_gazeResumeTimer);
+      _gazeResumeTimer = null;
+    }
     _gazeTarget = null;
     _gazeVel    = 0;
+    _gazeResumeAt = 0;
+  }
+
+  /**
+   * Yield automatic scrolling to direct user input. Wheel and touch gestures
+   * always count; pointer input counts only near the viewport edge where the
+   * native scrollbar lives; keyboard input counts only for document scrolling.
+   */
+  function gazeYieldToUser(event) {
+    if (!event) return;
+
+    if (event.type === 'wheel') {
+      if (event.deltaX === 0 && event.deltaY === 0) return;
+    } else if (event.type === 'pointerdown') {
+      if (event.button !== 0) return;
+      const edgeDistance = Math.min(event.clientX, window.innerWidth - event.clientX);
+      if (edgeDistance > 24) return;
+    } else if (event.type === 'keydown') {
+      const scrollKeys = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+      if (!scrollKeys.has(event.key)) return;
+      // Event targets are retargeted at Shadow DOM boundaries. Inspect the
+      // composed path so keyboard use inside the player and Focus Reader's
+      // existing controls is never mistaken for page-scroll intent.
+      const path = typeof event.composedPath === 'function'
+        ? event.composedPath()
+        : [event.target];
+      const isInteractiveTarget = (node) => {
+        if (!node || typeof node !== 'object') return false;
+        const tag = typeof node.tagName === 'string' ? node.tagName.toLowerCase() : '';
+        return node.isContentEditable === true ||
+          ['input', 'textarea', 'select', 'button', 'a'].includes(tag) ||
+          (typeof node.getAttribute === 'function' && node.getAttribute('role') === 'slider');
+      };
+      if (path.some(isInteractiveTarget)) return;
+    }
+
+    gazeCancelScroll();
+    _gazeResumeAt = Date.now() + GAZE_USER_YIELD_MS;
   }
 
   // Per-property spring state
@@ -141,11 +198,11 @@
     const squishX = 1 + Math.tanh(vxNorm * 0.14) * 0.09;  // ±9% max stretch
     const squishY = 1 / (squishX || 1);                    // volume-preserve
 
+    const widthScale = _sp.w.tgt > 0 ? Math.max(0, _sp.w.cur) / _sp.w.tgt : 1;
+    const heightScale = _sp.h.tgt > 0 ? Math.max(0, _sp.h.cur) / _sp.h.tgt : 1;
     wordBoxEl.style.transform =
       `translate3d(${_sp.x.cur.toFixed(2)}px, ${_sp.y.cur.toFixed(2)}px, 0) ` +
-      `scaleX(${squishX.toFixed(4)}) scaleY(${squishY.toFixed(4)})`;
-    wordBoxEl.style.width  = `${Math.max(0, _sp.w.cur).toFixed(2)}px`;
-    wordBoxEl.style.height = `${Math.max(0, _sp.h.cur).toFixed(2)}px`;
+      `scale3d(${(widthScale * squishX).toFixed(4)}, ${(heightScale * squishY).toFixed(4)}, 1)`;
 
     if (xAlive || yAlive || wAlive || hAlive) {
       _springRafId = requestAnimationFrame(_springLoop);
@@ -155,8 +212,6 @@
       _sp.w.cur = _sp.w.tgt; _sp.h.cur = _sp.h.tgt;
       wordBoxEl.style.transform =
         `translate3d(${_sp.x.tgt.toFixed(2)}px, ${_sp.y.tgt.toFixed(2)}px, 0)`;
-      wordBoxEl.style.width  = `${_sp.w.tgt}px`;
-      wordBoxEl.style.height = `${_sp.h.tgt}px`;
       _springRunning = false;
       _lastRafTime = null;
     }
@@ -177,14 +232,21 @@
       _sp.w.cur = _sp.w.tgt = w; _sp.w.vel = 0;
       _sp.h.cur = _sp.h.tgt = h; _sp.h.vel = 0;
       if (wordBoxEl) {
-        wordBoxEl.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-        wordBoxEl.style.width  = `${w}px`;
+        wordBoxEl.style.width = `${w}px`;
         wordBoxEl.style.height = `${h}px`;
+        wordBoxEl.style.transform = `translate3d(${x}px, ${y}px, 0)`;
       }
       if (_springRafId) { cancelAnimationFrame(_springRafId); _springRafId = null; }
       _springRunning = false;
       _lastRafTime = null;
     } else {
+      // Width and height are fixed once per target change. The RAF loop
+      // animates their apparent geometry with scale3d(), avoiding per-frame
+      // layout and keeping the capsule transform compositor-friendly.
+      if (wordBoxEl) {
+        wordBoxEl.style.width = `${w}px`;
+        wordBoxEl.style.height = `${h}px`;
+      }
       _sp.x.tgt = x; _sp.y.tgt = y; _sp.w.tgt = w; _sp.h.tgt = h;
       if (!_springRunning) {
         _springRunning = true;
@@ -929,11 +991,69 @@
     });
   }
 
+  // Page zoom and display-density changes update devicePixelRatio. A
+  // resolution media query is re-armed after each change so zoom/display
+  // changes are event-driven instead of waking every 1.2 s while idle.
+  let _devicePixelRatioMedia = null;
+  let _devicePixelRatioChangeHandler = null;
+
+  function stopDevicePixelRatioWatch() {
+    const media = _devicePixelRatioMedia;
+    const handler = _devicePixelRatioChangeHandler;
+    if (media && handler) {
+      if (typeof media.removeEventListener === 'function') {
+        media.removeEventListener('change', handler);
+      } else if (typeof media.removeListener === 'function') {
+        media.removeListener(handler);
+      }
+    }
+    _devicePixelRatioMedia = null;
+    _devicePixelRatioChangeHandler = null;
+  }
+
+  function watchDevicePixelRatio() {
+    stopDevicePixelRatioWatch();
+    if (typeof window.matchMedia !== 'function') return false;
+
+    const dpr = (typeof window.devicePixelRatio === 'number' && window.devicePixelRatio > 0)
+      ? window.devicePixelRatio
+      : 1;
+
+    try {
+      const media = window.matchMedia(`(resolution: ${dpr}dppx)`);
+      const handler = () => {
+        // The old query is now stale; observe the current DPR before updating.
+        watchDevicePixelRatio();
+        updateZoomCompensation();
+      };
+      if (typeof media.addEventListener === 'function') {
+        media.addEventListener('change', handler);
+      } else if (typeof media.addListener === 'function') {
+        // Legacy MediaQueryList support for older embedded Chromium versions.
+        media.addListener(handler);
+      } else {
+        return false;
+      }
+      _devicePixelRatioMedia = media;
+      _devicePixelRatioChangeHandler = handler;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   window.addEventListener('resize', updateZoomCompensation);
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', updateZoomCompensation);
   }
-  setInterval(updateZoomCompensation, 1200);
+  watchDevicePixelRatio();
+
+  // A page restored from the back-forward cache needs its resolution watcher
+  // re-armed because pagehide disconnects the previous MediaQueryList listener.
+  window.addEventListener('pageshow', () => {
+    watchDevicePixelRatio();
+    updateZoomCompensation();
+  }, { passive: true });
 
   // -----------------------------------------------------------------
   // 4. Create Host Element & Shadow DOM Player UI
@@ -1298,6 +1418,20 @@
       width: auto;
       height: auto;
       padding: 4px 7px;
+    }
+
+    /* Keep the compact player keyboard-accessible after a modal closes. The
+       temporary class reveals the opener for the focus() call; :focus-within
+       keeps it visible only while keyboard focus remains inside the player. */
+    .player-pill.pill-mini.focus-restoring,
+    .player-pill.pill-mini:focus-within {
+      width: auto;
+      height: auto;
+      padding: 4px 7px;
+    }
+    .player-pill.pill-mini.focus-restoring:not(:hover) #ra-settings,
+    .player-pill.pill-mini:focus-within:not(:hover) #ra-settings {
+      display: flex !important;
     }
 
     /* ── Samsung Galaxy S26 Ultra Edge Handle (Collapsed State) ── */
@@ -2407,9 +2541,13 @@
     button:focus-visible,
     select:focus-visible,
     input:focus-visible,
-    textarea:focus-visible {
+    textarea:focus-visible,
+    .progress-track:focus-visible,
+    .reader-progress-wrap:focus-visible,
+    .speed-badge:focus-visible,
+    .reader-speed-badge:focus-visible {
       outline: 2px solid var(--ra-accent) !important;
-      outline-offset: 2px !important;
+      outline-offset: 3px !important;
     }
 
     /* ── Animated Word Indicator Box (Modern Gliding Capsule) ─────── */
@@ -2430,9 +2568,9 @@
       transform: translate3d(0, 0, 0);
       /* Only opacity fades in CSS; spring handles geometry */
       transition: opacity 100ms ease-out;
-      will-change: transform, width, height, opacity;
+      will-change: transform, opacity;
       /* transform-origin centered so kinetic squish expands symmetrically */
-      transform-origin: left center;
+      transform-origin: left top;
     }
     .ra-word-box.visible {
       opacity: 1;
@@ -2579,6 +2717,594 @@
         animation: none !important;
       }
     }
+
+    /* Respect reduced-motion preferences across every animated player and reader control.
+       The spring renderer already bypasses its RAF loop when this preference is active. */
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
+    /* ── Reading Atelier: understated editorial craft, not decorative noise ── */
+    :host {
+      --ra-font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --ra-font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+      --ra-font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Baskerville", Georgia, serif;
+      --ra-accent: #FF7043;
+      --ra-accent-hover: #F05A2A;
+      --ra-accent-dim: rgba(255, 112, 67, 0.14);
+    }
+
+    :host(.theme-light) {
+      --ra-bg: #F3EEE6;
+      --ra-surface: #FCF9F3;
+      --ra-border: #D9CFC2;
+      --ra-text: #302925;
+      --ra-muted: #70645C;
+      --ra-accent: #A94D32;
+      --ra-accent-hover: #873B26;
+      --ra-accent-dim: rgba(169, 77, 50, 0.12);
+    }
+
+    :host(.theme-te-field) {
+      --ra-bg: #19171A;
+      --ra-surface: #242126;
+      --ra-border: #40383D;
+      --ra-text: #F2ECE6;
+      --ra-muted: #B4A8A1;
+    }
+
+    .ra-brand,
+    .reader-brand,
+    .reader-meta,
+    .progress-pill,
+    .speed-badge,
+    .info-label,
+    .settings-title,
+    .settings-label,
+    .voice-status,
+    .speed-min-max,
+    .speed-display,
+    .reader-tool-val,
+    .reader-progress-text {
+      font-family: var(--ra-font-mono);
+    }
+
+    .player-pill {
+      gap: 7px;
+      padding: 6px 10px;
+      border-radius: 17px;
+      background: linear-gradient(145deg, rgba(42, 36, 39, 0.97), rgba(20, 18, 21, 0.96));
+      border-color: rgba(239, 223, 210, 0.17);
+      box-shadow: 0 16px 42px rgba(0, 0, 0, 0.38), 0 3px 10px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(22px) saturate(135%);
+      -webkit-backdrop-filter: blur(22px) saturate(135%);
+    }
+
+    :host(.theme-light) .player-pill {
+      background: linear-gradient(145deg, rgba(255, 253, 248, 0.98), rgba(239, 232, 222, 0.97));
+      border-color: rgba(91, 72, 59, 0.19);
+      box-shadow: 0 16px 38px rgba(59, 44, 34, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    }
+
+    .pill-body {
+      gap: 5px;
+    }
+
+    button.icon-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      color: var(--ra-text);
+    }
+
+    button.play-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: var(--ra-accent);
+      box-shadow: 0 4px 12px rgba(255, 112, 67, 0.25);
+    }
+
+    button.play-btn:hover {
+      box-shadow: 0 5px 15px rgba(255, 112, 67, 0.35);
+    }
+
+    .speed-badge {
+      min-width: 42px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      background: rgba(255, 112, 67, 0.09);
+      border-color: rgba(255, 112, 67, 0.2);
+    }
+
+    .progress-pill {
+      padding: 3px 7px;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.22);
+      border-color: rgba(255, 255, 255, 0.09);
+    }
+
+    .settings-panel {
+      width: 320px;
+      max-width: calc(100vw - 24px);
+      padding: 19px;
+      border-radius: 18px;
+      background: linear-gradient(150deg, rgba(37, 32, 36, 0.98), rgba(20, 18, 21, 0.98));
+      border-color: rgba(239, 223, 210, 0.17);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 245, 235, 0.08);
+      font-family: var(--ra-font);
+      font-size: 13px;
+    }
+
+    :host(.theme-light) .settings-panel {
+      background: linear-gradient(150deg, rgba(255, 253, 248, 0.99), rgba(241, 235, 226, 0.98));
+      border-color: rgba(91, 72, 59, 0.17);
+      box-shadow: 0 22px 56px rgba(60, 45, 35, 0.16), inset 0 1px 0 #fff;
+    }
+
+    .settings-header {
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom-color: rgba(190, 162, 145, 0.2);
+    }
+
+    .settings-title {
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      color: var(--ra-accent);
+    }
+
+    button.settings-close {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.045);
+    }
+
+    .settings-section {
+      margin-bottom: 14px;
+    }
+
+    .settings-label {
+      font-size: 9px;
+      letter-spacing: 0.13em;
+      margin-bottom: 7px;
+    }
+
+    .settings-action-btn {
+      min-height: 42px;
+      padding: 9px 11px;
+      border-radius: 10px;
+      font-family: var(--ra-font);
+      font-size: 11px;
+      letter-spacing: 0.035em;
+    }
+
+    .settings-select {
+      min-height: 42px;
+      padding: 9px 30px 9px 12px;
+      border-radius: 10px;
+      font-family: var(--ra-font);
+      font-size: 13px;
+    }
+
+    .voice-status {
+      font-size: 10px;
+      line-height: 1.45;
+      margin-top: 6px;
+    }
+
+    .speed-range {
+      height: 6px;
+    }
+
+    .speed-range::-webkit-slider-thumb {
+      width: 16px;
+      height: 16px;
+    }
+
+    button.theme-btn {
+      min-height: 34px;
+      padding: 7px 13px;
+      border-radius: 9px;
+      font-size: 10px;
+    }
+
+    .ra-toggle-row {
+      min-height: 42px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(190, 162, 145, 0.12);
+    }
+
+    .ra-toggle-row:last-child {
+      border-bottom: 0;
+    }
+
+    .reader-overlay {
+      background-color: var(--r-bg, #F3EEE6);
+      color: var(--r-text, #302925);
+    }
+
+    .reader-overlay.theme-cream {
+      --r-bg: #F3EEE6;
+      --r-text: #302925;
+      --r-meta: #70645C;
+      --r-hdr-bg: rgba(243, 238, 230, 0.94);
+      --r-hdr-border: rgba(93, 73, 57, 0.14);
+      --r-sentence-bg: rgba(169, 77, 50, 0.085);
+      --r-word-bg: #F1BEA4;
+      --r-word-text: #472719;
+    }
+
+    .reader-overlay.theme-dark {
+      --r-bg: #1C1A1D;
+      --r-text: #F0EAE4;
+      --r-meta: #B0A49D;
+      --r-hdr-bg: rgba(28, 26, 29, 0.95);
+      --r-hdr-border: rgba(239, 225, 214, 0.13);
+      --r-sentence-bg: rgba(255, 138, 91, 0.11);
+      --r-word-bg: #9B4D32;
+      --r-word-text: #FFF3EC;
+    }
+
+    .reader-overlay.theme-sepia {
+      --r-bg: #EDE2CF;
+      --r-text: #49382D;
+      --r-meta: #75604B;
+      --r-hdr-bg: rgba(237, 226, 207, 0.95);
+      --r-hdr-border: rgba(92, 67, 46, 0.15);
+      --r-sentence-bg: rgba(153, 82, 49, 0.09);
+      --r-word-bg: #E6B48D;
+      --r-word-text: #482A1D;
+    }
+
+    .reader-overlay.theme-oled {
+      --r-bg: #000000;
+      --r-text: #F3EEE8;
+      --r-meta: #A69B94;
+      --r-hdr-bg: rgba(0, 0, 0, 0.96);
+      --r-hdr-border: rgba(255, 255, 255, 0.15);
+      --r-sentence-bg: rgba(255, 120, 65, 0.12);
+      --r-word-bg: #A64B2B;
+      --r-word-text: #FFFFFF;
+    }
+
+    .reader-header {
+      min-height: 68px;
+      gap: 14px;
+      padding: 12px clamp(16px, 3vw, 34px);
+      background: var(--r-hdr-bg);
+      border-bottom: 1px solid var(--r-hdr-border);
+      backdrop-filter: blur(16px) saturate(125%);
+      -webkit-backdrop-filter: blur(16px) saturate(125%);
+    }
+
+    .reader-header-left {
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .reader-hdr-btn {
+      min-height: 40px;
+      padding: 8px 15px;
+      border-radius: 999px;
+      border-color: var(--r-hdr-border);
+      font-family: var(--ra-font);
+      font-size: 10px;
+      letter-spacing: 0.09em;
+    }
+
+    .reader-brand {
+      color: var(--r-meta);
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      line-height: 1.45;
+      white-space: nowrap;
+    }
+
+    .reader-header-right {
+      gap: 9px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .reader-tool-group {
+      gap: 2px;
+      padding: 3px 5px;
+      border-radius: 999px;
+      border-color: var(--r-hdr-border);
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .reader-tool-btn {
+      min-width: 34px;
+      min-height: 34px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-family: var(--ra-font);
+    }
+
+    .reader-tool-val {
+      min-width: 42px;
+      font-size: 10px;
+    }
+
+    .reader-select {
+      min-height: 40px;
+      padding: 8px 13px;
+      border-radius: 999px;
+      font-family: var(--ra-font);
+      font-size: 12px;
+    }
+
+    .reader-theme-group {
+      gap: 7px;
+    }
+
+    .reader-th-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      font-size: 10px;
+      border: 2px solid transparent;
+    }
+
+    .reader-th-btn.active {
+      transform: scale(1.06);
+      outline: 2px solid var(--ra-accent);
+      outline-offset: 2px;
+    }
+
+    .reader-scroll-area {
+      padding: 50px 26px 148px;
+      scroll-padding-top: 28px;
+    }
+
+    .reader-content-card {
+      max-width: 680px;
+    }
+
+    .reader-doc-title {
+      max-width: 20ch;
+      margin-bottom: 16px;
+      font-family: var(--ra-font-display);
+      font-size: clamp(32px, 4.1vw, 48px);
+      font-weight: 500;
+      line-height: 1.1;
+      letter-spacing: -0.025em;
+      text-wrap: balance;
+    }
+
+    .reader-meta {
+      margin-bottom: 34px;
+      padding-bottom: 15px;
+      font-size: 9px;
+      line-height: 1.5;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      border-bottom-color: var(--r-hdr-border);
+    }
+
+    .reader-body {
+      font-size: var(--r-font-size, 20px);
+      line-height: 1.82;
+      letter-spacing: 0;
+      color: var(--r-text);
+      text-wrap: pretty;
+    }
+
+    .reader-overlay.font-serif .reader-body {
+      font-family: var(--ra-font-display);
+      font-kerning: normal;
+    }
+
+    .reader-overlay.font-sans .reader-body {
+      font-family: var(--ra-font);
+      letter-spacing: 0;
+    }
+
+    .reader-paragraph {
+      margin-bottom: 1.65em;
+      line-height: inherit;
+      text-wrap: pretty;
+    }
+
+    .reader-sentence {
+      padding: 2px 3px;
+      margin: 0 -1px;
+      border-radius: 5px;
+      transition: background 160ms ease;
+    }
+
+    .reader-sentence:hover {
+      background: rgba(169, 77, 50, 0.055);
+    }
+
+    .reader-sentence.active-sentence {
+      background: var(--r-sentence-bg);
+    }
+
+    .reader-sentence.active-sentence .reader-word-active {
+      display: inline-block;
+      background: var(--r-word-bg) !important;
+      color: var(--r-word-text) !important;
+      font-weight: 600;
+      border: 0;
+      border-radius: 5px;
+      padding: 0 4px;
+      margin: 0 1px;
+      box-shadow: inset 0 -1px 0 rgba(100, 48, 28, 0.16);
+      transform: none;
+      transition: background 120ms ease;
+    }
+
+    .reader-bar {
+      bottom: 22px;
+      gap: 11px;
+      min-height: 64px;
+      padding: 9px 15px;
+      border-radius: 999px;
+      background: rgba(35, 31, 35, 0.94);
+      border-color: rgba(239, 225, 214, 0.17);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24), 0 3px 10px rgba(0, 0, 0, 0.14);
+      backdrop-filter: blur(22px) saturate(125%);
+      -webkit-backdrop-filter: blur(22px) saturate(125%);
+    }
+
+    .reader-overlay.theme-cream .reader-bar,
+    .reader-overlay.theme-sepia .reader-bar {
+      background: rgba(250, 247, 241, 0.96);
+      border-color: rgba(93, 73, 57, 0.17);
+      color: #342D29;
+      box-shadow: 0 18px 48px rgba(70, 52, 39, 0.15), 0 3px 10px rgba(70, 52, 39, 0.07);
+    }
+
+    .reader-ctrl-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+    }
+
+    .reader-ctrl-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .reader-play-main {
+      width: 48px !important;
+      height: 48px !important;
+      background: var(--ra-accent) !important;
+      border-radius: 50% !important;
+      box-shadow: 0 5px 16px rgba(255, 112, 67, 0.28);
+    }
+
+    .reader-progress-wrap {
+      width: clamp(90px, 14vw, 180px);
+      height: 5px;
+      border-radius: 99px;
+    }
+
+    .reader-progress-fill {
+      background: linear-gradient(90deg, #BD5937, #E9895C);
+    }
+
+    .reader-progress-text {
+      min-width: 48px;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+    }
+
+    .reader-speed-badge {
+      min-width: 54px;
+      min-height: 40px;
+      padding: 7px 11px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-family: var(--ra-font-mono);
+    }
+
+    .reader-overlay button:focus-visible,
+    .reader-overlay select:focus-visible,
+    .reader-overlay input:focus-visible,
+    .reader-overlay [role="slider"]:focus-visible {
+      outline: 3px solid var(--ra-accent) !important;
+      outline-offset: 3px !important;
+    }
+
+    @media (max-width: 760px) {
+      .reader-header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        padding: 10px 16px;
+        gap: 9px;
+      }
+
+      .reader-header-right {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .reader-scroll-area {
+        padding: 32px 22px 132px;
+      }
+
+      .reader-doc-title {
+        font-size: clamp(31px, 7vw, 42px);
+      }
+
+      .reader-bar {
+        bottom: 14px;
+        max-width: calc(100vw - 20px);
+        gap: 8px;
+        padding: 8px 11px;
+      }
+    }
+
+    @media (max-width: 430px) {
+      .reader-brand {
+        font-size: 8px;
+        letter-spacing: 0.1em;
+      }
+
+      .reader-header-right {
+        gap: 6px;
+      }
+
+      .reader-tool-group {
+        padding: 2px 4px;
+      }
+
+      .reader-select {
+        max-width: 126px;
+        font-size: 11px;
+      }
+
+      .reader-theme-group {
+        gap: 4px;
+      }
+
+      .reader-th-btn {
+        width: 29px;
+        height: 29px;
+      }
+
+      .reader-bar {
+        gap: 6px;
+        padding: 7px 9px;
+      }
+
+      .reader-ctrl-btn {
+        width: 38px;
+        height: 38px;
+      }
+
+      .reader-play-main {
+        width: 44px !important;
+        height: 44px !important;
+      }
+
+      .reader-progress-wrap {
+        width: clamp(52px, 17vw, 76px);
+      }
+
+      .reader-progress-text {
+        min-width: 36px;
+        font-size: 9px;
+      }
+
+      .reader-speed-badge {
+        min-width: 48px;
+        min-height: 38px;
+        padding: 6px 8px;
+      }
+    }
+
   `;
 
   const container = document.createElement('div');
@@ -2602,7 +3328,7 @@
         <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
       </button>
 
-      <button class="icon-btn play-btn" id="ra-play" title="Play / Pause (Alt+P)" aria-label="Play or pause reading">
+      <button class="icon-btn play-btn" id="ra-play" title="Play / Pause (Alt+P)" aria-label="Play reading" aria-pressed="false">
         <svg id="ra-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       </button>
 
@@ -2610,7 +3336,8 @@
         <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
       </button>
 
-      <span class="speed-badge" id="ra-speed" title="Cycle speed">1.0×</span>
+      <button type="button" class="speed-badge" id="ra-speed" title="Cycle speed"
+        aria-label="Playback speed 1.0 times. Activate to cycle speed.">1.0×</button>
 
       <button class="icon-btn" id="ra-settings" title="Open configuration" aria-label="Open settings">
         <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
@@ -2621,8 +3348,9 @@
       <svg id="ra-collapse-icon" viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>
     </button>
 
-    <div class="progress-track" id="ra-progress-track" title="Click or drag to seek"
-      role="slider" aria-label="Playback progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <div class="progress-track" id="ra-progress-track" title="Seek playback position"
+      role="slider" tabindex="0" aria-label="Playback progress"
+      aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="No sentences loaded">
       <div class="progress-fill" id="ra-progress-fill"></div>
     </div>
   `;
@@ -2642,10 +3370,12 @@
   const resumeToast = document.createElement('div');
   resumeToast.className = 'resume-toast';
   resumeToast.id = 'ra-resume-toast';
+  resumeToast.setAttribute('role', 'group');
+  resumeToast.setAttribute('aria-label', 'Resume reading prompt');
   resumeToast.innerHTML = `
-    <span id="ra-resume-text">Resume reading?</span>
+    <span id="ra-resume-text" role="status" aria-live="polite" aria-atomic="true">Resume reading?</span>
     <button class="resume-act-btn" id="ra-resume-btn">RESUME</button>
-    <button class="resume-close-btn" id="ra-resume-close" title="Dismiss">✕</button>
+    <button class="resume-close-btn" id="ra-resume-close" title="Dismiss" aria-label="Dismiss resume prompt">✕</button>
   `;
   shadow.appendChild(resumeToast);
 
@@ -2653,6 +3383,9 @@
   const statusToast = document.createElement('div');
   statusToast.className = 'resume-toast';
   statusToast.id = 'ra-status-toast';
+  statusToast.setAttribute('role', 'status');
+  statusToast.setAttribute('aria-live', 'polite');
+  statusToast.setAttribute('aria-atomic', 'true');
   statusToast.innerHTML = '<span id="ra-status-toast-text"></span>';
   shadow.appendChild(statusToast);
 
@@ -2660,9 +3393,13 @@
   const settingsPanel = document.createElement('div');
   settingsPanel.className = 'settings-panel';
   settingsPanel.id = 'ra-settings-panel';
+  settingsPanel.setAttribute('role', 'dialog');
+  settingsPanel.setAttribute('aria-labelledby', 'ra-settings-title');
+  settingsPanel.inert = true;
+  settingsPanel.setAttribute('aria-hidden', 'true');
   settingsPanel.innerHTML = `
     <div class="settings-header">
-      <span class="settings-title">SETTINGS</span>
+      <span class="settings-title" id="ra-settings-title">SETTINGS</span>
       <button class="settings-close" id="ra-settings-close" title="Close" aria-label="Close settings">
         <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
       </button>
@@ -2688,7 +3425,7 @@
       <select class="settings-select" id="ra-voice-select">
         <option value="">Loading voices…</option>
       </select>
-      <div class="voice-status" id="ra-voice-status"></div>
+      <div class="voice-status" id="ra-voice-status" role="status" aria-live="polite" aria-atomic="true"></div>
     </div>
 
     <hr class="settings-divider">
@@ -2701,7 +3438,7 @@
       <div class="speed-row">
         <span class="speed-min-max">0.5×</span>
         <input type="range" class="speed-range" id="ra-speed-range"
-          min="0.5" max="3.0" step="0.1" value="1.0">
+          min="0.5" max="3.0" step="0.1" value="1.0" aria-valuetext="1.0 times playback speed">
         <span class="speed-min-max">3.0×</span>
       </div>
     </div>
@@ -2716,7 +3453,7 @@
       <div class="speed-row">
         <span class="speed-min-max">0%</span>
         <input type="range" class="speed-range" id="ra-volume-range"
-          min="0" max="1" step="0.05" value="1.0">
+          min="0" max="1" step="0.05" value="1.0" aria-valuetext="100 percent volume">
         <span class="speed-min-max">100%</span>
       </div>
     </div>
@@ -2727,18 +3464,18 @@
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <div>
           <label class="settings-label">THEME</label>
-          <div class="theme-row" style="gap:6px;">
-            <button class="theme-btn active" data-theme="te" title="Dark theme">DARK</button>
-            <button class="theme-btn" data-theme="light" title="Light theme">LIGHT</button>
+          <div class="theme-row" style="gap:6px;" role="group" aria-label="Player theme">
+            <button class="theme-btn active" data-theme="te" title="Dark theme" aria-pressed="true">DARK</button>
+            <button class="theme-btn" data-theme="light" title="Light theme" aria-pressed="false">LIGHT</button>
           </div>
         </div>
         <div>
           <label class="settings-label">HIGHLIGHT</label>
-          <div class="theme-row" style="gap:6px;">
-            <button class="color-swatch active" data-color="orange" title="Signal Orange" aria-label="Signal Orange highlight" style="background:#FF5C00;"></button>
-            <button class="color-swatch" data-color="indigo" title="Indigo" aria-label="Indigo highlight" style="background:#5C6BC0;"></button>
-            <button class="color-swatch" data-color="green" title="Leaf Green" aria-label="Leaf Green highlight" style="background:#2E9E4F;"></button>
-            <button class="color-swatch" data-color="pink" title="Magenta" aria-label="Magenta highlight" style="background:#E0559A;"></button>
+          <div class="theme-row" style="gap:6px;" role="group" aria-label="Word highlight color">
+            <button class="color-swatch active" data-color="orange" title="Signal Orange" aria-label="Signal Orange highlight" aria-pressed="true" style="background:#FF5C00;"></button>
+            <button class="color-swatch" data-color="indigo" title="Indigo" aria-label="Indigo highlight" aria-pressed="false" style="background:#5C6BC0;"></button>
+            <button class="color-swatch" data-color="green" title="Leaf Green" aria-label="Leaf Green highlight" aria-pressed="false" style="background:#2E9E4F;"></button>
+            <button class="color-swatch" data-color="pink" title="Magenta" aria-label="Magenta highlight" aria-pressed="false" style="background:#E0559A;"></button>
           </div>
         </div>
       </div>
@@ -2770,6 +3507,7 @@
   selectionPlayBtn.className = 'selection-play-btn';
   selectionPlayBtn.id = 'ra-selection-play';
   selectionPlayBtn.title = 'Listen to selection';
+  selectionPlayBtn.setAttribute('aria-label', 'Read selected text aloud');
   selectionPlayBtn.innerHTML = `
     <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
     <span>LISTEN</span>
@@ -2781,6 +3519,7 @@
   hoverPlayBtn.className = 'hover-play-btn';
   hoverPlayBtn.id = 'ra-hover-play';
   hoverPlayBtn.title = 'Play this paragraph';
+  hoverPlayBtn.setAttribute('aria-label', 'Read this paragraph aloud');
   hoverPlayBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
   shadow.appendChild(hoverPlayBtn);
 
@@ -2788,10 +3527,17 @@
   const readerOverlay = document.createElement('div');
   readerOverlay.className = 'reader-overlay theme-cream font-sans';
   readerOverlay.id = 'ra-reader-overlay';
+  readerOverlay.setAttribute('role', 'dialog');
+  readerOverlay.setAttribute('aria-modal', 'true');
+  readerOverlay.setAttribute('aria-labelledby', 'ra-reader-title');
+  readerOverlay.setAttribute('aria-hidden', 'true');
+  readerOverlay.tabIndex = -1;
+  readerOverlay.inert = true;
   readerOverlay.innerHTML = `
     <div class="reader-header">
       <div class="reader-header-left">
-        <button class="reader-hdr-btn" id="ra-reader-close" title="Exit Focus Reader (Esc)">
+        <button type="button" class="reader-hdr-btn" id="ra-reader-close"
+          title="Exit Focus Reader (Esc)" aria-label="Exit Focus Reader">
           <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
           <span>EXIT</span>
         </button>
@@ -2800,14 +3546,14 @@
 
       <div class="reader-header-right">
         <!-- Font Size Stepper -->
-        <div class="reader-tool-group">
-          <button class="reader-tool-btn" id="ra-font-dec" title="Decrease font size">A-</button>
-          <span class="reader-tool-val" id="ra-font-size-val">19px</span>
-          <button class="reader-tool-btn" id="ra-font-inc" title="Increase font size">A+</button>
+        <div class="reader-tool-group" role="group" aria-label="Reading text size">
+          <button type="button" class="reader-tool-btn" id="ra-font-dec" title="Decrease font size" aria-label="Decrease reading text size">A-</button>
+          <span class="reader-tool-val" id="ra-font-size-val">20px</span>
+          <button type="button" class="reader-tool-btn" id="ra-font-inc" title="Increase font size" aria-label="Increase reading text size">A+</button>
         </div>
 
         <!-- Font Family Selector -->
-        <select class="reader-select" id="ra-reader-font" title="Select typography font">
+        <select class="reader-select" id="ra-reader-font" title="Select typography font" aria-label="Reading font">
           <option value="sans">Sans-Serif</option>
           <option value="serif">Serif (Editorial)</option>
           <option value="mono">Monospace</option>
@@ -2815,11 +3561,11 @@
         </select>
 
         <!-- Theme Finish -->
-        <div class="reader-theme-group">
-          <button class="reader-th-btn active" data-rtheme="cream" title="Warm Cream Book" style="background:#FBF0D9; color:#2A2421;">Aa</button>
-          <button class="reader-th-btn" data-rtheme="dark" title="Dark Slate" style="background:#181818; color:#F0F0F0; border-color:#333;">Aa</button>
-          <button class="reader-th-btn" data-rtheme="sepia" title="Vintage Sepia" style="background:#F4ECD8; color:#5B4636;">Aa</button>
-          <button class="reader-th-btn" data-rtheme="oled" title="OLED Midnight" style="background:#000000; color:#FFFFFF; border-color:#222;">Aa</button>
+        <div class="reader-theme-group" role="group" aria-label="Reading color theme">
+          <button type="button" class="reader-th-btn active" data-rtheme="cream" title="Warm paper theme" aria-label="Warm paper theme" aria-pressed="true" style="background:#F3EEE6; color:#302925;">Aa</button>
+          <button type="button" class="reader-th-btn" data-rtheme="dark" title="Soft charcoal theme" aria-label="Soft charcoal theme" aria-pressed="false" style="background:#1C1A1D; color:#F0EAE4; border-color:#40383D;">Aa</button>
+          <button type="button" class="reader-th-btn" data-rtheme="sepia" title="Sepia paper theme" aria-label="Sepia paper theme" aria-pressed="false" style="background:#EDE2CF; color:#49382D;">Aa</button>
+          <button type="button" class="reader-th-btn" data-rtheme="oled" title="OLED black theme" aria-label="OLED black theme" aria-pressed="false" style="background:#000000; color:#FFFFFF; border-color:#333;">Aa</button>
         </div>
       </div>
     </div>
@@ -2835,24 +3581,30 @@
 
     <!-- Floating Reader Bar at bottom -->
     <div class="reader-bar">
-      <button class="reader-ctrl-btn" id="ra-rctrl-prev" title="Previous sentence (Alt+,)">
+      <button type="button" class="reader-ctrl-btn" id="ra-rctrl-prev"
+        title="Previous sentence (Alt+,)" aria-label="Previous sentence">
         <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
       </button>
 
-      <button class="reader-ctrl-btn reader-play-main" id="ra-rctrl-play" title="Play / Pause (Alt+P)">
+      <button type="button" class="reader-ctrl-btn reader-play-main" id="ra-rctrl-play"
+        title="Play / Pause (Alt+P)" aria-label="Play reading" aria-pressed="false" aria-controls="ra-reader-body">
         <svg id="ra-rctrl-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       </button>
 
-      <button class="reader-ctrl-btn" id="ra-rctrl-next" title="Next sentence (Alt+.)">
+      <button type="button" class="reader-ctrl-btn" id="ra-rctrl-next"
+        title="Next sentence (Alt+.)" aria-label="Next sentence">
         <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
       </button>
 
-      <div class="reader-progress-wrap" id="ra-rprogress-track" title="Click or scrub to seek">
+      <div class="reader-progress-wrap" id="ra-rprogress-track" title="Seek playback position"
+        role="slider" tabindex="0" aria-label="Playback progress"
+        aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="No sentences loaded">
         <div class="reader-progress-fill" id="ra-rprogress-fill"></div>
       </div>
 
       <span class="reader-progress-text" id="ra-rprogress-text">01/00</span>
-      <span class="reader-speed-badge" id="ra-rspeed" title="Cycle speed">1.0×</span>
+      <button type="button" class="reader-speed-badge" id="ra-rspeed" title="Cycle speed"
+        aria-label="Playback speed 1.0 times. Activate to cycle speed.">1.0×</button>
     </div>
   `;
   shadow.appendChild(readerOverlay);
@@ -2868,6 +3620,7 @@
   const collapseBtn = shadow.getElementById('ra-collapse');
 
   // Settings panel element references
+  const settingsTriggerBtn = shadow.getElementById('ra-settings');
   const settingsCloseBtn  = shadow.getElementById('ra-settings-close');
   const voiceSelect       = shadow.getElementById('ra-voice-select');
   const voiceStatusEl     = shadow.getElementById('ra-voice-status');
@@ -2904,8 +3657,16 @@
   const rprogressTextEl    = shadow.getElementById('ra-rprogress-text');
   const rspeedBadge        = shadow.getElementById('ra-rspeed');
 
+  function updateSpeedControlLabels() {
+    const label = `Playback speed ${currentSpeed.toFixed(1)} times. Activate to cycle speed.`;
+    speedBadge?.setAttribute('aria-label', label);
+    rspeedBadge?.setAttribute('aria-label', label);
+    updateSettingsRangeValueText();
+  }
+
+  let readerReturnFocus = null;
   let isReaderOpen = false;
-  let readerFontSize = 19;
+  let readerFontSize = 20;
   let currentReaderTheme = 'cream';
   let currentReaderFont = 'sans';
 
@@ -2920,6 +3681,15 @@
   let currentPlaybackState = 'IDLE';
   let currentSpeed = 1.0;
   let currentVolume = 1.0;
+
+  function updateSettingsRangeValueText() {
+    if (speedRangeEl) {
+      speedRangeEl.setAttribute('aria-valuetext', `${currentSpeed.toFixed(1)} times playback speed`);
+    }
+    if (volumeRangeEl) {
+      volumeRangeEl.setAttribute('aria-valuetext', `${Math.round(currentVolume * 100)} percent volume`);
+    }
+  }
   let isSettingsOpen = false;
   let currentTheme = 'te';
   let currentLayout = 'compact';
@@ -3071,16 +3841,33 @@
   /** Open the settings panel (refresh voice list each time). */
   function openSettings() {
     isSettingsOpen = true;
+    settingsPanel.inert = false;
+    settingsPanel.setAttribute('aria-hidden', 'false');
+    settingsTriggerBtn?.setAttribute('aria-expanded', 'true');
     settingsPanel.classList.add('open');
     positionSettingsPanel();
     requestAnimationFrame(positionSettingsPanel);
     populateVoices();
+    requestAnimationFrame(() => settingsCloseBtn?.focus());
   }
 
-  /** Close the settings panel. */
-  function closeSettings() {
+  /** Close the settings panel and optionally return focus to its trigger. */
+  function closeSettings(restoreFocus = false) {
     isSettingsOpen = false;
     settingsPanel.classList.remove('open');
+    settingsPanel.inert = true;
+    settingsPanel.setAttribute('aria-hidden', 'true');
+    settingsTriggerBtn?.setAttribute('aria-expanded', 'false');
+    if (restoreFocus && settingsTriggerBtn) {
+      // In mini layout the Settings control is hidden until the player is
+      // hovered or owns focus. Settings itself is outside the player subtree,
+      // so focus must be restored while a temporary reveal class is active.
+      if (container.classList.contains('pill-mini')) {
+        container.classList.add('focus-restoring');
+      }
+      settingsTriggerBtn.focus({ preventScroll: true });
+      container.classList.remove('focus-restoring');
+    }
   }
 
   /**
@@ -3193,7 +3980,9 @@
     if (valid === 'light') host.classList.add('light');
 
     themeBtns.forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.theme === valid);
+      const selected = btn.dataset.theme === valid;
+      btn.classList.toggle('active', selected);
+      btn.setAttribute('aria-pressed', String(selected));
     });
 
     safeStorageSet({ readAloud_theme: valid });
@@ -3302,12 +4091,13 @@
   // ── Settings Panel Event Wiring ──────────────────────────────────
 
   // Open settings on ⚙ pill button
+  settingsTriggerBtn?.setAttribute('aria-expanded', 'false');
   shadow.getElementById('ra-settings').addEventListener('click', () => {
     if (isSettingsOpen) closeSettings(); else openSettings();
   });
 
   // Close button
-  settingsCloseBtn.addEventListener('click', closeSettings);
+  settingsCloseBtn.addEventListener('click', () => closeSettings(true));
 
   // Close panel when clicking outside.
   //
@@ -3340,6 +4130,7 @@
     currentSpeed = rate;
     speedDisplayEl.textContent = `${rate.toFixed(1)}×`;
     speedBadge.textContent = `${rate.toFixed(1)}x`;
+    updateSpeedControlLabels();
     if (rateSendTimer) clearTimeout(rateSendTimer);
     rateSendTimer = setTimeout(() => {
       safeSendMessage({ action: 'SET_RATE', rate: currentSpeed });
@@ -3353,6 +4144,7 @@
       const vol = parseFloat(volumeRangeEl.value);
       currentVolume = vol;
       if (volumeDisplayEl) volumeDisplayEl.textContent = `${Math.round(vol * 100)}%`;
+      updateSettingsRangeValueText();
       if (volumeSendTimer) clearTimeout(volumeSendTimer);
       volumeSendTimer = setTimeout(() => {
         safeSendMessage({ action: 'SET_VOLUME', volume: currentVolume });
@@ -3452,7 +4244,9 @@
   const colorSwatches = shadow.querySelectorAll('.color-swatch');
   function setActiveSwatch(colorKey) {
     colorSwatches.forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.color === colorKey);
+      const selected = btn.dataset.color === colorKey;
+      btn.classList.toggle('active', selected);
+      btn.setAttribute('aria-pressed', String(selected));
     });
   }
 
@@ -3551,6 +4345,7 @@
       currentSpeed = prefs.rate;
       speedBadge.textContent = `${currentSpeed.toFixed(1)}x`;
       if (rspeedBadge) rspeedBadge.textContent = `${currentSpeed.toFixed(1)}x`;
+      updateSpeedControlLabels();
       speedRangeEl.value = String(currentSpeed);
       speedDisplayEl.textContent = `${currentSpeed.toFixed(1)}×`;
     }
@@ -3573,6 +4368,8 @@
       pronTextareaEl.value = prefs.pronunciationText;
     }
 
+    updateSettingsRangeValueText();
+
     // Voice label
     if (voiceInfo && prefs && prefs.voiceName) {
       voiceInfo.textContent = prefs.voiceName.split(' ').slice(0, 2).join(' ');
@@ -3588,13 +4385,48 @@
     if (rprogressTextEl) {
       rprogressTextEl.textContent = `${String(index + 1).padStart(2, '0')}/${String(total).padStart(2, '0')}`;
     }
-    // Keep ARIA slider in sync for screen readers
-    progressTrackEl?.setAttribute('aria-valuenow', pct);
+    // Keep both progress sliders in sync for assistive technology.
+    const current = total > 0 ? Math.max(0, Math.min(total - 1, index)) : -1;
+    const valueText = total > 0 ? `Sentence ${current + 1} of ${total}` : 'No sentences loaded';
+    [progressTrackEl, rprogressTrackEl].forEach(track => {
+      if (!track) return;
+      track.setAttribute('aria-valuenow', pct);
+      track.setAttribute('aria-valuetext', valueText);
+    });
   }
 
   // ── Seekable Progress Bar Interaction ───────────────────────────
   const progressTrackEl = shadow.getElementById('ra-progress-track');
   let isSeekingProgress = false;
+
+  function seekToSentence(index) {
+    const total = currentSentenceRanges.length;
+    if (total <= 0) return;
+    const target = Math.max(0, Math.min(total - 1, Math.trunc(index)));
+    if (target === currentSentenceIndex) return;
+    safeSendMessage({ action: 'JUMP_TO_INDEX', index: target });
+    applyHighlight(target);
+    updateProgressBar(target, total);
+  }
+
+  function handleProgressKeydown(event) {
+    const total = currentSentenceRanges.length;
+    if (total <= 0) return;
+    let target = currentSentenceIndex >= 0 ? currentSentenceIndex : 0;
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowUp': target += 1; break;
+      case 'ArrowLeft':
+      case 'ArrowDown': target -= 1; break;
+      case 'PageDown': target += 10; break;
+      case 'PageUp': target -= 10; break;
+      case 'Home': target = 0; break;
+      case 'End': target = total - 1; break;
+      default: return;
+    }
+    event.preventDefault();
+    seekToSentence(target);
+  }
 
   function seekFromProgressEvent(e) {
     if (!progressTrackEl) return;
@@ -3611,6 +4443,7 @@
   }
 
   if (progressTrackEl) {
+    progressTrackEl.addEventListener('keydown', handleProgressKeydown);
     progressTrackEl.addEventListener('mousedown', (e) => {
       isSeekingProgress = true;
       seekFromProgressEvent(e);
@@ -3661,10 +4494,21 @@
 
   function updatePlayState(state) {
     currentPlaybackState = state;
+    const isPlaying = state === 'PLAYING';
+    const playActionLabel = isPlaying
+      ? 'Pause reading'
+      : state === 'PAUSED' ? 'Resume reading' : 'Play reading';
+
+    playBtn.setAttribute('aria-label', playActionLabel);
+    playBtn.setAttribute('aria-pressed', String(isPlaying));
+    if (rctrlPlayBtn) {
+      rctrlPlayBtn.setAttribute('aria-label', playActionLabel);
+      rctrlPlayBtn.setAttribute('aria-pressed', String(isPlaying));
+    }
+
     if (state === 'PLAYING') {
       playIcon.innerHTML = SVG_PAUSE;
       playBtn.title = 'Pause';
-      playBtn.setAttribute('aria-label', 'Pause reading');
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PAUSE;
       if (rctrlPlayBtn) rctrlPlayBtn.title = 'Pause (Alt+P)';
       container.classList.add('is-playing');
@@ -3672,10 +4516,9 @@
       startHeartbeat();
     } else {
       playIcon.innerHTML = SVG_PLAY;
-      playBtn.title = 'Play';
-      playBtn.setAttribute('aria-label', 'Play or pause reading');
+      playBtn.title = state === 'PAUSED' ? 'Resume' : 'Play';
       if (rctrlPlayIcon) rctrlPlayIcon.innerHTML = SVG_PLAY;
-      if (rctrlPlayBtn) rctrlPlayBtn.title = 'Play (Alt+P)';
+      if (rctrlPlayBtn) rctrlPlayBtn.title = state === 'PAUSED' ? 'Resume (Alt+P)' : 'Play (Alt+P)';
       container.classList.remove('is-playing');
       stopHeartbeat();
       if (state === 'STOPPED' || state === 'IDLE') {
@@ -3685,6 +4528,14 @@
         clearHighlight();
         if (rprogressFillEl) rprogressFillEl.style.width = '0%';
         if (rprogressTextEl) rprogressTextEl.textContent = '01/00';
+        // The visible progress bars reset above; their accessible position
+        // must reset too, otherwise assistive technology keeps announcing a
+        // sentence position from the session that has already stopped.
+        [progressTrackEl, rprogressTrackEl].forEach(track => {
+          if (!track) return;
+          track.setAttribute('aria-valuenow', '0');
+          track.setAttribute('aria-valuetext', 'No sentences loaded');
+        });
       }
     }
   }
@@ -3709,11 +4560,9 @@
     readerOverlay.classList.remove('theme-cream', 'theme-dark', 'theme-sepia', 'theme-oled');
     readerOverlay.classList.add(`theme-${currentReaderTheme}`);
     readerThemeBtns.forEach(btn => {
-      if (btn.dataset.rtheme === currentReaderTheme) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
+      const isActive = btn.dataset.rtheme === currentReaderTheme;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', String(isActive));
     });
     safeStorageSet({ readAloud_readerTheme: currentReaderTheme });
   }
@@ -3733,7 +4582,7 @@
     safeStorageSet({ readAloud_readerFontSize: readerFontSize });
   }
 
-  function openReaderView() {
+  function openReaderView(returnFocus = null) {
     if (currentSentenceRanges.length === 0) {
       buildPlaybackQueue();
     }
@@ -3787,15 +4636,27 @@
       readerBodyEl.innerHTML = html;
     }
 
+    readerReturnFocus = returnFocus || shadow.activeElement || readerBtn || playBtn;
     isReaderOpen = true;
+    readerOverlay.inert = false;
+    readerOverlay.setAttribute('aria-hidden', 'false');
     readerOverlay.classList.add('open');
+    requestAnimationFrame(() => readerCloseBtn?.focus());
 
     // Sync reader playback controls with current state
     if (rctrlPlayIcon) {
       rctrlPlayIcon.innerHTML = (currentPlaybackState === 'PLAYING') ? SVG_PAUSE : SVG_PLAY;
     }
     if (rctrlPlayBtn) {
-      rctrlPlayBtn.title = (currentPlaybackState === 'PLAYING') ? 'Pause (Alt+P)' : 'Play (Alt+P)';
+      const isPlaying = currentPlaybackState === 'PLAYING';
+      const playActionLabel = isPlaying
+        ? 'Pause reading'
+        : currentPlaybackState === 'PAUSED' ? 'Resume reading' : 'Play reading';
+      rctrlPlayBtn.title = isPlaying
+        ? 'Pause (Alt+P)'
+        : currentPlaybackState === 'PAUSED' ? 'Resume (Alt+P)' : 'Play (Alt+P)';
+      rctrlPlayBtn.setAttribute('aria-label', playActionLabel);
+      rctrlPlayBtn.setAttribute('aria-pressed', String(isPlaying));
     }
     if (rspeedBadge) {
       rspeedBadge.textContent = `${currentSpeed.toFixed(1)}x`;
@@ -3809,15 +4670,91 @@
   }
 
   function closeReaderView() {
+    if (!isReaderOpen) return;
     isReaderOpen = false;
     readerOverlay.classList.remove('open');
+    readerOverlay.inert = true;
+    readerOverlay.setAttribute('aria-hidden', 'true');
+    const returnFocus = readerReturnFocus;
+    readerReturnFocus = null;
+
+    // The docked player may auto-tuck while Focus Reader is open. In its
+    // beaded state CSS hides the entire pill-body (including the opener), so
+    // calling focus() on a connected button silently does nothing. Reveal the
+    // player before restoring focus; untuck() also cancels a pending tuck.
+    if (returnFocus && container.contains(returnFocus)) {
+      if (container.classList.contains('beaded')) {
+        untuck();
+      }
+      // In mini layout, Settings is intentionally hidden until hover. Reveal
+      // it for the focus transfer, then let :focus-within keep it available
+      // for keyboard users without permanently changing the saved layout.
+      if (container.classList.contains('pill-mini')) {
+        container.classList.add('focus-restoring');
+      }
+    }
+
+    const canReceiveFocus = (element) => {
+      if (!element || typeof element.focus !== 'function' ||
+          !element.isConnected || element.closest?.('[inert]') ||
+          element.matches?.(':disabled')) {
+        return false;
+      }
+      const style = window.getComputedStyle(element);
+      return style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        element.getClientRects().length > 0;
+    };
+
+    // Prefer the actual opener, then use visible player controls as a safe
+    // fallback. A connected-but-hidden element is not a valid focus target.
+    const focusTarget = [
+      returnFocus,
+      settingsTriggerBtn,
+      playBtn,
+      readerBtn
+    ].find(canReceiveFocus);
+
+    if (focusTarget) {
+      focusTarget.focus({ preventScroll: true });
+      // Keep the temporary reveal active through the browser's next layout/focus
+      // cycle. Removing it synchronously can hide the control before Chromium
+      // commits focus, particularly in mini/beaded player states.
+      requestAnimationFrame(() => {
+        container.classList.remove('focus-restoring');
+      });
+    } else {
+      container.classList.remove('focus-restoring');
+    }
   }
 
-  function toggleReaderView() {
+  readerOverlay.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(readerOverlay.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter(element => !element.closest('[inert]') && element.getClientRects().length > 0);
+    if (focusable.length === 0) {
+      event.preventDefault();
+      readerOverlay.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = shadow.activeElement;
+    if (event.shiftKey && (active === first || !readerOverlay.contains(active))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (active === last || !readerOverlay.contains(active))) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+
+  function toggleReaderView(returnFocus = null) {
     if (isReaderOpen) {
       closeReaderView();
     } else {
-      openReaderView();
+      openReaderView(returnFocus);
     }
   }
 
@@ -3978,11 +4915,13 @@
       speedBadge.textContent = `${currentSpeed.toFixed(1)}x`;
       speedRangeEl.value = String(currentSpeed);
       speedDisplayEl.textContent = `${currentSpeed.toFixed(1)}×`;
+      updateSpeedControlLabels();
       safeSendMessage({ action: 'SET_RATE', rate: currentSpeed });
     });
   }
 
   if (rprogressTrackEl) {
+    rprogressTrackEl.addEventListener('keydown', handleProgressKeydown);
     let isRScrubbing = false;
 
     function handleRScrub(e) {
@@ -4058,16 +4997,20 @@
         // Figure captions get a much lower floor — short but valuable
         // ("Fig. 3: Yield response to N rate across four sites.")
         const isCaption = tag === 'figcaption';
+        const isHeading = /^h[1-6]$/.test(tag);
 
-        // Raised from 20 → 30 chars: kills short UI labels like "Michelin Guide rating"
-        if (isCaption ? text.length < 10 : text.length < 30) return false;
+        // Keep short headings as structural markers: a heading such as
+        // "References" must reach cutAtReferences() so bibliography content
+        // can be excluded. Captions have their own lower floor; prose blocks
+        // still need enough text to avoid reading UI labels.
+        if (isCaption ? text.length < 10 : (!isHeading && text.length < 30)) return false;
 
         // For non-heading elements (p, li, blockquote): require ≥5 words.
         // UI labels like "Frequently mentioned in reviews" (4 words) are filtered;
         // real sentences like "French cuisine is served at Daniel." (6 words) pass.
         // Headings and captions are exempt — a section title like "Early life"
         // is legitimately short.
-        if (!isCaption && !/^h[1-6]$/.test(tag)) {
+        if (!isCaption && !isHeading) {
           const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
           if (wordCount < 5) return false;
         }
@@ -4081,6 +5024,88 @@
         if (el.closest(SKIP)) return false;
         return true;
       });
+  }
+
+  /**
+   * Estimate the memory footprint of a potential Readability clone without
+   * serializing the entire live document through outerHTML. Walk the DOM in
+   * place, count text/attribute payload plus conservative per-node overhead,
+   * and stop as soon as the clone budget is exceeded.
+   *
+   * Returning Infinity when a TreeWalker is unavailable safely disables the
+   * optional clone path and leaves the normal extraction fallback intact.
+   */
+  function estimateDocumentCloneBytes(root, maxBytes) {
+    if (!root || typeof root.nodeType !== 'number') return 0;
+
+    const limit = Number.isFinite(maxBytes) && maxBytes >= 0
+      ? maxBytes
+      : 5 * 1024 * 1024;
+    const doc = root.nodeType === 9 ? root : root.ownerDocument;
+    if (!doc || typeof doc.createTreeWalker !== 'function') return Infinity;
+
+    let walker;
+    try {
+      walker = doc.createTreeWalker(root, 0xFFFFFFFF);
+    } catch (_) {
+      return Infinity;
+    }
+    if (!walker || typeof walker.nextNode !== 'function') return Infinity;
+
+    let estimatedBytes = 0;
+    const addNodeEstimate = (node) => {
+      if (node.nodeType === 1) {
+        const tagName = typeof node.tagName === 'string' ? node.tagName : '';
+        estimatedBytes += 64 + tagName.length * 2;
+
+        const attributes = node.attributes;
+        for (let i = 0; attributes && i < attributes.length; i++) {
+          const attribute = attributes[i];
+          if (!attribute) continue;
+          const name = typeof attribute.name === 'string' ? attribute.name : '';
+          const value = typeof attribute.value === 'string' ? attribute.value : '';
+          estimatedBytes += 16 + (name.length + value.length) * 2;
+        }
+      } else if (node.nodeType === 3 || node.nodeType === 8) {
+        const value = typeof node.nodeValue === 'string' ? node.nodeValue : '';
+        estimatedBytes += 32 + value.length * 2;
+      } else {
+        estimatedBytes += 32;
+      }
+    };
+
+    addNodeEstimate(root);
+    if (estimatedBytes > limit) return estimatedBytes;
+
+    // Template contents are held in a separate DocumentFragment and are not
+    // descendants of the <template> element for TreeWalker traversal, but
+    // cloneNode(true) and outerHTML both include them. Account for them too.
+    const walkers = [walker];
+    while (walkers.length > 0) {
+      const currentWalker = walkers[walkers.length - 1];
+      const node = currentWalker.nextNode();
+      if (!node) {
+        walkers.pop();
+        continue;
+      }
+
+      addNodeEstimate(node);
+      if (estimatedBytes > limit) return estimatedBytes;
+
+      if (node.nodeType === 1 && node.tagName === 'TEMPLATE' && node.content) {
+        estimatedBytes += 32; // DocumentFragment overhead
+        if (estimatedBytes > limit) return estimatedBytes;
+        try {
+          const templateWalker = doc.createTreeWalker(node.content, 0xFFFFFFFF);
+          if (!templateWalker || typeof templateWalker.nextNode !== 'function') return Infinity;
+          walkers.push(templateWalker);
+        } catch (_) {
+          return Infinity;
+        }
+      }
+    }
+
+    return estimatedBytes;
   }
 
   /**
@@ -4129,9 +5154,10 @@
 
     // --- Stage 2: Readability word-frequency filter ---
     // Guard: skip Readability on very large documents where cloneNode(true)
-    // would spike memory (>5 MB of raw HTML → likely 30 MB+ clone).
-    const docSizeBytes = (document.documentElement.outerHTML || '').length * 2; // rough UTF-16
+    // would spike memory. The bounded DOM estimate avoids serializing outerHTML
+    // and stops as soon as the 5 MB clone budget is exceeded.
     const MAX_CLONE_BYTES = 5 * 1024 * 1024;
+    const docSizeBytes = estimateDocumentCloneBytes(document.documentElement, MAX_CLONE_BYTES);
     if (typeof window.Readability !== 'undefined' && docSizeBytes <= MAX_CLONE_BYTES) {
       try {
         const docClone = document.cloneNode(true);
@@ -4345,8 +5371,10 @@
   const settingsReaderBtn = shadow.getElementById('ra-settings-reader');
   if (settingsReaderBtn) {
     settingsReaderBtn.addEventListener('click', () => {
-      closeSettings();
-      toggleReaderView();
+      closeSettings(true);
+      // Preserve the intended opener explicitly: closeSettings() makes
+      // its panel inert before Focus Reader takes over.
+      toggleReaderView(settingsTriggerBtn || playBtn);
     });
   }
 
@@ -4368,6 +5396,7 @@
     // Keep settings slider in sync with pill badge
     speedRangeEl.value = String(currentSpeed);
     speedDisplayEl.textContent = `${currentSpeed.toFixed(1)}×`;
+    updateSpeedControlLabels();
     safeSendMessage({ action: 'SET_RATE', rate: currentSpeed });
   });
 
@@ -5196,6 +6225,15 @@
     });
   }
 
+  // Manual scrolling always takes priority over Golden Gaze. Capture wheel
+  // and touch intent before the browser applies its scroll, and detect native
+  // scrollbar interaction through pointer input close to a viewport edge.
+  window.addEventListener('wheel', gazeYieldToUser, { capture: true, passive: true });
+  window.addEventListener('touchstart', gazeYieldToUser, { capture: true, passive: true });
+  window.addEventListener('touchmove', gazeYieldToUser, { capture: true, passive: true });
+  window.addEventListener('pointerdown', gazeYieldToUser, { capture: true, passive: true });
+  window.addEventListener('keydown', gazeYieldToUser, true);
+
   // Reposition floating word box and hide tooltips on window scroll or resize
   window.addEventListener('scroll', () => {
     if (activeWordRange) {
@@ -5298,6 +6336,7 @@
   window.addEventListener('pagehide', () => {
     stopHeartbeat();
     stopMutationObserver();
+    stopDevicePixelRatioWatch();
     clearHighlight();
     hideHoverPlayBtn();
     hideSelectionTooltip();
@@ -5307,15 +6346,20 @@
   // 7c. In-Page Keyboard Shortcuts (Intercepts Alt+Left/Right & Alt+P/X)
   // -----------------------------------------------------------------
   window.addEventListener('keydown', (e) => {
-    // Escape closes focus reader overlay
+    // Escape closes the topmost NarraTrace surface and restores its opener.
     if (e.key === 'Escape' && isReaderOpen) {
       e.preventDefault();
       closeReaderView();
       return;
     }
+    if (e.key === 'Escape' && isSettingsOpen) {
+      e.preventDefault();
+      closeSettings(true);
+      return;
+    }
 
-    // Skip when actively typing inside form inputs or editable content
-    const active = document.activeElement;
+    // Read the composed Shadow DOM active element before routing shortcuts.
+    const active = shadow.activeElement || document.activeElement;
     if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
       return;
     }
@@ -5507,6 +6551,7 @@
           if (pitchRangeEl) pitchRangeEl.value = String(message.options.pitch);
           if (pitchDisplayEl) pitchDisplayEl.textContent = `${message.options.pitch.toFixed(1)}×`;
         }
+        updateSettingsRangeValueText();
         if (voiceInfo && message.options && message.options.voiceName) {
           // Show first two words of the voice name in the pill (e.g. "Supertonic F1")
           voiceInfo.textContent = message.options.voiceName.split(' ').slice(0, 2).join(' ') || 'Voice';
@@ -5529,6 +6574,7 @@
         if (volumeRangeEl) volumeRangeEl.value = String(currentVolume);
         if (volumeDisplayEl) volumeDisplayEl.textContent = `${Math.round(currentVolume * 100)}%`;
       }
+      updateSettingsRangeValueText();
       if (voiceInfo && res.state.options && res.state.options.voiceName) {
         voiceInfo.textContent = res.state.options.voiceName.split(' ')[0] || 'Voice';
       }

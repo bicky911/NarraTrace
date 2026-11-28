@@ -1,6 +1,6 @@
 # NarraTrace — Narrates the Page. Traces Every Word.
 
-> **Narra**te + **Trace**: NarraTrace narrates any web page aloud with local neural voices — and traces every word on screen as it speaks, so your eyes and ears never lose their place.
+> **Narra**te + **Trace**: NarraTrace narrates any web page aloud with voices exposed through Chrome's TTS API — and traces every word on screen as it speaks, so your eyes and ears never lose their place.
 
 A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized text-to-speech with spring-physics word tracking, Focus Reader mode, and multi-engine speech synthesis. *(Renamed from "Read Aloud" in 1.4.0 — same extension, same settings; existing preferences carry over untouched.)*
 
@@ -14,9 +14,10 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 * **Icon:** a white **N** struck through by the signal-orange trace diagonal (`#FF5C00` on near-black `#0F0F0F`) — the path of the voice cutting across the letter, ending in the tracking dot.
 * **Voice of the brand:** controls and menus say what NarraTrace does — *"NarraTrace: narrate selection"*, *"NarraTrace: narrate from here"* — never a generic "read".
 
-![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+**Distribution license:** Not yet selected; no redistribution license is published in this repository.
+
 ![Manifest: V3](https://img.shields.io/badge/Manifest-V3-orange.svg)
-![Tests: 86/86 Passing](https://img.shields.io/badge/Tests-86%2F86%20Passing-brightgreen.svg)
+![NarraTrace verification](https://github.com/bicky911/NarraTrace/actions/workflows/verification.yml/badge.svg?branch=main)
 
 ---
 
@@ -28,13 +29,16 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 * **Golden Gaze Auto-Scroll:** Friction-damped critically stable viewport tracking that locks the active reading sentence at the natural biomechanical sight line ($38\%$ from viewport top).
 * **Context-Aware Prosody Pauses:** Intelligent clause-boundary cadence detection that inserts natural human breathing pauses at em-dashes, semicolons, colons, ellipses, and lists.
 * **Semantic Noise Stripper:** Cleans citations (`[1]`, `[citation needed]`), academic parentheticals (`(Smith et al., 2024)`), raw URLs, DOIs, and markdown symbols before TTS without mutating DOM highlights.
-* **Multi-Engine Speech Support:** High-priority Piper local neural TTS extension integration, Supertonic, Kokoro, and native Chrome TTS voices.
-* **Multilingual Script Routing:** Auto-detects Bangla (বাংলা), Hindi (हिन्दी), and Latin scripts, routing each to native neural voices.
+* **Multi-Engine Speech Support:** Maintained provider profiles for Piper and Supertonic, plus generic compatibility with other Chrome TTS extensions and native system voices. Processing location depends on the selected provider and its own implementation.
+* **Real-Engine Diagnostics:** A bundled Chrome TTS diagnostic page records provider events and timings, requires a manual first-audio confirmation for a Passed result, and exports a report without including the sample text.
+* **Multilingual Script Routing:** Auto-detects Bangla (বাংলা), Hindi (हिन्दी), and Latin scripts, routing to the best matching installed voice when one is available.
 * **100% Shadow DOM Encapsulated:** Complete style isolation guarantees the player never clashes with host website styles.
 
 ---
 
 ## 🚀 Installation & Local Development
+
+**Browser requirement:** Chrome 120 or later. Playback recovery uses `chrome.storage.session` (available in MV3 from Chrome 102) and a 30-second `chrome.alarms` interval (supported from Chrome 120).
 
 1. Clone this repository:
    ```bash
@@ -49,21 +53,53 @@ A world-class, privacy-first Manifest V3 Chrome Extension providing synchronized
 
 ## 🧪 Automated Verification Suite
 
-Run the comprehensive test harness:
+NarraTrace uses layered checks. Core regression tests require Node.js 22 or later and Python 3.12:
+
 ```bash
+node --test tests/speech-engine.test.mjs
+node --test tests/tts-diagnostic-privacy.test.mjs
+node --test tests/diagnostic-keepalive.test.mjs
+node --test tests/playback-manager.test.mjs
+node --test tests/sentence-tokenizer.test.mjs
+node --test tests/resource-lifecycle.test.mjs
+node --test tests/document-size-estimator.test.mjs
+node --test tests/manifest-contract.test.mjs
 python test-harness.py
+python -m unittest discover -s tests -p "test_build_release.py"
+python build-release.py
 ```
-Output:
+
+The Chromium integration suite uses Puppeteer and a deterministic test-only TTS engine. It tests Readability extraction, content-block filtering, references cutoff, DOM sentence/word mapping, and Manifest V3 worker recovery:
+
+```bash
+npm install --prefix tests/browser --no-save --no-package-lock puppeteer@25.17.0
+node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs tests/browser/accessibility.test.mjs tests/browser/device-diagnostics.test.mjs
+node --test tests/browser/performance-profile.test.mjs
+node --test tests/browser/extension-runtime-profile.test.mjs
 ```
-Result: 86/86 checks passed (100%)
-✓ All checks passed — extension is ready.
-```
+
+GitHub Actions runs the unit/static, package-validation, Chromium integration, and performance layers on pull requests. It also builds and uploads a 14-day release-candidate ZIP and checksum artifact. The deterministic TTS fixture exercises Chrome's TTS event API but does not measure the audio quality or timing of installed neural voice engines.
+
+### Release candidate packaging
+
+Run `python build-release.py` to validate the Manifest V3 runtime file graph. Run `python build-release.py --build` to create a reproducible ZIP archive and SHA-256 sidecar under `dist/`. The builder includes the bundled diagnostics page, follows local imports and HTML/CSS resources, and excludes development tests, documentation, and build output. A repository license is included only if the owner adds a `LICENSE` file.
 
 ---
 
 ## 📄 Architecture & Rules
 
-* **Plain JavaScript MV3:** Zero bundlers, zero npm dependencies, and no node_modules.
-* **Zero External Analytics or Trackers:** Runs 100% locally on your browser.
-* **Accessible (WCAG AA Compliant):** Full keyboard focus rings (`#FF5C00`), ARIA attributes, and high-contrast color palettes.
+* **Plain JavaScript MV3:** No bundler or runtime package dependencies in the extension. Pinned Puppeteer is used only by the optional browser-test suite.
+* **No NarraTrace backend, analytics, or trackers:** The extension has no first-party network client. Narration text is passed to the selected Chrome TTS provider; on-device versus network processing depends on that provider.
+* **Keyboard Accessibility:** Visible focus indicators, dialog semantics, keyboard-operable controls, and high-contrast interface colors. Formal assistive-technology conformance checks remain part of release validation.
 * **Legacy internal identifiers:** Invisible plumbing (`readAloud_*` storage keys, `ra-*` element IDs, `--ra-*` CSS tokens) deliberately keeps its pre-rename names so upgrading users keep every saved voice, speed, and theme setting. Only what the user can see is branded NarraTrace.
+
+
+## Privacy and data flow
+
+NarraTrace's content scripts run on pages covered by the manifest's `<all_urls>` match so page extraction, highlighting, and the reader controls work across websites. This is broad website access and is necessary for the current always-available reader design.
+
+The NarraTrace extension itself does not implement an HTTP, WebSocket, or analytics client for sending page text to a NarraTrace-operated server. It passes narration text to Chrome's `chrome.tts` API, which routes it to the selected voice provider. A local neural engine can process text on-device, while another extension or system voice may use a network service. The processing location and retention policy depend on that separate provider, not NarraTrace.
+
+The active sentence queue and playback position are kept in `chrome.storage.session` for recovery. User preferences and interface settings are kept in `chrome.storage.local`. See [the privacy and data-flow notes](docs/PRIVACY-DATA-FLOW.md) for details.
+
+Real-provider checks are performed from the bundled [device diagnostics page](docs/DEVICE-DIAGNOSTICS.md). Reports include browser/provider metadata and TTS event offsets, not the sample text or audio.

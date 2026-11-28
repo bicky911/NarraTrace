@@ -1,0 +1,88 @@
+name: NarraTrace Verification
+
+on:
+  # Feature/reliability branches are verified through their pull requests.
+  # Only main pushes need a separate push-triggered run.
+  push:
+    branches: ["main"]
+  # Validate stacked engineering PRs as well as release PRs targeting main.
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: narratrace-verification-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  static-verification:
+    name: Unit and static regression suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Run speech-provider registry regression tests
+        run: node --test tests/speech-engine.test.mjs
+      - name: Run TTS diagnostic privacy regression tests
+        run: node --test tests/tts-diagnostic-privacy.test.mjs
+      - name: Run diagnostic service-worker keep-alive regression tests
+        run: node --test tests/diagnostic-keepalive.test.mjs
+      - name: Run playback transition regression tests
+        run: node --test tests/playback-manager.test.mjs
+      - name: Run sentence tokenizer regression tests
+        run: node --test tests/sentence-tokenizer.test.mjs
+      - name: Run resource lifecycle regression tests
+        run: node --test tests/resource-lifecycle.test.mjs
+      - name: Run bounded document-size estimator regression tests
+        run: node --test tests/document-size-estimator.test.mjs
+      - name: Run manifest and privacy contract tests
+        run: node --test tests/manifest-contract.test.mjs
+      - name: Run existing Python verification harness
+        run: python test-harness.py
+      - name: Test safe and deterministic release packaging
+        run: python -m unittest discover -s tests -p "test_build_release.py"
+      - name: Validate the clean release package graph
+        run: python build-release.py
+      - name: Build release candidate ZIP and SHA-256
+        run: python build-release.py --build
+      - name: Upload release candidate artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: NarraTrace-v${{ github.event.pull_request.head.sha || github.sha }}-candidate
+          path: |
+            dist/NarraTrace-v*.zip
+            dist/NarraTrace-v*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  chrome-integration:
+    name: Chrome service-worker recovery integration
+    runs-on: ubuntu-latest
+    needs: static-verification
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install pinned browser-test dependency
+        run: npm install --prefix tests/browser --no-save --no-package-lock puppeteer@25.17.0
+      - name: Run bounded Chrome content, recovery, accessibility, and diagnostics tests
+        run: timeout --signal=TERM --kill-after=8s 75s node --test tests/browser/service-worker-recovery.test.mjs tests/browser/content-extraction.test.mjs tests/browser/accessibility.test.mjs tests/browser/device-diagnostics.test.mjs
+      - name: Run large-page performance baseline
+        run: timeout --signal=TERM --kill-after=8s 75s node --test tests/browser/performance-profile.test.mjs
+      - name: Profile extension idle and playback renderer workload
+        run: timeout --signal=TERM --kill-after=8s 75s node --test tests/browser/extension-runtime-profile.test.mjs

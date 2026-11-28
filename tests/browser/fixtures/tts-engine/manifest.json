@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "NarraTrace Deterministic Test TTS",
+  "version": "1.0.0",
+  "description": "A deterministic TTS engine fixture for NarraTrace browser tests.",
+  "permissions": ["ttsEngine", "storage"],
+  "background": { "service_worker": "service-worker.js" },
+  "tts_engine": {
+    "voices": [
+      {
+        "voice_name": "NarraTrace Test Voice",
+        "lang": "en-US",
+        "event_types": ["start", "word", "sentence", "end", "error"]
+      }
+    ]
+  }
+}

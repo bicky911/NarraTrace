@@ -5,6 +5,7 @@
 
 import {
   detectAndSelectVoice,
+  getAllVoices,
   safeSpeak,
   stopSpeech,
   isSpeaking,
@@ -12,6 +13,11 @@ import {
 } from './speech-engine.js';
 
 import { playbackManager, PlaybackState } from './playback-manager.js';
+import { createDiagnosticKeepAlive } from './diagnostic-keepalive.js';
+import {
+  sanitizeTtsDiagnosticEvent,
+  DIAGNOSTIC_REQUEST_ERROR
+} from './tts-diagnostic-privacy.js';
 
 // Side-effect import: sentence-tokenizer.js is a dual-loadable classic/ESM
 // script that defines globalThis.ReadAloudTokenizer — the SAME file the
@@ -20,6 +26,13 @@ import './sentence-tokenizer.js';
 
 const { splitIntoChunks } = globalThis.ReadAloudTokenizer;
 
+// A diagnostic utterance is an isolated one-shot request, never part of the
+// normal queue. Keep its state in this worker instance and re-check Chrome TTS
+// and playback state after asynchronous voice discovery before starting it.
+let diagnosticSpeechActive = false;
+let diagnosticRequestId = null;
+const diagnosticKeepAlive = createDiagnosticKeepAlive(chrome.storage.session);
+
 console.log('[Background] NarraTrace service worker active.');
 
 // Debug handle — type this in the service-worker console to inspect live state:
@@ -27,25 +40,9 @@ console.log('[Background] NarraTrace service worker active.');
 //   __readAloud.playbackManager.setBatchSize(1)
 globalThis.__readAloud = { playbackManager, PlaybackState };
 
-// ── Keep-alive alarm ─────────────────────────────────────────────────
-// Chrome clamps periodInMinutes to a 0.5 minute (30s) minimum, and when no
-// delayInMinutes is given it uses periodInMinutes as the initial delay too.
-// Re-creating the alarm on every worker start therefore pushes its next fire
-// further out each time — and the worker restarts on every event it handles.
-// Follow Chrome's own sample: look first, create only when it is missing, so
-// the schedule survives worker restarts.
-async function ensureKeepAliveAlarm() {
-  try {
-    const existing = await chrome.alarms.get('readAloudKeepAlive');
-    if (!existing) {
-      await chrome.alarms.create('readAloudKeepAlive', { periodInMinutes: 0.5 });
-      console.log('[Background] Keep-alive alarm created (every 30s).');
-    }
-  } catch (err) {
-    console.warn('[Background] Could not ensure keep-alive alarm:', err?.message || err);
-  }
-}
-ensureKeepAliveAlarm();
+// The recovery alarm is created and cleared by PlaybackManager only while
+// narration is active. An unconditional repeating alarm would wake an idle
+// service worker every 30 seconds for no useful work.
 
 // ── Tab lifecycle guards ────────────────────────────────────────────
 // If the tab that initiated playback is closed, stop playback so audio
@@ -122,6 +119,11 @@ function setupContextMenu() {
 
 // Handle Context Menu click
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (diagnosticSpeechActive) {
+    console.warn('[Background] Ignoring context-menu playback while a TTS diagnostic is active.');
+    return;
+  }
+
   if (info.menuItemId === 'read-aloud-from-here') {
     if (tab && tab.id) {
       chrome.tabs.sendMessage(tab.id, { action: 'TRIGGER_READ_FROM_HERE' }).catch(() => {});
@@ -185,10 +187,9 @@ async function initializeWorker() {
   setupContextMenu();
   await playbackManager.loadPreferences();
 
-  // A TTS engine extension (Kokoro, Supertonic, ...) registers its voices a
-  // moment after Chrome starts it, so the voice list is still empty when the
-  // worker boots. Chrome announces every change of that list — re-resolve the
-  // voice then, so the preferred engine takes over as soon as it appears.
+  // A TTS engine extension (Piper, Supertonic, or another provider) may
+  // register its voices after Chrome starts it. Chrome announces each change
+  // of the voice list — re-resolve automatic selection when that happens.
   registerVoiceChangeListener();
   const restored = await playbackManager.restoreFromSession();
   if (restored) {
@@ -233,6 +234,13 @@ initializeWorker();
 chrome.commands.onCommand.addListener(async (command) => {
   console.log('[Background] Command received:', command);
 
+  if (diagnosticSpeechActive) {
+    // Let the dedicated stop shortcut cancel the diagnostic utterance, but
+    // never route normal queue controls into a diagnostic session.
+    if (command === 'stop-speech') stopSpeech();
+    return;
+  }
+
   switch (command) {
     case 'toggle-play': {
       const state = playbackManager.getState();
@@ -272,6 +280,21 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
+// The session-inspection and real-engine diagnostic routes are reserved for
+// the bundled diagnostics page. Content scripts and the popup must not be able
+// to inspect article queues or initiate arbitrary one-off speech.
+function isDiagnosticsPageSender(sender) {
+  if (typeof sender?.url !== 'string') return false;
+  try {
+    const url = new URL(sender.url);
+    return url.protocol === 'chrome-extension:' &&
+      url.host === chrome.runtime.id &&
+      url.pathname === '/test.html';
+  } catch (_) {
+    return false;
+  }
+}
+
 // Message Router
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || !message.action) {
@@ -282,15 +305,183 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   switch (message.action) {
     case 'GET_VOICES': {
-      // Report the voice set with the CURRENT selection highlighted. The
-      // manager already resolved the engine (Kokoro first, then Supertonic,
-      // then the Windows voices) when the worker started.
+      // Report the current selection using maintained provider priority:
+      // Piper, Supertonic, other Chrome TTS providers, then system voices.
       detectAndSelectVoice({
         voiceName: message.preferredVoiceName || playbackManager.options.voiceName,
         pinned: message.preferredVoiceName ? true : playbackManager.voicePinned
       })
         .then((report) => sendResponse({ success: true, data: report }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
+      return true;
+    }
+
+    case 'STOP_TTS_DIAGNOSTIC': {
+      if (!isDiagnosticsPageSender(sender)) {
+        sendResponse({ success: false, error: 'TTS diagnostics are restricted to the bundled diagnostics page.' });
+        return false;
+      }
+      if (!diagnosticSpeechActive || message.requestId !== diagnosticRequestId) {
+        sendResponse({ success: false, error: 'No matching diagnostic speech request is currently active.' });
+        return false;
+      }
+      stopSpeech();
+      sendResponse({ success: true, requestId: diagnosticRequestId });
+      return false;
+    }
+
+    case 'RUN_TTS_DIAGNOSTIC': {
+      if (!isDiagnosticsPageSender(sender)) {
+        sendResponse({ success: false, error: 'TTS diagnostics are restricted to the bundled diagnostics page.' });
+        return false;
+      }
+
+      const requestId = typeof message.requestId === 'string' &&
+        /^[a-zA-Z0-9_-]{1,64}$/.test(message.requestId)
+        ? message.requestId
+        : null;
+      const text = typeof message.text === 'string' ? message.text.trim() : '';
+      const voiceName = typeof message.voiceName === 'string' ? message.voiceName.trim() : '';
+      const extensionId = message.extensionId == null
+        ? null
+        : (typeof message.extensionId === 'string' ? (message.extensionId.trim() || null) : false);
+      const lang = message.lang == null
+        ? null
+        : (typeof message.lang === 'string' ? (message.lang.trim() || null) : false);
+      const rate = message.rate;
+
+      if (!requestId || !text || text.length > 500 || !voiceName ||
+          extensionId === false || lang === false ||
+          (extensionId && extensionId.length > 128) ||
+          (lang && lang.length > 64) ||
+          typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0.5 || rate > 2.0) {
+        sendResponse({
+          success: false,
+          error: 'Invalid diagnostic request. Text must be 1–500 characters, a voice must be selected, and rate must be between 0.5× and 2.0×.'
+        });
+        return false;
+      }
+
+      if (diagnosticSpeechActive) {
+        sendResponse({ success: false, error: 'A diagnostic speech test is already running.' });
+        return false;
+      }
+
+      const playbackState = playbackManager.getState().playbackState;
+      if (playbackState === PlaybackState.PLAYING || playbackState === PlaybackState.PAUSED) {
+        sendResponse({ success: false, error: 'Stop normal NarraTrace playback before running the diagnostic.' });
+        return false;
+      }
+
+      (async () => {
+        const voices = await getAllVoices();
+        const selectedVoice = voices.find((voice) =>
+          voice.voiceName === voiceName &&
+          (extensionId ? voice.extensionId === extensionId : !voice.extensionId)
+        );
+
+        if (!selectedVoice) {
+          sendResponse({
+            success: false,
+            error: 'That voice is no longer available in Chrome. Refresh the voice list and select it again.'
+          });
+          return;
+        }
+
+        if (await isSpeaking()) {
+          sendResponse({
+            success: false,
+            error: 'Chrome reports speech is already active. Stop it before running the diagnostic.'
+          });
+          return;
+        }
+
+        // Close the async reservation race: a normal start or another
+        // diagnostic may have won while voices and Chrome speaking state loaded.
+        if (diagnosticSpeechActive) {
+          sendResponse({ success: false, error: 'A diagnostic speech test is already running.' });
+          return;
+        }
+        const latestState = playbackManager.getState().playbackState;
+        if (latestState === PlaybackState.PLAYING || latestState === PlaybackState.PAUSED) {
+          sendResponse({
+            success: false,
+            error: 'Normal NarraTrace playback became active. Stop it before running the diagnostic.'
+          });
+          return;
+        }
+
+        diagnosticSpeechActive = true;
+        diagnosticRequestId = requestId;
+        // Diagnostics bypass PlaybackManager's keep-alive, but provider preparation
+        // can exceed Chrome's 30-second MV3 worker idle window.
+        diagnosticKeepAlive.start();
+        const startedAt = Date.now();
+        sendResponse({
+          success: true,
+          requestId,
+          startedAt: new Date(startedAt).toISOString(),
+          voice: {
+            voiceName: selectedVoice.voiceName,
+            extensionId: selectedVoice.extensionId || null,
+            lang: selectedVoice.lang || null
+          }
+        });
+
+        try {
+          const result = await safeSpeak(
+            text,
+            {
+              rate,
+              pitch: 1,
+              volume: 1,
+              voiceName: selectedVoice.voiceName,
+              extensionId: selectedVoice.extensionId,
+              lang: selectedVoice.lang
+            },
+            (event) => {
+              // Telemetry deliberately excludes the sample text.
+              chrome.runtime.sendMessage({
+                action: 'TTS_DIAGNOSTIC_EVENT',
+                requestId,
+                elapsedMs: Date.now() - startedAt,
+                event: sanitizeTtsDiagnosticEvent(event)
+              }).catch(() => {});
+            }
+          );
+
+          chrome.runtime.sendMessage({
+            action: 'TTS_DIAGNOSTIC_COMPLETE',
+            requestId,
+            success: result?.type === 'end',
+            resultType: result?.type || 'unknown',
+            durationMs: Date.now() - startedAt
+          }).catch(() => {});
+        } catch (error) {
+          chrome.runtime.sendMessage({
+            action: 'TTS_DIAGNOSTIC_COMPLETE',
+            requestId,
+            success: false,
+            resultType: 'error',
+            // Do not put provider-supplied error text into the diagnostic
+            // report; some engines may echo the sample in their error string.
+            error: DIAGNOSTIC_REQUEST_ERROR,
+            durationMs: Date.now() - startedAt
+          }).catch(() => {});
+        } finally {
+          diagnosticKeepAlive.stop();
+          if (diagnosticRequestId === requestId) {
+            diagnosticSpeechActive = false;
+            diagnosticRequestId = null;
+          }
+        }
+      })().catch((error) => {
+        sendResponse({
+          success: false,
+          error: 'Could not prepare the selected voice for diagnostics. Refresh the voice list and try again.'
+        });
+      });
+
       return true;
     }
 
@@ -315,6 +506,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'START_READING_TEXT': {
+      if (diagnosticSpeechActive) {
+        sendResponse({ success: false, error: 'A TTS diagnostic is active. Stop it before starting normal narration.' });
+        return false;
+      }
       if (!message.rawText || typeof message.rawText !== 'string' || message.rawText.trim().length === 0) {
         sendResponse({ success: false, error: 'Missing or invalid rawText string.' });
         return true;
@@ -337,6 +532,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'START_PLAYBACK': {
+      if (diagnosticSpeechActive) {
+        sendResponse({ success: false, error: 'A TTS diagnostic is active. Stop it before starting normal narration.' });
+        return false;
+      }
       if (!Array.isArray(message.sentences) || message.sentences.length === 0) {
         sendResponse({ success: false, error: 'Missing or empty sentences array.' });
         return true;
@@ -500,14 +699,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'GET_SESSION_STORAGE': {
+      if (!isDiagnosticsPageSender(sender)) {
+        sendResponse({ success: false, error: 'Session inspection is restricted to the bundled diagnostics page.' });
+        return false;
+      }
       chrome.storage.session.get(null)
         .then((data) => sendResponse({ success: true, data }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
       return true;
     }
 
-    // Direct single utterance test handler from Phase 2
+    // Legacy single-utterance probe remains available only from the bundled
+    // diagnostics page and cannot overlap a queue or the audited diagnostic.
     case 'SPEAK_TEXT': {
+      if (!isDiagnosticsPageSender(sender) || diagnosticSpeechActive) {
+        sendResponse({ success: false, error: 'Direct speech tests are restricted to the bundled diagnostics page.' });
+        return false;
+      }
+      const state = playbackManager.getState().playbackState;
+      if (state === PlaybackState.PLAYING || state === PlaybackState.PAUSED) {
+        sendResponse({ success: false, error: 'Stop normal playback before running a direct speech test.' });
+        return false;
+      }
       safeSpeak(message.text, message.options, (event) => {
         chrome.runtime.sendMessage({ action: 'TTS_EVENT', event }).catch(() => {});
       })

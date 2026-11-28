@@ -1,8 +1,24 @@
 # NarraTrace — Changelog
 
-Personal-use Chrome MV3 extension that narrates web pages aloud with a local
-neural TTS engine (Kokoro, Supertonic) or the Windows system voices, tracing
-every word on screen as it speaks.
+## Unreleased — reliability and provider scope
+
+- Declare Chrome 120 as the minimum supported version so the MV3 session-storage recovery path and 30-second alarm cadence match the browser compatibility contract.
+- Add a bundled real-engine diagnostics page for the selected Chrome TTS voice, including event timing, manual first-audio confirmation, safe stop, and JSON export without sample text.
+- Restrict diagnostic speech and full session inspection to the bundled diagnostics page; prevent normal playback and diagnostics from overlapping.
+- Redact raw provider error strings before diagnostics export; an adversarial Chromium test verifies that provider errors cannot echo the spoken sample into the report.
+- Prioritize Piper and Supertonic as NarraTrace's maintained provider profiles.
+- Keep other Chrome TTS extensions discoverable through the generic provider path; provider-specific behavior is not assumed or release-gated.
+- Remove obsolete provider-specific tuning from the current target implementation; maintain dedicated profiles only where NarraTrace has verified provider behavior.
+- Fix keyboard focus restoration when the floating player is auto-tucked or using mini layout.
+- Establish a calmer editorial visual system across the popup, floating player, and Focus Reader, with responsive compact layouts and reduced-motion support.
+- Add accessible names and state announcements for playback controls, voice selection, theme/highlight choices, speed and volume controls, and sentence progress.
+- Enforce WCAG AA contrast for the popup's ready/warning status badges and Focus Reader body, metadata, and active-word treatments across all four reading palettes.
+- Expand Chromium regression coverage for 320px reader layout, keyboard focus behavior, live status regions, and playback-state transitions.
+- Add deterministic Chromium regression coverage for Focus Reader and Settings focus restoration.
+
+Personal-use Chrome MV3 extension that narrates web pages aloud through
+Chrome's TTS API, with maintained provider profiles for Piper and Supertonic,
+generic support for other Chrome TTS engines, and system-voice fallback.
 
 ---
 

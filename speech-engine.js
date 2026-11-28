@@ -6,15 +6,14 @@
  * 2. Runs exclusively in extension background contexts where chrome.tts is available.
  * 3. Voice selection is ENGINE-AGNOSTIC: any TTS engine extension that registers
  *    voices through chrome.tts can drive NarraTrace. The engines listed in
- *    TTS_ENGINES are only a preference order — Kokoro first, Supertonic second —
- *    plus a sensible default voice each. With graceful fallback to Windows
- *    local/system voices and informative status messages.
+ *    TTS_ENGINES define NarraTrace's maintained provider profiles (Piper first,
+ *    Supertonic second). Other Chrome TTS providers remain discoverable through
+ *    the generic engine path, with fallback to local/system voices.
  * 4. Only passes optional speak() options (voiceName, extensionId, lang) when they contain
  *    non-empty strings to prevent Windows Chrome silent TTS failures.
  */
 
 export const PIPER_EXTENSION_ID = 'ppnfahcipommelgaapjalhooaeeblmeg';
-export const KOKORO_EXTENSION_ID = 'mefecoigjodlohjacogkbbfpnifhfocb';
 export const SUPERTONIC_EXTENSION_ID = 'mdoplmghlkjcnegkdhocjbjcncocbdhk';
 
 /**
@@ -32,13 +31,6 @@ export const SUPERTONIC_EXTENSION_ID = 'mdoplmghlkjcnegkdhocjbjcncocbdhk';
  *             synthesis (<200 ms). Emits start/sentence/end with exact character offsets
  *             and lengths.
  *
- *   Kokoro    28 en-US voices, always advertised. Emits start/sentence/end but
- *             NO word events. Its 'sentence' event carries the exact character
- *             offset of the sentence inside the spoken text. It rebuilds its
- *             ONNX model and its offscreen document for EVERY utterance, which
- *             costs ~10 s per utterance on a CPU-only machine (much less with
- *             WebGPU). Ignores `pitch`.
- *
  *   Supertonic  Advertises its voices only while its host tab is open. Emits
  *             start/sentence/end, no word events. 'sentence' events carry exact
  *             character offsets. Announces the first sentence boundary together
@@ -54,17 +46,9 @@ export const TTS_ENGINES = [
     priority: 5
   },
   {
-    id: KOKORO_EXTENSION_ID,
-    label: 'Kokoro',
-    fullLabel: 'Kokoro (local neural)',
-    badge: 'KOKORO',
-    defaultVoice: 'Kokoro Heart',
-    priority: 10
-  },
-  {
     id: SUPERTONIC_EXTENSION_ID,
     label: 'Supertonic',
-    fullLabel: 'Supertonic (local neural)',
+    fullLabel: 'Supertonic',
     badge: 'SUPERTONIC',
     defaultVoice: null,
     priority: 20
@@ -159,8 +143,9 @@ export function getAllVoices() {
  * Selection order:
  *   1. A voice the user explicitly picked (preference.pinned) — always wins, so
  *      a deliberately chosen Supertonic voice is never overridden.
- *   2. Otherwise the highest-priority engine that has voices (Kokoro first),
- *      using that engine's default voice.
+ *   2. Otherwise the highest-priority maintained provider profile wins,
+ *      using that engine's default voice. Piper is preferred, then Supertonic;
+ *      other Chrome TTS providers remain available as generic choices.
  *   3. Otherwise an English Windows system voice, then any system voice, then
  *      any voice at all.
  *
@@ -186,10 +171,10 @@ export async function detectAndSelectVoice(preference = null) {
   const byEngine = new Map();
   for (const v of voices) {
     if (!v.extensionId) continue;
-    // Map Piper voices to PIPER_EXTENSION_ID even if installed unpacked under a local dynamic ID
-    const targetEngineId = (v.voiceName && v.voiceName.startsWith('Piper '))
-      ? PIPER_EXTENSION_ID
-      : v.extensionId;
+    // Resolve provider aliases (including unpacked Piper installs with a
+    // dynamic extension ID) to the canonical registry ID for grouping. The
+    // original voice object and its extensionId remain untouched for speak().
+    const targetEngineId = getEngineSpec(v.extensionId, v)?.id || v.extensionId;
     if (!byEngine.has(targetEngineId)) byEngine.set(targetEngineId, []);
     byEngine.get(targetEngineId).push(v);
   }
@@ -231,7 +216,7 @@ export async function detectAndSelectVoice(preference = null) {
     const pinned = voices.find(v => v.voiceName === pref.voiceName.trim());
     if (pinned) {
       selectedVoice = pinned;
-      const spec = getEngineSpec(pinned.extensionId);
+      const spec = getEngineSpec(pinned.extensionId, pinned);
       statusMessage = spec
         ? `Using ${spec.label} voice "${pinned.voiceName}".`
         : `Using voice "${pinned.voiceName}".`;
@@ -266,7 +251,14 @@ export async function detectAndSelectVoice(preference = null) {
     }
   }
 
-  const activeEngine = engines.find(e => e.id === (selectedVoice && selectedVoice.extensionId)) || null;
+  // A maintained provider may advertise under a dynamic extension ID.
+  // Match its canonical group identity without rewriting the real ID carried
+  // by selectedVoice (which is required by chrome.tts.speak()).
+  const selectedEngineSpec = selectedVoice
+    ? getEngineSpec(selectedVoice.extensionId, selectedVoice)
+    : null;
+  const activeEngineId = selectedEngineSpec?.id || (selectedVoice?.extensionId || null);
+  const activeEngine = engines.find(e => e.id === activeEngineId) || null;
 
   return {
     selectedVoice,
@@ -277,7 +269,12 @@ export async function detectAndSelectVoice(preference = null) {
     engineVoices: activeEngine ? activeEngine.voices : [],
     engines,
     localSystemVoices,
-    otherVoices: voices.filter(v => v.extensionId && (!activeEngine || v.extensionId !== activeEngine.id)),
+    otherVoices: voices.filter(v => {
+      if (!v.extensionId) return false;
+      const spec = getEngineSpec(v.extensionId, v);
+      const id = spec?.id || v.extensionId;
+      return !activeEngine || id !== activeEngine.id;
+    }),
     allVoices: voices
   };
 }
@@ -323,9 +320,9 @@ export function safeSpeak(text, options = {}, onEvent = null) {
     // first word is audible, and that preparation must not eat the speaking
     // budget. Measured against the real engines:
     //
-    //   Kokoro    rebuilds its ONNX model per utterance: ~10 s on a CPU-only
-    //             machine, ~24 s the very first time (92 MB model download).
-    //   Supertonic  ~3.2 s of network round-trip before the voice starts.
+    //   Supertonic can announce its first sentence boundary before audible
+    //   playback begins; its provider-specific lead-in is handled by the
+    //   playback synchronizer. Other engines use their observed TTS events.
     //
     // So the speaking budget only starts once the engine has actually
     // produced a boundary; until then a separate, much longer preparation
@@ -340,26 +337,54 @@ export function safeSpeak(text, options = {}, onEvent = null) {
 
     let watchdogTimer = null;
     let speechStarted = false;
-    const armWatchdog = (ms) => {
-      if (watchdogTimer) {
-        clearTimeout(watchdogTimer);
-      }
-      watchdogTimer = setTimeout(() => {
-        console.warn(`[SpeechEngine] Speech exceeded ${Math.round(ms / 1000)}s without TTS end event; advancing to avoid stall.`);
-        resolve({ type: 'timeout' });
-      }, ms);
-    };
+    let settled = false;
+
     const cleanupWatchdog = () => {
-      if (watchdogTimer) {
+      if (watchdogTimer !== null) {
         clearTimeout(watchdogTimer);
         watchdogTimer = null;
       }
+    };
+
+    // Chrome TTS events may arrive after an utterance has completed, timed
+    // out, or been interrupted. Settle exactly once and make every later
+    // callback inert so an old utterance cannot leak events into a new run.
+    const settle = (handler, value) => {
+      if (settled) return false;
+      settled = true;
+      cleanupWatchdog();
+      handler(value);
+      return true;
+    };
+
+    const armWatchdog = (ms) => {
+      cleanupWatchdog();
+      watchdogTimer = setTimeout(() => {
+        if (settled) return;
+
+        console.warn(`[SpeechEngine] Speech exceeded ${Math.round(ms / 1000)}s without TTS end event; stopping the stalled utterance.`);
+
+        // Mark settled BEFORE stopping: chrome.tts.stop() can synchronously
+        // trigger an interrupted event in some providers.
+        settled = true;
+        cleanupWatchdog();
+        try {
+          chrome.tts.stop();
+          void chrome.runtime.lastError;
+        } catch (_) {
+          // The extension context may be shutting down; the promise still
+          // needs a deterministic terminal result.
+        }
+        resolve({ type: 'timeout' });
+      }, ms);
     };
 
     // The preparation budget runs until the engine says a word.
     armWatchdog(prepareWatchdogMs);
 
     ttsOptions.onEvent = (event) => {
+      if (settled || !event || typeof event.type !== 'string') return;
+
       // The first boundary means the engine is actually speaking — from now
       // on the speaking budget applies.
       if (!speechStarted && (event.type === 'sentence' || event.type === 'word')) {
@@ -368,30 +393,39 @@ export function safeSpeak(text, options = {}, onEvent = null) {
       }
 
       if (onEvent) {
-        onEvent(event);
+        try {
+          onEvent(event);
+        } catch (err) {
+          console.warn('[SpeechEngine] TTS event consumer failed:', err && err.message);
+        }
       }
+
       if (event.type === 'end') {
-        cleanupWatchdog();
-        resolve(event);
+        settle(resolve, event);
       } else if (event.type === 'error') {
-        cleanupWatchdog();
         const errorMsg = event.errorMessage || 'Unknown TTS error occurred during speech.';
         console.warn('[SpeechEngine] TTS error event:', errorMsg);
-        reject(new Error(errorMsg));
+        settle(reject, new Error(errorMsg));
       } else if (event.type === 'interrupted' || event.type === 'cancelled') {
-        cleanupWatchdog();
-        resolve(event);
+        settle(resolve, event);
       }
     };
 
-    chrome.tts.speak(text, ttsOptions, () => {
-      if (chrome.runtime.lastError) {
-        cleanupWatchdog();
-        const err = new Error(chrome.runtime.lastError.message);
-        console.warn('[SpeechEngine] chrome.tts.speak API call failed:', err);
-        reject(err);
-      }
-    });
+    try {
+      chrome.tts.speak(text, ttsOptions, () => {
+        if (settled) {
+          void chrome.runtime.lastError;
+          return;
+        }
+        if (chrome.runtime.lastError) {
+          const err = new Error(chrome.runtime.lastError.message);
+          console.warn('[SpeechEngine] chrome.tts.speak API call failed:', err);
+          settle(reject, err);
+        }
+      });
+    } catch (err) {
+      settle(reject, err instanceof Error ? err : new Error(String(err)));
+    }
   });
 }
 
