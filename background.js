@@ -13,6 +13,7 @@ import {
 } from './speech-engine.js';
 
 import { playbackManager, PlaybackState } from './playback-manager.js';
+import { createDiagnosticKeepAlive } from './diagnostic-keepalive.js';
 import {
   sanitizeTtsDiagnosticEvent,
   DIAGNOSTIC_REQUEST_ERROR
@@ -30,6 +31,7 @@ const { splitIntoChunks } = globalThis.ReadAloudTokenizer;
 // and playback state after asynchronous voice discovery before starting it.
 let diagnosticSpeechActive = false;
 let diagnosticRequestId = null;
+const diagnosticKeepAlive = createDiagnosticKeepAlive(chrome.storage.session);
 
 console.log('[Background] NarraTrace service worker active.');
 
@@ -411,6 +413,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         diagnosticSpeechActive = true;
         diagnosticRequestId = requestId;
+        // Diagnostics bypass PlaybackManager's keep-alive, but provider preparation
+        // can exceed Chrome's 30-second MV3 worker idle window.
+        diagnosticKeepAlive.start();
         const startedAt = Date.now();
         sendResponse({
           success: true,
@@ -464,6 +469,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             durationMs: Date.now() - startedAt
           }).catch(() => {});
         } finally {
+          diagnosticKeepAlive.stop();
           if (diagnosticRequestId === requestId) {
             diagnosticSpeechActive = false;
             diagnosticRequestId = null;
