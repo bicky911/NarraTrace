@@ -716,6 +716,7 @@ bg = read(os.path.join(os.path.dirname(__file__), 'background.js'))
 diag_js = read(os.path.join(os.path.dirname(__file__), 'test.js'))
 diag_html = read(os.path.join(os.path.dirname(__file__), 'test.html'))
 diag_privacy = read(os.path.join(os.path.dirname(__file__), 'tts-diagnostic-privacy.js'))
+diag_keepalive = read(os.path.join(os.path.dirname(__file__), 'diagnostic-keepalive.js'))
 
 check(
     'background.js: diagnostic sender is restricted to bundled test.html',
@@ -748,6 +749,14 @@ check(
 check(
     'background.js: normal playback cannot start during diagnostic speech',
     "case 'START_PLAYBACK'" in bg and "if (diagnosticSpeechActive)" in bg,
+)
+check(
+    'diagnostics: isolated speech keeps the MV3 worker alive using the existing session key',
+    "from './diagnostic-keepalive.js'" in bg and
+    'diagnosticKeepAlive.start()' in bg and
+    'diagnosticKeepAlive.stop()' in bg and
+    "const SESSION_STORAGE_KEY = 'readAloud_sessionState'" in diag_keepalive and
+    'KEEP_ALIVE_INTERVAL_MS = 15_000' in diag_keepalive,
 )
 check(
     'test.js: diagnostic report records sample character count but omits sample text',
